@@ -50,13 +50,16 @@ The Fly app is provisioned but blocked on billing:
 - App `coralreefar` created.
 - Volume `reef_data` (1 GB, iad) created.
 - Secrets `ADMIN_TOKEN` + `CORS_ORIGINS` staged.
-- `FLY_API_TOKEN` added to the repo secrets so `.github/workflows/fly-deploy.yml` will run on push.
+- `FLY_API_TOKEN` added to the repo secrets so the workflow is ready to
+  go when billing unblocks.
 - **Blocker**: Fly trial orgs need a credit card at
   <https://fly.io/dashboard/john-costa-307/billing> before the first VM
   boots. Decided to defer — Beelink/Proxmox is simpler for testing.
 
-Nothing to clean up — `fly.toml` and the workflow sit dormant. Come back
-when ready.
+`.github/workflows/fly-deploy.yml` is gated to `workflow_dispatch` only
+while paused, so main-pushes don't paint the repo red on every merge.
+To resume auto-deploy after billing is resolved, add back the
+`push: branches: [main]` trigger. Nothing else to clean up.
 
 ## AR tracker
 
