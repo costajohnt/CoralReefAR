@@ -1,0 +1,41 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache python3 make g++ sqlite
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/generator/package.json packages/generator/
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+RUN pnpm install --frozen-lockfile=false
+
+COPY packages/shared packages/shared
+COPY packages/generator packages/generator
+COPY packages/server packages/server
+COPY packages/client packages/client
+RUN pnpm --filter @reef/shared build \
+ && pnpm --filter @reef/generator build \
+ && pnpm --filter @reef/server build \
+ && pnpm --filter @reef/client build
+
+FROM node:20-alpine
+WORKDIR /app
+RUN apk add --no-cache sqlite tini
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/packages/shared/package.json packages/shared/
+COPY --from=builder /app/packages/shared/dist packages/shared/dist
+COPY --from=builder /app/packages/generator/package.json packages/generator/
+COPY --from=builder /app/packages/generator/dist packages/generator/dist
+COPY --from=builder /app/packages/server/package.json packages/server/
+COPY --from=builder /app/packages/server/dist packages/server/dist
+COPY --from=builder /app/packages/server/migrations packages/server/migrations
+COPY --from=builder /app/packages/client/dist packages/client/dist
+RUN pnpm install --prod --frozen-lockfile=false --filter=@reef/server...
+
+ENV CLIENT_DIST_DIR=/app/packages/client/dist
+EXPOSE 8787
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "packages/server/dist/index.js"]

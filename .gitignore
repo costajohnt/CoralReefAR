@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-test/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+coverage/
+.vite/
+.turbo/
+packages/client/vendor/8thwall/
+**/data/*.db
+**/data/*.db-shm
+**/data/*.db-wal
+!data/.gitkeep

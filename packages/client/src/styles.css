@@ -1,0 +1,84 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #000; color: #f4f4f4; }
+
+#cam, #gl {
+  position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0;
+}
+#cam { background: #000; }
+#gl { pointer-events: auto; z-index: 1; }
+
+#landing {
+  position: fixed; inset: 0; z-index: 10;
+  background: linear-gradient(180deg, #0b1d2a, #020711);
+  display: grid; place-items: center; padding: 1.5rem; text-align: center;
+}
+.landing-inner { max-width: 24rem; }
+.landing-inner h1 { font-size: 1.8rem; margin-bottom: 0.4rem; }
+.landing-inner p { line-height: 1.4; margin: 0.4rem 0; color: #cdd; }
+.landing-inner .tiny { font-size: 0.8rem; color: #889; margin-top: 1.2rem; }
+#startBtn {
+  margin-top: 1rem; padding: 0.8rem 1.6rem; font-size: 1rem;
+  border: 0; border-radius: 999px; background: #2ec4b6; color: #022; font-weight: 600;
+}
+
+#status {
+  position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+  z-index: 5; background: rgba(0,0,0,0.55); padding: 0.5rem 1rem; border-radius: 999px;
+  font-size: 0.9rem;
+}
+
+#picker {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  padding: 0.8rem 0.8rem 1.4rem;
+  background: linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0));
+}
+.picker-row { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; margin-bottom: 0.6rem; }
+.picker-actions { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 0.4rem; }
+.picker-actions button { padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 999px; }
+.picker-actions button:disabled { opacity: 0.4; }
+#picker button {
+  padding: 0.45rem 0.8rem; border: 1px solid #234; border-radius: 8px;
+  background: rgba(20,28,40,0.75); color: #f4f4f4; font-size: 0.85rem;
+}
+#picker button.active { background: #2ec4b6; color: #012; border-color: #2ec4b6; }
+.swatch { width: 2rem; height: 2rem; padding: 0; border-radius: 50%; border: 2px solid #000; }
+.swatch.active { outline: 2px solid #fff; }
+#growBtn {
+  display: block; margin: 0.5rem auto 0; padding: 0.7rem 2rem; font-size: 1rem;
+  border: 0; border-radius: 999px; background: #ff9f1c; color: #211;
+}
+#growBtn:disabled { opacity: 0.45; }
+#hint { text-align: center; margin: 0.5rem 0 0; color: #aab; font-size: 0.8rem; }
+
+.hidden { display: none !important; }
+
+/* Tablet / landscape: keep the picker compact in the corner instead of
+   spanning the full width. Touch targets stay roomy. */
+@media (min-width: 768px) and (orientation: landscape) {
+  #picker {
+    left: auto;
+    right: 1rem;
+    bottom: 1rem;
+    width: 22rem;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.85));
+    backdrop-filter: blur(8px);
+  }
+  #status {
+    top: auto;
+    bottom: 1.5rem;
+    left: 1rem;
+    transform: none;
+  }
+}
+
+/* Respect users who prefer reduced motion — fast-forward CSS animations;
+   Three.js animation loop is unaffected but the UI reads calm. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

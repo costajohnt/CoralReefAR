@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Shared tests
+        run: pnpm --filter @reef/shared test
+
+      - name: Generator tests
+        run: pnpm --filter @reef/generator test
+
+      - name: Server tests
+        run: pnpm --filter @reef/server test
+
+      - name: Client tests
+        run: pnpm --filter @reef/client test
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## CoralReefAR CI"
+            echo ""
+            echo "- Node: $(node --version)"
+            echo "- pnpm: $(pnpm --version)"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload client bundle
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-dist-${{ github.sha }}
+          path: packages/client/dist
+          retention-days: 7
+          if-no-files-found: error

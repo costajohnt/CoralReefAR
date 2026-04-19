@@ -1,0 +1,20 @@
+export const config = {
+  port: Number(process.env.PORT ?? 8787),
+  host: process.env.HOST ?? '0.0.0.0',
+  dbPath: process.env.DB_PATH ?? './data/reef.db',
+  adminToken: process.env.ADMIN_TOKEN ?? '',
+  rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 3_600_000),
+  rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 1),
+  simIntervalMs: Number(process.env.SIM_INTERVAL_MS ?? 3_600_000),
+  snapshotIntervalMs: Number(process.env.SNAPSHOT_INTERVAL_MS ?? 86_400_000),
+  corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
+  // Absolute path to the built Vite client bundle. When set, the server
+  // serves the static files and SPA index fallbacks. Leave unset in dev so
+  // the Vite dev server keeps handling the frontend.
+  clientDistDir: process.env.CLIENT_DIST_DIR,
+};
+
+export function requireAdminToken(): string {
+  if (!config.adminToken) throw new Error('ADMIN_TOKEN is required in production');
+  return config.adminToken;
+}

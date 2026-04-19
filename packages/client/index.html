@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1d2a" />
+  <title>Coral Reef AR</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="landing">
+    <div class="landing-inner">
+      <h1>Grow the reef</h1>
+      <p>Point your camera at the pedestal to see the reef. Tap a spot, pick your coral, and leave your polyp forever.</p>
+      <button id="startBtn">Start</button>
+      <p class="tiny">Camera access is used only to track the pedestal. Nothing is uploaded except your polyp's color and shape.</p>
+    </div>
+  </div>
+
+  <video id="cam" playsinline muted></video>
+  <canvas id="gl"></canvas>
+
+  <div id="status" class="hidden" role="status" aria-live="polite" aria-atomic="true">Looking for the reef…</div>
+
+  <div id="picker" class="hidden" role="region" aria-label="Plant a polyp">
+    <div class="picker-row" role="group" aria-label="Species">
+      <button type="button" data-species="branching">Branching</button>
+      <button type="button" data-species="bulbous">Bulbous</button>
+      <button type="button" data-species="fan">Fan</button>
+      <button type="button" data-species="tube">Tube</button>
+      <button type="button" data-species="encrusting">Encrusting</button>
+    </div>
+    <div id="colors" class="picker-row" role="group" aria-label="Color"></div>
+    <div class="picker-actions">
+      <button id="rerollBtn" type="button" disabled aria-label="Regenerate shape">Reroll shape</button>
+      <button id="cancelBtn" type="button" disabled aria-label="Cancel placement">Try a new spot</button>
+    </div>
+    <button id="growBtn" type="button" disabled>Grow it</button>
+    <p id="hint" aria-live="polite">Tap the reef to place your polyp.</p>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

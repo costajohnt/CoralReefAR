@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Reef timelapse</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; padding: 0; height: 100%; background: #02111d; color: #eef; font-family: system-ui, sans-serif; }
+    body { display: grid; grid-template-rows: auto 1fr auto; }
+    header { padding: 0.8rem 1.2rem; border-bottom: 1px solid #123; display: flex; justify-content: space-between; align-items: baseline; }
+    header h1 { font-size: 1.1rem; margin: 0; }
+    header .meta { color: #9ab; font-size: 0.85rem; }
+    canvas#gl { width: 100%; height: 100%; display: block; }
+    footer { padding: 0.8rem 1.2rem; border-top: 1px solid #123; display: grid; gap: 0.5rem; grid-template-columns: auto 1fr auto; align-items: center; }
+    footer button { background: #1b3a54; color: #eef; border: 0; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
+    footer input[type=range] { width: 100%; }
+    footer .time { font-variant-numeric: tabular-nums; color: #9ab; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Reef timelapse</h1>
+    <span class="meta" id=meta>loading…</span>
+  </header>
+  <canvas id=gl></canvas>
+  <footer>
+    <button id=playBtn>Play</button>
+    <input id=scrub type=range min=0 max=0 value=0 step=1 />
+    <span class="time" id=time>—</span>
+  </footer>
+  <script type="module" src="/src/timelapse.ts"></script>
+</body>
+</html>
