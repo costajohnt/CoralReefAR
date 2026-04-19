@@ -1,11 +1,47 @@
 # Coral Reef AR
 
-Self-hosted, persistent, collaborative AR coral reef. See `PLAN.md` for the full spec.
+Tap an NFC tag in a gallery, open a web-based AR view, and add your own coral
+polyp to a shared reef that every future visitor sees. The reef is
+procedurally generated — L-systems for branching corals, reaction-diffusion
+for bulbous ones, no hand-modeled GLTFs — so every contribution is unique
+and nothing is ever deleted. It grows indefinitely.
 
-**Live demos**
+No app install. No auth. No paid services. Runs on a single small Linux
+box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 
-- [Static species preview](https://jcosta.tech/CoralReefAR/preview.html) — orbit-camera grid of all five procedurally-generated coral species, no server needed.
-- Full app: run the Docker image locally (`docker compose up -d`) or deploy to [Fly.io](#flyio) / your own host.
+- **Live static preview**: <https://jcosta.tech/CoralReefAR/preview.html> —
+  orbit-camera grid of all five procedurally-generated species. No server,
+  no AR, no setup.
+- **Docker image**: `ghcr.io/costajohnt/coralreefar:latest` — multi-arch,
+  auto-published on version tags. `docker compose up -d` deploys the whole
+  thing.
+- **Source of truth**: this repo. See [`PLAN.md`](./PLAN.md) for the
+  installation concept, [`INSTALL.md`](./INSTALL.md) for the operator
+  runbook, [`NEXT_STEPS.md`](./NEXT_STEPS.md) for what's still ahead.
+
+## What it does
+
+- Procedural coral generator with five species (branching, bulbous, fan,
+  tube, encrusting). Determinstic — same seed + color → identical mesh.
+- Real-time WebSocket hub — when one visitor plants a polyp, every other
+  connected visitor sees it appear within a frame.
+- Ambient life: slow current drift, fish boids, server-side "growth" tick
+  that adds barnacles / algae to polyps over months.
+- Fastify + SQLite backend. Prometheus `/metrics`. `/healthz`. Optional
+  static serving of the bundled client out of the same container.
+- Admin `/admin` page: soft-delete any polyp, restore any soft-deleted
+  polyp, see the live + deleted queues. Moderation loop is done.
+
+## Stack
+
+- **pnpm monorepo**: `shared / generator / server / client`.
+- **Server**: TypeScript · Fastify · better-sqlite3 · `ws` via
+  `@fastify/websocket`. Zero external services.
+- **Client**: TypeScript · Vite · Three.js. AR tracking via 8th Wall's
+  free-tier SLAM (or MindAR / noop fallbacks). Two-finger pinch + twist
+  for polyp placement.
+- **CI**: lint (Oxlint) · typecheck · build · 120 tests across four
+  packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout
 
