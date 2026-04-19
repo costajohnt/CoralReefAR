@@ -83,152 +83,393 @@ Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
 
-The code side is done. The remaining work is physical-world and
-can't be automated. Run these in order. Each step is a blocker for
-the next.
+Everything code-side is done, including compiling the placeholder
+pedestal image-target and wiring it into 8th Wall (PR #49). The
+remaining work is physical-world and can't be automated.
 
-### Step 1 — Compile a pedestal image target (~15 min)
+**Dependency graph:**
 
-You need a `.json` image-target file that the 8th Wall engine can
-use for tracking. Start with the placeholder `marker.svg` so you can
-smoke-test end-to-end cheaply before commissioning real artwork.
-
-**1.1 — Rasterize the placeholder.**
-You need a PNG at ≥2048×2048 for the CLI. If you have
-`rsvg-convert`:
-
-```sh
-brew install librsvg    # one-time, if not installed
-cd ~/dev/CoralReefAR
-rsvg-convert -w 2048 -h 2048 assets/pedestal/marker.svg > /tmp/pedestal.png
+```
+[✓ Compile placeholder image-target — done in PR #49]
+        ↓
+Step 1 — Deploy to Beelink and confirm the backend is reachable
+        ↓
+Step 2 — Print the marker
+        ↓
+Step 3 — Real-device smoke test (iPhone + Android)
+        ↓                       ↓
+     (if passes)            (if fails: fix lighting / reprint / debug)
+        ↓
+Step 4 — Commission production artwork  (optional, but recommended)
+        ↓  (repeat compile → print → smoke)
+Step 5 — Program NFC tags
+        ↓
+Ready for public visitors.
 ```
 
-No rsvg? Open `assets/pedestal/marker.svg` in Chrome, Print → Save
-as PDF, then use Preview on macOS to export as PNG at 2048×2048.
+Each step below explains **what is happening**, **why it matters**,
+and **how to tell it worked**. Do not skip steps — the failure modes
+compound when you do.
 
-**1.2 — Run the 8th Wall image-target CLI.**
+---
+
+### Step 1 — Deploy to the Beelink and confirm the backend is reachable
+
+**What you're doing.** The client already works as a static bundle
+(GitHub Pages hosts one), but the AR experience is _collaborative_ —
+every polyp you place goes to a real Fastify + SQLite server, and
+every visitor's WebSocket connection gets live updates when anyone
+else plants. You need that server up before anything else works
+end-to-end.
+
+**Why it matters.** Tracking can be tested against a dev server, but
+iPhone Safari will only connect to a HTTPS origin for camera access
+(a browser security constraint for mixed-content reasons). That
+means you need the Cloudflare Tunnel in front of the Beelink so the
+phone can reach `https://reef.<yourdomain>` and get a TLS
+certificate. Without that, step 3 will fail at "grant camera
+permission" because the browser refuses mixed-content origins.
+
+**Exactly how:**
+
+1. On the Beelink host (via SSH or direct console):
+   ```sh
+   git clone https://github.com/costajohnt/CoralReefAR.git
+   cd CoralReefAR
+   cp .env.example .env
+   ```
+2. Edit `.env`:
+   - `ADMIN_TOKEN=<some-long-random-string>` — you will paste this
+     into the admin page later to delete/restore polyps. Generate
+     via `openssl rand -hex 32` or similar.
+   - `CORS_ORIGINS=https://reef.<yourdomain>` — exact origin the
+     phone will load from. Include the `https://` scheme.
+   - `CLOUDFLARE_TUNNEL_TOKEN=<token-from-CF-dashboard>` — paste
+     from the tunnel you create at
+     <https://one.dash.cloudflare.com/> → Zero Trust → Tunnels.
+3. Boot it:
+   ```sh
+   docker compose up -d
+   docker compose logs -f server
+   ```
+4. Verify locally from the Beelink:
+   ```sh
+   curl -fsS http://localhost:8787/healthz
+   # {"ok":true,"time":1745...}
+   ```
+5. Verify externally from your laptop:
+   ```sh
+   curl -fsS https://reef.<yourdomain>/healthz
+   # same
+   ```
+
+**How to tell it worked.** Both `curl` commands return `ok:true`.
+Open `https://reef.<yourdomain>/` in a browser — you see the AR
+landing page. `docker compose logs -f server` shows no repeated
+warnings.
+
+**If anything here fails**, debugging here is much easier than
+during the real-device test: you're on a laptop with dev tools, not
+crouched over a phone. Fix connectivity, TLS, CORS, and admin-token
+issues now, not later.
+
+---
+
+### Step 2 — Print the marker and mount it
+
+**What you're doing.** Producing the physical square the camera will
+see. The 8th Wall engine matches features (corners, edges, mid-tone
+gradients) in live camera frames against a fingerprint extracted
+from the compiled target. Print-quality artifacts directly affect
+match quality.
+
+**Why it matters.** This is the single biggest determinant of
+tracking robustness. A perfect code pipeline against a bad print
+gives visitors a 50/50 experience.
+
+**Physical specs:**
+
+| Property | Value | Why |
+|---|---|---|
+| Size | 180 mm × 180 mm | At ~1 m viewing distance, feature corners are still 20+ pixels apart in the camera frame. Smaller = tracking only works up close. |
+| Paper | Matte, heavyweight (≥120 gsm) | Gloss reflects museum lighting straight into the lens, washing out contrast at the worst possible moment. Thin paper bows under its own weight, warping the homography. |
+| Printing | Photo-quality inkjet OR toner laser | Draft-quality inkjet bands/bleeds. Banding looks like features to a corner detector → false matches → drifting anchor. |
+| Mounting | Flat rigid surface (foamboard, MDF, pedestal top) | Any curvature screws up pose estimation — the engine assumes the target is flat. |
+| Orientation | Any, but fix it | Once mounted, don't rotate the marker between test cycles; orientation becomes part of the anchor pose. |
+
+**How to print:**
 
 ```sh
-npx @8thwall/image-target-cli@latest
-```
+# The marker is currently the placeholder at assets/pedestal/marker.svg.
+# Rasterize to a high-res PNG first:
+rsvg-convert -w 2048 -h 2048 ~/dev/CoralReefAR/assets/pedestal/marker.svg > /tmp/pedestal.png
 
-It's interactive. When it prompts:
-- **Image path** → `/tmp/pedestal.png`
-- **Crop** → leave default (the full image)
-- **Target name** → `pedestal`
-- **Output folder** → `assets/pedestal/target/`
-
-It produces a directory containing a `pedestal.json` metadata file,
-a cropped image, a 263×350 thumbnail, and a 480×640 luminance
-image. The `.json` is what the engine consumes.
-
-> ⚠️ UI note: the CLI prompts may have changed between versions —
-> follow what the tool actually asks, not these exact labels.
-> Report back if anything's different so I can update the runbook.
-
-**1.3 — Commit the compiled target.**
-
-```sh
-git checkout -b add-compiled-pedestal-target
-git add assets/pedestal/target/
-git commit -m "Add compiled 8th Wall image-target for placeholder marker"
-git push -u origin add-compiled-pedestal-target
-```
-
-**1.4 — Ping me to wire it into the code.**
-The current `packages/client/src/tracking/eightwall.ts` still calls
-`XR8.XrController.configure({ imageTargets: ['pedestal'] })` (the
-retired cloud-named-target API). The self-hosted binary wants
-`imageTargetData: [<json>]` — i.e. the JSON bundled at build time.
-Once you've pushed the compiled target, I'll open a PR that
-imports the JSON and swaps the configure call. That PR can only
-land after step 1.3.
-
-### Step 2 — Print the marker (~5 min)
-
-Target: **~180 mm square, matte, heavyweight paper.**
-Glossy finishes and thin copier paper kill tracking — the marker
-lives under museum lighting and both will glare.
-
-```sh
-# If you rasterized in step 1.1, reuse that PNG:
+# macOS:
 open -a Preview /tmp/pedestal.png
-# File → Print → Scale to 180 mm × 180 mm → Save as PDF / Print
+# Preview → File → Print → Size: set to 180 mm × 180 mm (Preview shows mm
+# when you flip the ruler unit in macOS System Settings → Language & Region)
+# → Paper Handling: "Scale to fit" OFF
+# → Print (or Save as PDF then to a print shop)
 ```
 
-Or print the SVG directly: open `assets/pedestal/marker.svg` in
-Chrome, Print, set page scaling so the marker fills a 180 mm
-square. Mount the print flat on top of the pedestal — bowed or
-tilted surfaces also kill tracking.
+For a cheap test print: any home inkjet. For a durable final print
+that'll live on the pedestal for months: take the PDF to a print
+shop and ask for **180×180 mm, matte, dry-mounted to 3 mm foamboard,
+black-core if available**. Black-core hides edge wear.
 
-### Step 3 — Smoke-test on real devices (~30 min)
+**How to tell it worked.** Print is square-perpendicular to its
+edges, has visible fine detail (no banding), feels stiff, no
+visible gloss under overhead light. Put it flat on a table.
 
-Once steps 1 + 2 are done **and** the follow-up code PR from 1.4
-has merged, open the live site on:
+---
 
-- **iPhone** in Safari (not Chrome — Safari is the only browser
-  with camera access on iOS)
-- **Android** in Chrome
+### Step 3 — Real-device smoke test
 
-For each device, confirm this golden path:
+**What you're doing.** Exercising the full visitor experience: load
+the URL → camera → tracking → plant → persist → live updates. Every
+layer the CI tests can't reach.
 
-1. Load the live URL. Camera permission prompt appears; grant it.
-2. Tap **Start**. Status text: "Looking for the reef…"
-3. Point the camera at the printed marker. Anchor should lock
-   within 2-3 seconds under venue lighting.
-4. Walk 90° around the pedestal while keeping the marker in
-   frame. The reef geometry should stay pinned to the marker —
-   no drift, no jitter.
-5. Tap the reef to place a polyp ghost. Pick species + color.
-   Tap **Grow**.
-6. Close the tab. Reopen. Your polyp persists. Anyone else's
-   polyps persist too.
-7. On a laptop at a second tab, open `/admin`, paste your
-   `ADMIN_TOKEN`, delete your polyp. The phone's live view
-   should update over WebSocket (≤1 s) — polyp disappears.
+**Why it matters.** 147 unit + integration tests cover code correctness.
+They tell you the code does what the code says it does. They don't tell
+you whether the SLAM tracking actually locks onto the marker under
+your venue's lighting, whether the phone's GPU renders the reef at
+30+ fps, whether the NFC-tap → browser → camera flow feels fast to a
+visitor who's never seen it before. **This is where the installation
+succeeds or fails as an art piece.**
 
-**If tracking flakes**, the fix is almost always lighting
-(diffuse, overhead) or a larger/matte print. See
-`assets/pedestal/README.md` for trackability guidelines.
+**What's happening under the hood when a visitor taps Start:**
 
-**If anchor stability is poor across 4-6 test cycles**, step back
-and decide before committing to NFC tags: is the placeholder
-marker too symmetric? Is the print too small? Is the lighting
-wrong? Tuning those beats re-commissioning artwork.
+1. Browser requests camera (MediaDevices API).
+2. `<script src="...8thwall/engine-binary@1.0.0/dist/xr.js">` is
+   fetched from jsDelivr if not already cached.
+3. Our app polls `window.XR8` for up to 8 seconds
+   (`EightWallProvider.waitUntilReady`).
+4. Once XR8 is present, the app fetches `image-targets/pedestal.json`
+   (553 bytes) and the companion 49 KB luminance PNG that the
+   engine reads for feature comparison.
+5. The engine starts SLAM — it uses the phone's gyroscope +
+   accelerometer + camera for spatial understanding, and runs
+   image-target matching at the same time.
+6. When the marker comes into frame, SLAM builds a pose and fires
+   `reality.imagefound` with position + rotation quaternion.
+7. Our code composes that into a 4×4 matrix and applies it to the
+   reef's root `Group`, which has all the polyps attached.
+8. From that point on, SLAM tracks the marker frame-to-frame at
+   ~30 Hz; the reef stays pinned even when the camera moves.
+9. Tap-to-place: a raycast from the tap position against the reef
+   plane gives you a local-space position; we show a ghost polyp;
+   on Grow, we POST to `/api/reef/polyp`; the server inserts,
+   broadcasts over WebSocket to every other connected client.
 
-### Step 4 — Commission the production marker (optional, after step 3)
+**Devices to test on, in this order:**
 
-`assets/pedestal/marker.svg` is a **placeholder**, not
-production artwork. Commission real artwork once you've
-confirmed the tracking workflow above actually works with the
-placeholder — no point paying a designer before you know the
-pipeline is sound.
+- **iPhone** (any model ≥ iPhone XR), **Safari** (not Chrome — iOS
+  locks camera access to Safari system-wide). iOS ≥ 13.
+- **Android** (any mid-to-high-end phone from the last 4 years),
+  **Chrome**. SLAM needs a reasonably recent GPU; very old Androids
+  drop frames.
 
-See `assets/pedestal/README.md` for the trackability
-characteristics artwork needs: asymmetric, feature-dense,
-mid-tone palette, matte print. When you get the final PNG,
-repeat step 1 (CLI → JSON) + step 2 (print) + step 3 (real-
-device re-test).
+If either device fails catastrophically (no anchor, black screen),
+stop and debug — don't proceed to NFC.
+
+**The golden path to confirm works on each device:**
+
+| # | Action | Expected result |
+|---|---|---|
+| 1 | Load `https://reef.<yourdomain>/ar.html` | Landing page renders, "Grow the reef" + Start button |
+| 2 | Tap **Start** | Camera permission prompt. Grant it. |
+| 3 | (Still on Start screen until camera gets permission) | Camera view fills the screen; status text "Looking for the reef…" |
+| 4 | Point camera at printed marker from ~60 cm, marker filling ~30% of frame | Within 2-3 seconds: status vanishes, reef appears anchored to the marker, picker slides up |
+| 5 | Walk 45° around the pedestal keeping the marker in view | Reef stays pinned to the marker, no drift or jitter as you move |
+| 6 | Tilt the phone toward the marker at various angles | Reef rotates with the marker (because the anchor rotates). Keep the marker in frame. |
+| 7 | Tap an empty spot on the reef | A ghost polyp appears at that spot; picker shows species + color options |
+| 8 | Pick a species (e.g. Branching) and a color | Ghost updates live to reflect your choice |
+| 9 | Tap **Grow** | Ghost becomes a real polyp, animates from tiny to full size over ~2 seconds |
+| 10 | Close the browser tab, reopen `/ar.html` | Your polyp is still there after the anchor locks. Other polyps (if any) load too. |
+| 11 | On a laptop, open `https://reef.<yourdomain>/admin`, paste your `ADMIN_TOKEN` | Admin UI loads, shows your polyp in the live list |
+| 12 | On the laptop, click Delete next to your polyp | On the phone (still running the AR session), your polyp disappears within 1 second (WebSocket update). |
+| 13 | On the laptop, click Restore | Phone gets the polyp back, also within 1 second |
+
+**Failure diagnosis:**
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Camera permission prompt never appears | Wrong URL scheme (http vs https) | Confirm Cloudflare Tunnel is routing https |
+| Camera opens but "Looking for the reef…" never clears | Marker not recognized | Better lighting (bright diffuse overhead beats direct sunlight), print bigger, matte-ify, confirm you're within ~1 m |
+| Reef appears but drifts/jitters as you move | Print too flat-looking or too symmetric, OR lighting too even | More features in the marker (see Step 4), OR add directional lighting |
+| Reef appears but the wrong way up or mirrored | Marker compiled with different orientation than it's mounted | Rotate the physical print 90° until correct; update compile if it's upside-down |
+| Tap does nothing | Anchor is "lost" behind the scenes while you tap | Keep the marker in frame while tapping |
+| Polyp vanishes after Grow | Server POST failed | Check `docker compose logs server`, likely a CORS or rate-limit issue. `CORS_ORIGINS` must exactly match the URL the phone is loaded from. |
+| Phone 1's polyp doesn't appear on phone 2 | WebSocket not connecting | Browser devtools (if remote debugging) → Network → WS — should see a 101 Switching Protocols |
+| 20-second delay between Grow and polyp rendering | Server slow-path (DB transaction stuck) | Unlikely under museum load; check logs |
+
+**If tracking is bad across 4-6 marker-lock cycles**, stop and
+decide before moving on: is the placeholder too symmetric for the
+engine? Is venue lighting too even or too shadowed? Try a different
+print size (150 mm, 200 mm). These knobs beat re-commissioning
+artwork. Real artwork can still fail tracking if feature density
+isn't high — and the diagnosis process is the same.
+
+---
+
+### Step 4 — Commission the production marker (optional but recommended)
+
+**What you're doing.** Replacing the placeholder square pattern with
+actual artwork that matches the installation's aesthetic while
+staying trackable.
+
+**Why it matters.** Two reasons:
+
+1. **Aesthetics.** A placeholder pattern on the pedestal says
+   "prototype." Real artwork says "artist deliberately chose this."
+   Museum visitors read that instantly.
+2. **Tracking quality.** Properly designed artwork is *better* for
+   tracking than the placeholder — more features, more asymmetry,
+   higher-contrast mid-tones. Placeholder is deliberately minimal.
+
+**What a good marker needs** (designer brief):
+
+- **Asymmetric.** The engine recovers not just position but rotation
+  from the marker; a rotationally-symmetric image gives the engine
+  4 equally-valid orientations and the anchor flips randomly.
+- **Feature-dense.** Hundreds of distinct corners distributed across
+  the square. Imagine the marker broken into a 10×10 grid — each
+  cell should have something trackable in it.
+- **Mid-tone palette**, not pure primaries. Phone cameras demosaic
+  red/green/blue through a Bayer filter; pure-primary regions lose
+  contrast under exposure. Teal, coral, cream, deep navy all work.
+- **Matte printability.** Palette should look fine printed on
+  matte paper — no gradients so subtle they'd band on 300 dpi.
+- **Unique.** If you also plan a second marker for anything else,
+  they must not share local features or they'll cross-match.
+
+**Workflow when you get the final art:**
+
+1. Designer delivers a ≥2048×2048 PNG of the final marker.
+2. Save it to `assets/pedestal/marker.png` (commit; this is now
+   the canonical artwork).
+3. Recompile the image-target:
+   ```sh
+   cd ~/dev/CoralReefAR
+   # Rasterize if needed (skip if designer delivered PNG already)
+   rsvg-convert -w 2048 -h 2048 assets/pedestal/marker.svg > /tmp/pedestal.png
+   npx @8thwall/image-target-cli@latest
+   ```
+   Answer the prompts the way PR #49 did:
+   - Image path → `/tmp/pedestal.png` (or directly to
+     `assets/pedestal/marker.png`)
+   - Type → 1 (flat)
+   - Default crop → Y (enter)
+   - Output folder → `/tmp/pedestal-target` (temp, we'll move)
+   - Target name → `pedestal`
+4. Replace the 5 files under `packages/client/public/image-targets/`
+   with the new output.
+5. Ping me — I'll open a PR with the new assets so you don't have
+   to wrangle git LFS or worry about embedding a huge PNG. I'll
+   also re-run the smoke test checklist from Step 3 to confirm
+   tracking quality improved.
+6. Print the new marker at 180 mm; repeat Step 2.
+7. Repeat Step 3 in full. Quality should improve on every metric
+   (time-to-lock, drift amplitude, re-acquisition speed).
+
+**Timing:** production artwork typically lags everything else by
+weeks (designer time + print-shop turnaround). Plan to spend at
+least 2-3 weeks on this once you commission.
+
+---
 
 ### Step 5 — Program NFC tags
 
-Once the real marker is in place and step 3 passes again, batch-
-program **NTAG215** tags with the live URL (`https://jcosta.tech/CoralReefAR/ar.html`
-— confirm this is the URL you actually want).
+**What you're doing.** Putting physical tappable tokens in the
+installation so visitors launch the AR without typing a URL.
 
-The tool I'd use: **NFC Tools** (free, iOS + Android). Encode a
-single URL record, tap-test one tag end-to-end (tap → phone opens
-browser → AR flow completes) before programming the rest of the
-batch. Don't program all the tags until one full cycle works.
+**Why it matters.** The difference between "I have to remember and
+type `reef.jcosta.tech/ar`" and "I tap my phone to this thing" is
+the difference between 5% of visitors engaging and 70%. NFC is the
+museum-install-standard way to do this.
+
+**Which tags:**
+
+- **NTAG215**. Cheap (~$0.30 each in bulk), 540 bytes storage (way
+  more than you need — a URL record is ~50 bytes). Compatible with
+  iPhone (iOS 13+, works from Control Center or Safari's background
+  NFC scanner) and every modern Android. Buy blank, in 50-100 tag
+  stickers. Amazon, AliExpress, or specialty museum suppliers.
+- **Stickers vs cards vs embedded:** stickers are easiest — peel and
+  stick under the pedestal. If you want it invisible to the
+  visitor, embed behind a thin non-metal surface.
+
+**Programming:**
+
+1. Install **NFC Tools** (free) on your phone:
+   - iOS: <https://apps.apple.com/app/nfc-tools/id1252962749>
+   - Android: <https://play.google.com/store/apps/details?id=com.wakdev.wdnfc>
+2. In the app, go to the **Write** tab.
+3. **Add a record** → **URL/URI** → paste the deployed URL (e.g.
+   `https://reef.jcosta.tech/ar.html`). Make sure it's the `ar.html`
+   path, not just the landing page — you want visitors straight
+   into the AR view.
+4. Tap **Write**, then tap the phone to the first blank tag. The
+   tag is programmed in ~1 second.
+
+**Test ONE tag end-to-end before batch-programming:**
+
+1. Lock your phone. (Tag reading works from the lock screen on iOS.)
+2. Hold the phone near the tag.
+3. iPhone: a system banner appears "Open in Safari?" → tap it.
+4. Android: Chrome opens automatically.
+5. Complete the full AR flow from Step 3 (camera → anchor → plant →
+   close → reopen).
+6. If that works, program the rest of the batch. If it doesn't, the
+   URL is wrong or the tag write failed — diagnose before batching.
+
+**Optional hardening:**
+
+- Lock the tag after writing (NFC Tools → Other → Lock tag) so
+  visitors can't accidentally overwrite. Once locked, it's
+  read-only forever. Don't lock until you've confirmed the URL is
+  final.
+- Add a password (NFC Tools supports it) if you want to be able to
+  edit later but prevent random overwriting.
+
+**How to tell it worked.** Tap the tag with a locked iPhone → phone
+wakes, Safari banner appears, AR launches. Total elapsed time from
+tap to "Looking for the reef…" should be under 5 seconds on a good
+connection (most of it engine-binary download on first use).
+
+---
 
 ### Decide later — Fly billing
 
-`.github/workflows/fly-deploy.yml` is gated to `workflow_dispatch`
-only so main pushes don't fail red. If you want auto-deploy back,
-add a credit card at
-<https://fly.io/dashboard/john-costa-307/billing> then restore the
-`push: branches: [main]` trigger in that workflow. Beelink is the
-simpler path; Fly is a nice-to-have.
+**Context.** The Fly.io workflow was provisioned but never boots
+because Fly trial orgs require a credit card before any VM runs.
+You decided Beelink was simpler for testing, and
+`.github/workflows/fly-deploy.yml` is currently gated to
+`workflow_dispatch` only so main pushes don't fail red every merge.
+
+**Why you might care later.** If the Beelink ever goes down (power
+outage, ISP, hardware failure), Fly is your hot standby. It's
+region-redundant, TLS-terminated, and the deploy workflow will push
+`:latest` automatically once re-enabled.
+
+**Exactly how to resume:**
+
+1. Add a credit card at
+   <https://fly.io/dashboard/john-costa-307/billing>.
+2. Edit `.github/workflows/fly-deploy.yml` and restore the
+   `push: branches: [main]` trigger that was removed in PR #31:
+   ```yaml
+   on:
+     push:
+       branches: [main]
+     workflow_dispatch:
+   ```
+3. Push. Next merge to main will trigger `flyctl deploy` against
+   the existing `coralreefar` app.
+4. Point DNS at Fly (or not — keep Beelink as primary and Fly as
+   disaster recovery).
+
+Until then, the infra sits dormant. No cost while not running.
 
 ## Optional polish
 
