@@ -1,0 +1,23 @@
+{
+  "imagePath": "image-targets/pedestal_luminance.png",
+  "metadata": null,
+  "name": "pedestal",
+  "type": "PLANAR",
+  "properties": {
+    "left": 256,
+    "top": 0,
+    "width": 1536,
+    "height": 2048,
+    "isRotated": true,
+    "originalWidth": 2048,
+    "originalHeight": 2048
+  },
+  "resources": {
+    "originalImage": "pedestal_original.png",
+    "croppedImage": "pedestal_cropped.png",
+    "thumbnailImage": "pedestal_thumbnail.png",
+    "luminanceImage": "pedestal_luminance.png"
+  },
+  "created": 1776619029777,
+  "updated": 1776619029777
+}
