@@ -98,11 +98,17 @@ scrubEl.addEventListener('input', async () => {
   const snap = snapshots[idx];
   if (!snap) return;
   timeEl.textContent = fmt(snap.takenAt);
-  const body = await loadSnapshot(snap.id);
-  // Rapid scrubbing stacks fetches; discard responses that arrive out of
-  // order so we only apply the most recently requested snapshot.
-  if (token !== scrubToken) return;
-  applySnapshot(body);
+  try {
+    const body = await loadSnapshot(snap.id);
+    // Rapid scrubbing stacks fetches; discard responses that arrive out of
+    // order so we only apply the most recently requested snapshot.
+    if (token !== scrubToken) return;
+    applySnapshot(body);
+  } catch (e) {
+    if (token !== scrubToken) return;
+    console.error('Failed to load snapshot', e);
+    metaEl.textContent = 'Failed to load that snapshot; try another.';
+  }
 });
 
 playBtn.addEventListener('click', () => {

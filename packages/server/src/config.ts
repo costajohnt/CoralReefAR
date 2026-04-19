@@ -20,7 +20,3 @@ export const config = {
   clientDistDir: process.env.CLIENT_DIST_DIR,
 };
 
-export function requireAdminToken(): string {
-  if (!config.adminToken) throw new Error('ADMIN_TOKEN is required in production');
-  return config.adminToken;
-}

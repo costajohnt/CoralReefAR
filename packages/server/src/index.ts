@@ -19,7 +19,10 @@ async function main(): Promise<void> {
   const db = new ReefDb(config.dbPath);
   const hub = new Hub();
 
-  const app = Fastify({ logger: true, trustProxy: true });
+  // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
+  // default lets unauthenticated callers make Zod walk a megabyte before
+  // rejecting.
+  const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 8192 });
   const corsOrigin: boolean | string[] =
     config.corsOrigins.length === 1 && config.corsOrigins[0] === '*' ? true : config.corsOrigins;
   await app.register(cors, { origin: corsOrigin });
