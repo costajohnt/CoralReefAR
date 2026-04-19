@@ -37,9 +37,9 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 - **pnpm monorepo**: `shared / generator / server / client`.
 - **Server**: TypeScript · Fastify · better-sqlite3 · `ws` via
   `@fastify/websocket`. Zero external services.
-- **Client**: TypeScript · Vite · Three.js. AR tracking via 8th Wall's
-  free-tier SLAM (or MindAR / noop fallbacks). Two-finger pinch + twist
-  for polyp placement.
+- **Client**: TypeScript · Vite · Three.js. AR tracking via the
+  self-hosted 8th Wall engine binary (noop fallback for desktop/dev).
+  Two-finger pinch + twist for polyp placement.
 - **CI**: lint (Oxlint) · typecheck · build · 120 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
@@ -111,8 +111,8 @@ pnpm --filter @reef/generator test   # RNG determinism, mesh invariants per spec
 pnpm --filter @reef/server test      # DB, routes, rate limit, admin auth, sim
 ```
 
-## Tracker fallback
+## Tracker
 
-The default tracker is 8th Wall if `window.XR8` is present, otherwise MindAR (stub — see `NEXT_STEPS.md`). Force a specific one with `?tracker=eightwall|mindar|noop`.
+Default is 8th Wall if `window.XR8` is present, otherwise noop (useful on desktop/dev — fixed anchor in front of the camera). Force a specific one with `?tracker=eightwall|noop`.
 
-**Status**: 8th Wall's hosted platform retired Feb 28, 2026. Current `tracking/eightwall.ts` targets the retired model and needs migration to the self-hosted `@8thwall/engine-binary` distribution. Decision is captured + migration plan is written up in [`NEXT_STEPS.md`](./NEXT_STEPS.md). No account, appKey, or phone-home in the new model — the engine loads from jsDelivr and runs entirely client-side.
+The client loads the self-hosted `@8thwall/engine-binary` from jsDelivr — no account, no appKey, no phone-home, and the hosted `apps.8thwall.com` path is gone (retired Feb 28, 2026). See [`NEXT_STEPS.md`](./NEXT_STEPS.md) for the binary-EOL notes.

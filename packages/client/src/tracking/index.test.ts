@@ -29,8 +29,6 @@ describe('readTrackerFromUrl', () => {
     expect(readTrackerFromUrl()).toBe('noop');
     vi.stubGlobal('location', { search: '?tracker=eightwall' });
     expect(readTrackerFromUrl()).toBe('eightwall');
-    vi.stubGlobal('location', { search: '?tracker=mindar' });
-    expect(readTrackerFromUrl()).toBe('mindar');
   });
 
   test('returns "auto" when the param is missing', () => {

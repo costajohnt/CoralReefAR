@@ -7,7 +7,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Tracking:** 8th Wall open source (free, SLAM-based) instead of MindAR. Real world tracking, not just flat-image targets.
 - **Assets:** Procedurally generated polyps via L-systems and reaction-diffusion. No hand-modeled GLTFs. Every contribution is unique.
 - **Liveness:** Simulated currents, background growth, and ambient life. The reef changes visibly even with zero tappers.
-- **Tracking abstraction:** Swappable tracking provider interface, so we can fall back to MindAR if 8th Wall ever disappears.
+- **Tracking abstraction:** Swappable tracking provider interface so a future provider (WebXR image-tracking, another engine) can slot in without touching app code.
 - **Still $0 ongoing cost.** Everything self-hosted on existing Beelink + Cloudflare Tunnel.
 
 ## Goals
@@ -25,7 +25,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Vite + TypeScript**
 - **Three.js** for rendering
 - **8th Wall open source XR engine** (free binary, self-hosted) for SLAM + image target tracking
-- **Custom `TrackingProvider` interface** wrapping the engine, with a `MindARProvider` fallback
+- **Custom `TrackingProvider` interface** wrapping the engine, with `NoopProvider` as the desktop/dev fallback
 - **Plain DOM + CSS** for UI (picker, confirm button, status overlays)
 - **TensorFlow.js** (optional, v2) for any on-device content checks
 
@@ -97,12 +97,12 @@ export interface TrackingProvider {
 }
 ```
 
-Two implementations:
+Implementations:
 
-- `EightWallProvider` — default, uses the bundled 8th Wall engine
-- `MindARProvider` — fallback, for if 8th Wall becomes unavailable
+- `EightWallProvider` — default, uses the self-hosted 8th Wall engine binary
+- `NoopProvider` — desktop/dev fallback (fixed anchor in front of the camera)
 
-Feature detection + URL query param override: `?tracker=mindar` forces the fallback.
+Feature detection + URL query param override: `?tracker=noop` forces the fallback; `?tracker=eightwall` asserts 8th Wall.
 
 ## Procedural coral generation
 

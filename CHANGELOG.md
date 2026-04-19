@@ -6,6 +6,24 @@ versions are SemVer.
 
 ## [Unreleased]
 
+### Changed
+
+- **AR tracker migrated to the self-hosted 8th Wall engine binary.**
+  `packages/client/index.html` now loads
+  `@8thwall/engine-binary` from jsDelivr with
+  `data-preload-chunks="slam"` and `async`. The retired
+  `apps.8thwall.com/xrweb?appKey=…` path is gone.
+  `EightWallProvider.waitUntilReady()` absorbs the async-script race
+  before the first provider selection so the user doesn't fall
+  through to Noop on a fast tap. (#28)
+
+### Removed
+
+- **MindAR fallback** — the stub `MindARProvider`,
+  `?tracker=mindar`, and `mindar` from the `TrackingProvider.name`
+  union. 8th Wall is the only active tracker; `NoopProvider` is the
+  desktop/dev fallback.
+
 ### Added
 
 - **Live hosting**:
