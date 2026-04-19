@@ -6,17 +6,18 @@ it edited alongside the work.
 
 ## Current state
 
-- **Main branch CI**: green. 145 tests pass across 4 packages (shared 12 /
-  generator 22 / server 66 / client 45).
+- **Main branch CI**: green. 161 tests pass across 4 packages (shared 12 /
+  generator 22 / server 70 / client 57).
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
-  @fastify/cors 11 · node:25-alpine · happy-dom 19 · Oxlint. All fully
-  up-to-date.
-- **Live**: static demo at <https://jcosta.tech/CoralReefAR/> (HTTPS
-  enforced). HTML landing links to the species preview; the AR entry is
-  there too but can't talk to a backend.
-- **Docker image**: `ghcr.io/costajohnt/coralreefar:latest`. Verified
-  locally — `/healthz`, `/`, `/api/reef`, `/metrics`, POST polyp all work.
-  Multi-arch (amd64 + arm64). Auto-published on `vX.Y.Z` tag.
+  @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
+  node:25-alpine · happy-dom 19 · Oxlint.
+- **Live production**: **<https://reef.home.local/>** (LAN) — v0.2.0
+  image on LXC 300 behind Nginx Proxy Manager with self-signed TLS.
+  See _Managing the deployed LXC_ below.
+- **Live static demo**: <https://jcosta.tech/CoralReefAR/> (GitHub
+  Pages). No backend; AR entry loads but can't save polyps.
+- **Docker image**: `ghcr.io/costajohnt/coralreefar:latest`. Multi-arch
+  (amd64 + arm64). Auto-published on `vX.Y.Z` tag. Last tag: v0.2.0.
 - **Branch protection** on `main`: CI required, linear history, no
   force-push. Hook bypass for `costajohnt/*` repos so operator actions
   flow without per-command approval.
@@ -25,23 +26,118 @@ it edited alongside the work.
 
 ## Deployment
 
-### Primary path: Beelink + Docker Compose
+### What's actually running right now (as of 2026-04-19)
 
-The original plan stands — self-host on the Beelink running in a Proxmox
-LXC or VM. Runbook is [`INSTALL.md`](./INSTALL.md).
+- **LXC 300** on the homelab Proxmox host (hostname `homelab`,
+  192.168.5.100). Debian 12, 2 CPU / 2 GB RAM / 10 GB disk,
+  unprivileged with `nesting=1, keyctl=1` for Docker. Auto-starts on
+  host boot. IP: **192.168.5.174**.
+- **Docker container** `reef-server` on LXC 300, running
+  `ghcr.io/costajohnt/coralreefar:v0.2.0` (or whatever `:latest`
+  resolves to). Bound to `0.0.0.0:8787`. Data volume at
+  `/opt/coralreefar/data`. Admin token stored at
+  `/opt/coralreefar/admin_token.txt` (mode 600, root-only).
+- **Reverse proxy**: Nginx Proxy Manager in LXC 100 (mediastack)
+  routes `reef.home.local` (HTTPS) → `http://192.168.5.174:8787`.
+  Self-signed cert at
+  `/opt/mediastack/config/npm/data/custom_ssl/npm-reef/`,
+  valid 10 years. Conf at
+  `/opt/mediastack/config/npm/data/nginx/proxy_host/20.conf`.
+- **DNS**: Pi-hole (LXC 201) has `reef.home.local` → 192.168.5.82
+  in `/etc/dnsmasq.d/10-home-local.conf`.
+- **Homepage tile**: gethomepage dashboard has an **Experiments →
+  Coral Reef AR** entry linking `https://reef.home.local/`.
+
+**Live URL**: <https://reef.home.local/> (LAN only; browsers will
+show a one-time self-signed cert warning).
+
+### Managing the deployed LXC
+
+All commands assume you're on your laptop with the `proxmox` SSH
+alias configured (`~/.ssh/config` already has it).
+
+**Check status:**
 
 ```sh
-git clone https://github.com/costajohnt/CoralReefAR.git
-cd CoralReefAR
-cp .env.example .env
-# edit .env: set ADMIN_TOKEN, CORS_ORIGINS, CLOUDFLARE_TUNNEL_TOKEN
-docker compose up -d
-docker compose logs -f server
+# Container health + uptime
+ssh proxmox "pct exec 300 -- docker ps --filter name=reef-server"
+
+# Server logs (tail)
+ssh proxmox "pct exec 300 -- docker logs reef-server --tail 50"
+
+# Server logs (follow)
+ssh proxmox "pct exec 300 -- docker logs reef-server -f"
+
+# LXC resource use (CPU, memory, disk)
+ssh proxmox "pct status 300"
 ```
 
-`docker-compose.yml` references `ghcr.io/costajohnt/coralreefar:latest`,
-so `docker compose pull && docker compose up -d` picks up new versions
-without a local build.
+**Retrieve the admin token** (for the `/admin` moderation page):
+
+```sh
+ssh proxmox "pct exec 300 -- cat /opt/coralreefar/admin_token.txt"
+```
+
+Paste that value into the token field at
+<https://reef.home.local/admin>. The browser will remember it in
+memory for the session.
+
+**Update to the latest tagged image:**
+
+```sh
+ssh proxmox "pct exec 300 -- bash -c '
+docker pull ghcr.io/costajohnt/coralreefar:latest
+docker stop reef-server
+docker rm reef-server
+ADMIN_TOKEN=\$(cat /opt/coralreefar/admin_token.txt)
+docker run -d --name reef-server --restart unless-stopped \
+  -p 0.0.0.0:8787:8787 \
+  -v /opt/coralreefar/data:/data \
+  -e NODE_ENV=production -e PORT=8787 -e DB_PATH=/data/reef.db \
+  -e ADMIN_TOKEN=\$ADMIN_TOKEN \
+  ghcr.io/costajohnt/coralreefar:latest
+sleep 3
+docker ps --filter name=reef-server
+'"
+```
+
+After updating, smoke-test:
+
+```sh
+curl -sk https://reef.home.local/healthz    # expect {"ok":true,...}
+```
+
+If the container crash-loops (`docker ps` shows `Restarting`), pull
+logs and diagnose. Most likely culprits: a dep bump that broke the
+Fastify plugin load order (the boot smoke test in CI should catch
+these now, but it's possible to regress), or a missing env var.
+
+**Get into the container for debugging:**
+
+```sh
+ssh proxmox "pct exec 300 -- docker exec -it reef-server sh"
+# Inside: ls /data  (the persistent volume)
+# Inside: node -v   (confirm Node version in the image)
+# Inside: cat /etc/os-release  (alpine version)
+```
+
+**Back up the database:**
+
+```sh
+ssh proxmox "pct exec 300 -- cp /opt/coralreefar/data/reef.db /opt/coralreefar/data/reef.db.bak.\$(date +%s)"
+# Copy off the LXC:
+scp proxmox:/var/lib/vz/lxc/300/... your-local-path
+# (Actual LXC rootfs paths vary; easier: exec a tar + pipe)
+ssh proxmox "pct exec 300 -- tar czf - -C /opt/coralreefar data" > ~/Backups/reef-$(date +%s).tar.gz
+```
+
+**Tear down** (if you ever want to start fresh):
+
+```sh
+ssh proxmox "pct stop 300 && pct destroy 300"
+# Plus: remove the NPM proxy host 20.conf + DB row, remove the pihole
+# DNS entry, remove the homepage tile. None auto-deleted.
+```
 
 ### Alternative: Fly.io (on pause)
 
