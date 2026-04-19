@@ -29,10 +29,14 @@ A good pedestal marker is:
 1. Produce your artwork (Figma, Inkscape, Illustrator, a photograph of a
    reef, whatever). Export PNG at ≥2048×2048.
 2. Commit it to `assets/pedestal/` (or private bin) as `marker.png`.
-3. Feed it to your tracker. For 8th Wall, that's the image-target upload
-   flow in their dashboard; for MindAR, compile via their CLI to a `.mind`
-   file. Either way the physical print is what matters — the app doesn't
-   ship the marker image itself in production.
+3. Feed it to your tracker. 8th Wall's image-target preprocessing now
+   happens via the desktop app in
+   [github.com/8thwall/8thwall/apps/](https://github.com/8thwall/8thwall)
+   (the hosted dashboard is retired as of Feb 28, 2026). For MindAR,
+   compile via the browser tool at
+   <https://hiukim.github.io/mind-ar-js-doc/tools/compile> to produce
+   a `.mind` file. Either way the physical print is what matters — the
+   app doesn't ship the marker image itself in production.
 4. Print matte on heavyweight paper, mount to the pedestal top.
 
 ## Testing this placeholder

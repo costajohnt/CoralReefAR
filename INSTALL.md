@@ -120,11 +120,18 @@ Tips:
   without line-of-sight constraints.
 - Seal tags behind a thin non-metallic plate; metal kills the field.
 
-## 6. Pedestal marker
+## 6. Pedestal marker + AR tracker
 
-The tracking layer needs a printed image as the origin anchor. 8th Wall
-SLAM extends tracking beyond the marker, so visitors only need the
-marker to be in-frame briefly.
+The tracking layer needs a printed image as the origin anchor. 8th
+Wall SLAM extends tracking beyond the marker, so visitors only need
+the marker to be in-frame briefly.
+
+Note: 8th Wall's hosted platform retired Feb 28, 2026. The current
+tracking code targets the retired model; the migration path to
+self-hosted `@8thwall/engine-binary` is tracked in `NEXT_STEPS.md`
+under "AR tracker migration plan". No appKey or account is required
+in the self-hosted model — the engine loads via jsDelivr and runs
+without phoning home.
 
 A placeholder marker lives at `assets/pedestal/marker.svg` — good
 enough for local smoke testing but not for production. See

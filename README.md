@@ -113,6 +113,6 @@ pnpm --filter @reef/server test      # DB, routes, rate limit, admin auth, sim
 
 ## Tracker fallback
 
-The default tracker is 8th Wall if `window.XR8` is present, otherwise MindAR stub. Force a specific one with `?tracker=eightwall|mindar|noop`.
+The default tracker is 8th Wall if `window.XR8` is present, otherwise MindAR (stub — see `NEXT_STEPS.md`). Force a specific one with `?tracker=eightwall|mindar|noop`.
 
-The 8th Wall XR engine binary is not vendored in this repo. Place it in `packages/client/vendor/8thwall/` before building for production. The `.gitignore` excludes that directory.
+**Status**: 8th Wall's hosted platform retired Feb 28, 2026. Current `tracking/eightwall.ts` targets the retired model and needs migration to the self-hosted `@8thwall/engine-binary` distribution. Decision is captured + migration plan is written up in [`NEXT_STEPS.md`](./NEXT_STEPS.md). No account, appKey, or phone-home in the new model — the engine loads from jsDelivr and runs entirely client-side.
