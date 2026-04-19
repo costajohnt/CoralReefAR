@@ -63,8 +63,20 @@ export class EightWallProvider implements TrackingProvider {
     }
     this.canvas = (opts.canvasElement as HTMLCanvasElement | undefined) ?? document.createElement('canvas');
 
+    // Fetch the compiled image-target. The self-hosted engine wants the full
+    // JSON blob via imageTargetData — the retired hosted platform's
+    // cloud-named-target API (imageTargets: ['pedestal']) doesn't exist in
+    // the self-hosted binary. Path is relative so it works at both / (server
+    // deploy) and /CoralReefAR/ (Pages deploy).
+    const targetUrl = new URL('image-targets/pedestal.json', document.baseURI).toString();
+    const targetRes = await fetch(targetUrl);
+    if (!targetRes.ok) {
+      throw new Error(`failed to load pedestal image-target (${targetRes.status} at ${targetUrl})`);
+    }
+    const pedestalTarget = await targetRes.json() as unknown;
+
     const XR8 = window.XR8!;
-    XR8.XrController.configure({ imageTargets: ['pedestal'] });
+    XR8.XrController.configure({ imageTargetData: [pedestalTarget] });
     XR8.addCameraPipelineModules([
       XR8.GlTextureRenderer.pipelineModule(),
       XR8.Threejs.pipelineModule(),
