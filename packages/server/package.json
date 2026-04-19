@@ -12,7 +12,7 @@
     "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec $(find dist-test -name '*.test.js')"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.1",
+    "@fastify/cors": "^11.2.0",
     "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "@reef/generator": "workspace:*",
