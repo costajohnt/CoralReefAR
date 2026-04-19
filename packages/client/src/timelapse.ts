@@ -50,7 +50,10 @@ function render(t: number): void {
 }
 
 function clearReef(): void {
-  for (const child of [...reefGroup.children]) {
+  // Iterate by always pulling the first element so that `reefGroup.remove`
+  // mutating `children` mid-loop doesn't skip entries.
+  while (reefGroup.children.length > 0) {
+    const child = reefGroup.children[0]!;
     reefGroup.remove(child);
     disposeTree(child);
   }

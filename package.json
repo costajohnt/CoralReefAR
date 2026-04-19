@@ -10,11 +10,12 @@
     "dev:server": "pnpm --filter @reef/server dev",
     "dev": "pnpm -r --parallel dev",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "lint": "oxlint packages",
     "test": "pnpm -r test",
     "clean": "pnpm -r exec rm -rf dist node_modules"
   },
   "devDependencies": {
+    "oxlint": "^0.15.0",
     "typescript": "^5.4.0"
   },
   "engines": {

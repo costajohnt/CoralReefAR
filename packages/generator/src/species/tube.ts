@@ -1,5 +1,4 @@
 import type { RNG } from '../rng.js';
-import type { MeshData } from '../meshdata.js';
 import type { GeneratedPolyp } from '../generate.js';
 import { tintColor, type Rgb } from './_common.js';
 
