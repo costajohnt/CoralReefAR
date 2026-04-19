@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
 import { registerMetricsRoutes } from './metrics.js';
+import { counters } from '../metrics-registry.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb; hub: Hub } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-metrics-'));
@@ -49,6 +50,25 @@ test('metrics: exposes reef_polyps_total as a gauge', async () => {
     assert.match(body, /^# HELP reef_polyps_total /m);
     assert.match(body, /^# TYPE reef_polyps_total gauge$/m);
     assert.match(body, /^reef_polyps_total 2$/m);
+  } finally {
+    await app.close();
+  }
+});
+
+test('metrics: exposes reef_rate_limited_total as a monotonic counter', async () => {
+  const { app } = buildApp();
+  // Reset the counter since other tests may have bumped it.
+  counters.reset('rate_limited');
+  try {
+    counters.inc('rate_limited');
+    counters.inc('rate_limited');
+    counters.inc('rate_limited');
+    const r = await app.inject({ method: 'GET', url: '/metrics' });
+    assert.equal(r.statusCode, 200);
+    const body = r.payload;
+    assert.match(body, /^# HELP reef_rate_limited_total /m);
+    assert.match(body, /^# TYPE reef_rate_limited_total counter$/m);
+    assert.match(body, /^reef_rate_limited_total 3$/m);
   } finally {
     await app.close();
   }
