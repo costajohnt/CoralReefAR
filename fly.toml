@@ -1,0 +1,52 @@
+# Fly.io deployment for the CoralReefAR server.
+#
+# One-time setup (operator):
+#   1. brew install flyctl (or equivalent)
+#   2. fly auth login
+#   3. fly apps create coralreefar --org personal
+#   4. fly volumes create reef_data --size 1 --region iad --yes
+#   5. fly secrets set ADMIN_TOKEN="$(openssl rand -hex 32)"
+#   6. fly secrets set CORS_ORIGINS="https://coralreefar.fly.dev"
+#   7. In GitHub: repo settings → secrets → add FLY_API_TOKEN
+#      (value from `fly tokens create deploy`)
+#   8. Push to main — .github/workflows/fly-deploy.yml does the rest.
+
+app = "coralreefar"
+primary_region = "iad"
+
+[build]
+  # Use the image we already publish to GHCR instead of rebuilding on Fly.
+  image = "ghcr.io/costajohnt/coralreefar:latest"
+
+[env]
+  PORT = "8787"
+  HOST = "0.0.0.0"
+  DB_PATH = "/data/reef.db"
+  NODE_ENV = "production"
+  CLIENT_DIST_DIR = "/app/packages/client/dist"
+  RATE_LIMIT_WINDOW_MS = "3600000"
+  RATE_LIMIT_MAX = "1"
+
+[[mounts]]
+  source = "reef_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/healthz"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
