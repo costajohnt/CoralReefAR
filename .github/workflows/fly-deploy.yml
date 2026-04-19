@@ -1,8 +1,9 @@
 name: Fly deploy
 
+# Manual-only while Fly is paused (trial org needs a credit card; see
+# NEXT_STEPS.md). Restore `push: branches: [main]` below once billing is
+# resolved and you want main pushes to auto-deploy.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
