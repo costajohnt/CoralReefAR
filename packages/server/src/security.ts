@@ -21,13 +21,31 @@ export function installSecurityHeaders(app: FastifyInstance): void {
  * Simple per-IP token bucket on a route. Keeps a map of IP → { tokens, last }.
  * Deliberately in-memory and per-process: the installation is single-box, and
  * we'd rather drop requests under abuse than add a Redis dependency.
+ *
+ * The map is bounded: a varied-IP attack (or legitimate traffic surge) can't
+ * balloon it unbounded. When the cap is hit, stale entries (fully refilled
+ * back to budget) are dropped — they'd recreate the identical state on their
+ * next call anyway. If the GC sweep doesn't free space, the map is cleared
+ * wholesale, which briefly resets rate-limit state but never OOMs.
  */
+const MAX_IPS = 5000;
+const GC_STALENESS_FACTOR = 2;
+
 export function perIpRateLimit(opts: { tokensPerInterval: number; intervalMs: number }) {
   const state = new Map<string, { tokens: number; last: number }>();
   const { tokensPerInterval, intervalMs } = opts;
 
   return (ip: string): { ok: boolean; retryAfterMs: number } => {
     const now = Date.now();
+
+    if (state.size >= MAX_IPS) {
+      const stale = now - intervalMs * GC_STALENESS_FACTOR;
+      for (const [k, v] of state) {
+        if (v.last < stale) state.delete(k);
+      }
+      if (state.size >= MAX_IPS) state.clear();
+    }
+
     const rec = state.get(ip) ?? { tokens: tokensPerInterval, last: now };
     const elapsed = now - rec.last;
     const refill = (elapsed / intervalMs) * tokensPerInterval;

@@ -61,7 +61,7 @@ export class EightWallProvider implements TrackingProvider {
     if (!EightWallProvider.isAvailable()) {
       throw new Error('8th Wall engine not loaded (xr.js script missing or blocked?)');
     }
-    this.canvas = opts.canvasElement ?? document.createElement('canvas');
+    this.canvas = (opts.canvasElement as HTMLCanvasElement | undefined) ?? document.createElement('canvas');
 
     const XR8 = window.XR8!;
     XR8.XrController.configure({ imageTargets: ['pedestal'] });

@@ -79,7 +79,14 @@ export class Hub {
         continue;
       }
       state.alive = false;
-      try { ws.ping?.(); } catch { this.clients.delete(ws); }
+      try {
+        ws.ping?.();
+      } catch {
+        // Same pattern as the dead-client eviction above: terminate the socket
+        // before forgetting it, otherwise the underlying TCP half-open linger.
+        try { ws.terminate?.(); } catch { /* ignore */ }
+        this.clients.delete(ws);
+      }
     }
   }
 }
