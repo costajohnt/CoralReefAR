@@ -94,6 +94,13 @@ git push origin v0.2.0
 Operators who pin to a version get reproducibility; the rest follow
 `:latest`.
 
+After a release, you can verify the published image end-to-end by
+running the `Docker smoke` workflow (Actions → Docker smoke → Run
+workflow). It pulls `:latest`, waits for `/healthz`, and exercises
+`/`, `/api/reef`, `/api/stats`, `/metrics`. A weekly cron also fires
+it every Monday so image rot shows up without someone remembering to
+check.
+
 ## Questions
 
 Open a discussion or draft PR and tag me. Rough ideas welcome; nothing
