@@ -8,6 +8,14 @@ versions are SemVer.
 
 ### Added
 
+- **Live hosting**:
+  - GitHub Pages static demo at <https://jcosta.tech/CoralReefAR/>,
+    HTTPS enforced. `/` is a landing page; `/preview.html` is the
+    procedurally-rendered species grid; `/ar.html` is the AR entry
+    (expects a backend).
+  - Fly.io deploy workflow (`fly.toml` + `.github/workflows/fly-deploy.yml`)
+    is armed. App is provisioned; deploy deferred per operator
+    decision in favor of self-host on Beelink.
 - Admin restore UI: the `/admin` page now shows both live and soft-deleted
   polyps with a per-row Restore button next to Delete.
 - `GET /api/admin/deleted` — bearer-token-gated moderation queue of
@@ -33,11 +41,19 @@ versions are SemVer.
 
 ### Changed
 
-- TypeScript 5.9 → 6.0, better-sqlite3 11 → 12, @fastify/cors 9 → 11,
-  base Docker image node:20-alpine → node:25-alpine.
+- TypeScript 5.9 → 6.0, Vite 5.3 → 7.1, Vitest 2.1 → 4.1, happy-dom
+  15 → 19, better-sqlite3 11 → 12, @fastify/cors 9 → 11, base Docker
+  image node:20-alpine → node:25-alpine,
+  `actions/deploy-pages@v4 → @v5`.
+- **Rate limits are opt-in**: default `RATE_LIMIT_MAX=0` (off). Tests
+  that exercise the 429 path explicitly re-enable. New
+  `READ_RATE_LIMIT_PER_MIN` env var for the per-IP read-side bucket.
+  Tracked for production re-enable in #25.
 - Docker + compose: server container also serves the client bundle via
   `@fastify/static` (`CLIENT_DIST_DIR` env); no more separate web host
   needed.
+- README: rewritten for pitch, not spec. Leads with the visitor
+  experience (NFC tap → AR → shared persistent reef).
 
 ### Fixed
 
