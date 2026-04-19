@@ -121,7 +121,7 @@ test('admin: POST restore for unknown id returns 404', async () => {
   await app.close();
 });
 
-test('admin: POST restore for a live (never-deleted) polyp returns 404', async () => {
+test('admin: POST restore for a live (never-deleted) polyp returns 409 already_live', async () => {
   const { app } = buildApp();
   config.adminToken = 'token-abc';
   await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
@@ -129,7 +129,8 @@ test('admin: POST restore for a live (never-deleted) polyp returns 404', async (
     method: 'POST', url: '/api/admin/polyp/1/restore',
     headers: { authorization: 'Bearer token-abc' },
   });
-  assert.equal(r.statusCode, 404);
+  assert.equal(r.statusCode, 409);
+  assert.equal(r.json().error, 'already_live');
   await app.close();
 });
 

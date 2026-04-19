@@ -60,14 +60,22 @@ export function registerAdminRoutes(app: FastifyInstance, db: ReefDb, hub: Hub):
   app.post<{ Params: { id: string } }>('/api/admin/polyp/:id/restore', async (req, reply) => {
     const id = authorizeAndParseId(req, reply);
     if (id === null) return reply;
-    const pub = db.restorePolyp(id);
-    if (!pub) return reply.status(404).send({ error: 'not_found' });
+    const result = db.restorePolyp(id);
+    if (result.status === 'unknown') {
+      return reply.status(404).send({ error: 'not_found' });
+    }
+    if (result.status === 'already_live') {
+      // 409 Conflict — restore is a no-op because the polyp is already live.
+      // Distinct from 404 so an admin UI can say "already live" instead of
+      // the ambiguous "not found".
+      return reply.status(409).send({ error: 'already_live' });
+    }
     try {
-      hub.broadcast({ type: 'polyp_added', polyp: pub });
+      hub.broadcast({ type: 'polyp_added', polyp: result.polyp });
     } catch (err) {
       req.log.warn({ err, id }, 'hub broadcast failed after restore');
     }
-    return pub;
+    return result.polyp;
   });
 
   // The admin page itself is a static HTML shell with no secrets; it prompts
@@ -147,7 +155,9 @@ async function del(id) {
 }
 async function restore(id) {
   const r = await authFetch('/api/admin/polyp/' + encodeURIComponent(id) + '/restore', { method: 'POST' });
-  if (!r || !r.ok) { alert('restore failed: ' + (r ? r.status : 'no token')); return; }
+  if (!r) { alert('paste token first'); return; }
+  if (r.status === 409) { alert('already live'); load(); return; }
+  if (!r.ok) { alert('restore failed: ' + r.status); return; }
   load();
 }
 $('loadBtn').addEventListener('click', load);
