@@ -1,0 +1,89 @@
+name: Docker smoke
+
+# Pulls the published ghcr image and exercises it. Catches "the container
+# used to work but something in the base image or dependency surface has
+# rotted" between tagged releases. Manual dispatch for ad-hoc checks;
+# weekly cron so regressions surface without someone remembering to look.
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 08:00 UTC. After weekend dep-bump PRs have settled.
+    - cron: '0 8 * * 1'
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: docker-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Pull ghcr :latest and hit endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ github.repository_owner == 'costajohnt' }}
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull ghcr.io/costajohnt/coralreefar:latest
+
+      - name: Run container
+        run: |
+          docker run -d \
+            --name coralreef-smoke \
+            -p 8787:8787 \
+            -e ADMIN_TOKEN=smoke-test-token \
+            -e CORS_ORIGINS=* \
+            ghcr.io/costajohnt/coralreefar:latest
+
+      - name: Wait for /healthz
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8787/healthz > /dev/null; then
+              echo "healthz up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "healthz never came up"
+          docker logs coralreef-smoke
+          exit 1
+
+      - name: Exercise known endpoints
+        run: |
+          set -euo pipefail
+          check() {
+            local path="$1"
+            local expect="$2"
+            local body
+            body=$(curl -sSf "http://localhost:8787${path}")
+            if ! echo "$body" | grep -q "$expect"; then
+              echo "FAIL ${path}: did not contain '${expect}'"
+              echo "--- body (first 500 chars) ---"
+              echo "${body:0:500}"
+              return 1
+            fi
+            echo "ok  ${path}"
+          }
+          check /healthz '"ok":true'
+          check /api/reef 'polyps'
+          check /api/stats 'count'
+          check /metrics 'reef_polyps_total'
+          check / '<!doctype html'
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs coralreef-smoke || true
+
+      - name: Tear down
+        if: always()
+        run: docker rm -f coralreef-smoke || true
