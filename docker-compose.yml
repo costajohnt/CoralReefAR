@@ -1,5 +1,10 @@
 services:
   server:
+    # Pre-built image from GHCR. Switch to `image:`/`build:` according to
+    # your workflow: `docker compose up -d` pulls; `docker compose up -d
+    # --build` uses the local Dockerfile. Tag `latest` follows main;
+    # pin to `vX.Y.Z` in production.
+    image: ghcr.io/costajohnt/coralreefar:latest
     build:
       context: .
       dockerfile: infra/Dockerfile.server

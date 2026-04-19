@@ -75,6 +75,25 @@ try/catch that evicts on throw.
 - CI must be green. `main` is protected and requires the **Build and test**
   check to pass.
 
+## Releasing
+
+Tagging a commit on `main` with `vX.Y.Z` triggers
+`.github/workflows/release.yml`, which builds the server image for
+linux/amd64 + linux/arm64 and publishes to
+`ghcr.io/costajohnt/coralreefar` with three tags:
+
+- `vX.Y.Z`
+- `X.Y` (minor)
+- `latest`
+
+```sh
+git tag -a v0.2.0 -m "v0.2.0: brief release note"
+git push origin v0.2.0
+```
+
+Operators who pin to a version get reproducibility; the rest follow
+`:latest`.
+
 ## Questions
 
 Open a discussion or draft PR and tag me. Rough ideas welcome; nothing

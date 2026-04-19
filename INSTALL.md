@@ -54,8 +54,25 @@ Alternatives if you want the client on a CDN edge:
 
 ## 3. Bring the stack up
 
+Two options — pick one:
+
+**Pre-built image (recommended for production):**
+
 ```sh
+docker compose pull
 docker compose up -d
+docker compose logs -f server
+```
+
+Compose pulls `ghcr.io/costajohnt/coralreefar:latest`. Pin to a
+specific version for reproducibility — edit `docker-compose.yml` and
+replace `:latest` with `:vX.Y.Z`. Released versions appear at
+<https://github.com/costajohnt/CoralReefAR/pkgs/container/coralreefar>.
+
+**Build from source (local dev or un-released changes):**
+
+```sh
+docker compose up -d --build
 docker compose logs -f server
 ```
 
