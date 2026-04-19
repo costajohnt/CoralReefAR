@@ -6,6 +6,7 @@ import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
 import { deviceHash } from '../deviceHash.js';
 import { perIpRateLimit } from '../security.js';
+import { counters } from '../metrics-registry.js';
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
   const readLimit = perIpRateLimit({ tokensPerInterval: 60, intervalMs: 60_000 });
@@ -13,6 +14,7 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
   app.get('/api/reef', async (req, reply) => {
     const check = readLimit(req.ip || 'unknown');
     if (!check.ok) {
+      counters.inc('rate_limited');
       reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
       return reply.status(429).send({ error: 'rate_limited' });
     }
@@ -37,6 +39,7 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     const already = db.countByDeviceSince(dh, windowStart);
     if (already >= config.rateLimitMax) {
+      counters.inc('rate_limited');
       const oldest = db.oldestPolypSince(dh, windowStart);
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ReefDb } from '../db.js';
 import type { Hub } from '../hub.js';
+import { counters } from '../metrics-registry.js';
 
 // Minimal Prometheus text-format emitter. Any HELP/TYPE line whose value
 // contains `\n` or `\\` would need escaping — we control these strings so no
@@ -19,6 +20,9 @@ export function registerMetricsRoutes(app: FastifyInstance, db: ReefDb, hub: Hub
     return [
       metric('reef_polyps_total', 'Number of live (non-deleted) polyps.', 'gauge', polyps),
       metric('reef_ws_clients', 'Currently connected WebSocket clients.', 'gauge', clients),
+      metric('reef_rate_limited_total',
+        'Requests rejected by the rate limiter since process start.',
+        'counter', counters.get('rate_limited')),
     ].join('');
   });
 }
