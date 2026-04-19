@@ -76,7 +76,7 @@ jobs:
           }
           check /healthz '"ok":true'
           check /api/reef 'polyps'
-          check /api/stats 'count'
+          check /api/stats '"total":'
           check /metrics 'reef_polyps_total'
           check / '<!doctype html'
 
