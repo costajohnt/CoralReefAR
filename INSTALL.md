@@ -109,15 +109,10 @@ The tracking layer needs a printed image as the origin anchor. 8th Wall
 SLAM extends tracking beyond the marker, so visitors only need the
 marker to be in-frame briefly.
 
-Marker guidelines:
-
-- High contrast, detail-rich, asymmetric. A coral-field photograph or
-  a procedurally generated pattern both work; a corporate logo usually
-  does not.
-- ~150–200 mm printed on matte paper, mounted flat and level on the
-  pedestal top. Matte to avoid glare.
-- Avoid pure red/green/blue — CMOS cameras demosaic those poorly in
-  low light. Complex mid-tones are better.
+A placeholder marker lives at `assets/pedestal/marker.svg` — good
+enough for local smoke testing but not for production. See
+`assets/pedestal/README.md` for the characteristics a production
+marker needs and how to swap yours in.
 
 Commit the actual marker image to the repo (or a private asset bin)
 once chosen so reinstalls are reproducible.

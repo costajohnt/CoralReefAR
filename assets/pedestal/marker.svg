@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder pedestal marker. Intentionally asymmetric, mid-tone,
+  detail-rich — the shape of thing image-target trackers like. NOT a
+  production asset: replace with a printed matte 150–200 mm square of
+  your own artwork for install.
+  Print at any physical size; the tracker uses features, not DPI.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#234455"/>
+      <stop offset="100%" stop-color="#0b1d2a"/>
+    </radialGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff9f1c"/>
+      <stop offset="100%" stop-color="#c42030"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Asymmetric coral-inspired silhouettes, no rotational symmetry -->
+  <g fill="none" stroke="#e8d7a8" stroke-width="3" stroke-linecap="round">
+    <path d="M 60 420 L 80 300 L 100 340 L 120 260 L 140 310 L 160 230 L 180 290"/>
+    <path d="M 200 430 C 210 380, 240 360, 230 310 C 220 270, 260 240, 270 200"/>
+    <path d="M 320 440 L 340 380 L 360 400 L 380 330 L 410 370 L 440 300"/>
+  </g>
+
+  <!-- Concentric offset rings — scale-invariant feature clusters -->
+  <g fill="none" stroke="#6ec3b5" stroke-width="2.5">
+    <circle cx="180" cy="150" r="40"/>
+    <circle cx="190" cy="160" r="28"/>
+    <circle cx="200" cy="170" r="16"/>
+  </g>
+  <g fill="none" stroke="#2ec4b6" stroke-width="2">
+    <circle cx="380" cy="130" r="22"/>
+    <circle cx="400" cy="155" r="14"/>
+  </g>
+
+  <!-- Diagonal band breaks any remaining symmetry -->
+  <polygon points="40,250 120,200 140,260 70,300" fill="url(#band)" opacity="0.75"/>
+
+  <!-- Dense dot field, high-contrast corners for SLAM tracking -->
+  <g fill="#f4f4f4">
+    <circle cx="40" cy="40" r="6"/>
+    <circle cx="480" cy="40" r="8"/>
+    <circle cx="40" cy="480" r="5"/>
+    <circle cx="475" cy="478" r="9"/>
+    <circle cx="260" cy="50" r="3"/>
+    <circle cx="70" cy="260" r="4"/>
+    <circle cx="430" cy="240" r="3"/>
+    <circle cx="300" cy="490" r="5"/>
+    <circle cx="155" cy="370" r="3"/>
+    <circle cx="465" cy="390" r="4"/>
+    <circle cx="250" cy="240" r="2.5"/>
+    <circle cx="355" cy="270" r="2.5"/>
+    <circle cx="105" cy="90" r="2.5"/>
+  </g>
+
+  <!-- Corner orientation marker (top-left only, so tracker can find "up") -->
+  <g transform="translate(28,28)">
+    <rect width="36" height="36" fill="#f4f4f4"/>
+    <rect x="6" y="6" width="24" height="24" fill="#0b1d2a"/>
+    <rect x="12" y="12" width="12" height="12" fill="#f4f4f4"/>
+  </g>
+
+  <!-- Human label — never visible during tracking, helpful for printers -->
+  <text x="256" y="500" text-anchor="middle" font-family="system-ui, sans-serif"
+        font-size="12" fill="#6a7a8a" opacity="0.6">
+    CoralReefAR placeholder marker · replace for production
+  </text>
+</svg>
