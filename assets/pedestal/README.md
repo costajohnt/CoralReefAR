@@ -6,7 +6,7 @@ commissioning real artwork.
 
 ## Characteristics a good marker needs
 
-Image-target trackers (8th Wall, MindAR, WebXR image-tracking) lock onto
+Image-target trackers (8th Wall, WebXR image-tracking) lock onto
 feature clusters — corners, edges, mid-tone gradients. They fail on:
 
 - Repetitive or rotationally symmetric patterns (checkerboards, radial logos)
@@ -29,14 +29,12 @@ A good pedestal marker is:
 1. Produce your artwork (Figma, Inkscape, Illustrator, a photograph of a
    reef, whatever). Export PNG at ≥2048×2048.
 2. Commit it to `assets/pedestal/` (or private bin) as `marker.png`.
-3. Feed it to your tracker. 8th Wall's image-target preprocessing now
-   happens via the desktop app in
+3. Feed it to 8th Wall's image-target preprocessing via the desktop
+   app in
    [github.com/8thwall/8thwall/apps/](https://github.com/8thwall/8thwall)
-   (the hosted dashboard is retired as of Feb 28, 2026). For MindAR,
-   compile via the browser tool at
-   <https://hiukim.github.io/mind-ar-js-doc/tools/compile> to produce
-   a `.mind` file. Either way the physical print is what matters — the
-   app doesn't ship the marker image itself in production.
+   (the hosted dashboard is retired as of Feb 28, 2026). The physical
+   print is what matters — the app doesn't ship the marker image
+   itself in production.
 4. Print matte on heavyweight paper, mount to the pedestal top.
 
 ## Testing this placeholder

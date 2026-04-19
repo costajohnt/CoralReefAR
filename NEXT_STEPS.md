@@ -58,67 +58,36 @@ The Fly app is provisioned but blocked on billing:
 Nothing to clean up — `fly.toml` and the workflow sit dormant. Come back
 when ready.
 
-## AR tracker migration plan
+## AR tracker
 
-The existing `packages/client/src/tracking/eightwall.ts` targets the
-**retired** hosted 8th Wall model (cloud-hosted engine + appKey). That
-model shut down Feb 28, 2026. The replacement is 8th Wall's
-self-hosted binary distribution.
+`packages/client/src/tracking/eightwall.ts` now targets the self-hosted
+`@8thwall/engine-binary`. The retired cloud-hosted
+`apps.8thwall.com/xrweb?appKey=…` path is gone. The engine loads via
+jsDelivr with `data-preload-chunks="slam"`; `EightWallProvider.waitUntilReady()`
+absorbs the async-script race on the first user tap. MindAR (the old
+fallback) has been dropped — 8th Wall is the only active tracker, with
+`NoopProvider` as the desktop/dev path when the engine isn't loaded.
 
-### Decision: 8th Wall primary, MindAR fallback
+### Still to do for AR (operator tasks)
 
-Research (captured in the git log of this PR) found:
-
-- **8th Wall** `@8thwall/engine-binary` — self-hostable, no key, no
-  phone-home. SLAM included. License permits "AR experiences as part of
-  broader deliverables." Attribution required in credits. Niantic
-  Spatial has signaled end-of-binary-maintenance in March 2026; the
-  MIT-licensed parts continue community-driven.
-- **MindAR** `mindar-image-three` — MIT-licensed, dormant since Jan
-  2024, pure marker tracking (no SLAM). Known iOS Safari quirks.
-  Maintainer has self-disclosed tracking-quality limitations.
-
-For a pedestal where visitors physically walk around the marker, SLAM
-is the single biggest driver of perceived quality. 8th Wall is the
-pick. MindAR stays as an offline fallback when 8th Wall's script can't
-load.
-
-### Migration steps (when picked back up)
-
-1. Swap `packages/client/src/tracking/eightwall.ts` from the hosted
-   `apps.8thwall.com/xrweb?appKey=...` pattern to the self-hosted
-   binary. Simplest path: `<script
-   src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js"
-   data-preload-chunks="slam" async>` injected into
-   `packages/client/index.html`.
-2. Verify the Vite build: the engine is runtime-loaded (not bundled),
-   so no Vite copy step needed with the jsDelivr CDN approach. If we
-   later self-host the engine, translate their webpack
-   `CopyWebpackPlugin` recipe to `vite-plugin-static-copy`.
-3. Finish `packages/client/src/tracking/mindar.ts` as a real
-   implementation: `npm i mind-ar`, import `MindARThree`, wire the
-   anchor callbacks. Watch for the documented ESBuild/Vite deep-import
-   gotcha.
-4. Compile the pedestal marker. 8th Wall wants an image-target file
-   produced via the desktop app in `github.com/8thwall/8thwall/apps/`
-   (post-shutdown workflow). MindAR wants a `.mind` file from
-   <https://hiukim.github.io/mind-ar-js-doc/tools/compile>. Commit
-   both targets under `assets/pedestal/`.
-5. Update `assets/pedestal/README.md` with the new workflow.
-6. Real-device test: print the marker, point an iPhone and an Android
-   at it, confirm anchor stability and the walk-around-the-pedestal
-   path.
+1. **Compile the pedestal marker.** 8th Wall's image-target
+   preprocessing now happens via the desktop app in
+   [github.com/8thwall/8thwall/apps/](https://github.com/8thwall/8thwall)
+   (post-shutdown workflow). Commit the target under
+   `assets/pedestal/`.
+2. **Real-device test.** Print the marker, point an iPhone (Safari)
+   and an Android (Chrome) at it, confirm anchor stability and the
+   walk-around-the-pedestal path.
 
 Tracking issue: [#28].
 
 ### Not to lose sight of
 
-- Niantic Spatial's binary-engine maintenance ends ~March 2026. If a
-  tracker bug surfaces in 2027 you probably can't get it fixed
-  upstream. If long-term zero-dependency maintainability ranks higher
-  than experience quality, flip the decision to MindAR-only. The
-  project is an installation piece that might run 2-3 years, so this
-  is worth a re-think when picking the work back up.
+- Niantic Spatial's binary-engine maintenance ends ~March 2026 and
+  existing self-hosted projects keep working through Feb 28, 2027. If
+  a tracker bug surfaces after that you probably can't get it fixed
+  upstream. This is an installation piece that might run 2-3 years —
+  worth a re-think if the engine stops meeting our needs.
 
 ## Testing (what you still need to do)
 
@@ -171,7 +140,9 @@ Carrying forward — these are intentional or accepted:
 - **Vitest 4 + Vite 7** is current; Vitest 4 needed Vite 6+ and we
   skipped straight to 7. Tests pass; stay alert for Vite 7 ecosystem
   gaps.
-- **8th Wall binary EOL** — see AR tracker migration plan above.
+- **8th Wall binary EOL** — self-hosted projects work through Feb 28,
+  2027; binary-engine maintenance ends ~March 2026. See _AR tracker_
+  above.
 
 [#25]: https://github.com/costajohnt/CoralReefAR/issues/25
 [#28]: https://github.com/costajohnt/CoralReefAR/issues/28

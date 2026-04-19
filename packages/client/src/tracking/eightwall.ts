@@ -6,11 +6,10 @@ import type {
 
 /**
  * 8th Wall XR engine wrapper. The engine exposes a global `XR8` once the
- * vendor script is loaded. This wrapper treats it as opaque and translates
- * between its callback shapes and our TrackingProvider contract.
- *
- * Until the binary is vendored into `vendor/8thwall/`, this provider throws
- * on init. The NoopProvider or MindARProvider will be used in the meantime.
+ * self-hosted binary script (see `index.html`) has loaded. This wrapper
+ * treats it as opaque and translates between its callback shapes and our
+ * TrackingProvider contract. NoopProvider is the fallback when XR8 isn't
+ * loaded (e.g. desktop/dev).
  */
 interface XR8Global {
   XrController: {
@@ -42,9 +41,25 @@ export class EightWallProvider implements TrackingProvider {
     return typeof window !== 'undefined' && !!window.XR8;
   }
 
+  // The engine <script> tag is `async`, so XR8 may not have attached to window
+  // by the time the user taps Start. Poll briefly before giving up to Noop.
+  static async waitUntilReady(timeoutMs = 8000, intervalMs = 50): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    if (EightWallProvider.isAvailable()) return true;
+    const deadline = Date.now() + timeoutMs;
+    return new Promise<boolean>((resolve) => {
+      const tick = (): void => {
+        if (EightWallProvider.isAvailable()) return resolve(true);
+        if (Date.now() >= deadline) return resolve(false);
+        setTimeout(tick, intervalMs);
+      };
+      tick();
+    });
+  }
+
   async init(opts: TrackingInitOptions): Promise<void> {
     if (!EightWallProvider.isAvailable()) {
-      throw new Error('8th Wall engine not loaded (vendor/8thwall/ missing?)');
+      throw new Error('8th Wall engine not loaded (xr.js script missing or blocked?)');
     }
     this.canvas = opts.canvasElement ?? document.createElement('canvas');
 

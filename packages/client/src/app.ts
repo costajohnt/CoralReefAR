@@ -9,6 +9,8 @@ import { Picker } from './ui/picker.js';
 import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
+import { EightWallProvider } from './tracking/eightwall.js';
+import type { TrackingProvider } from '@reef/shared';
 
 export interface AppOptions {
   canvas: HTMLCanvasElement;
@@ -28,7 +30,9 @@ export class App {
   private readonly picker: Picker;
   private readonly fish = new FishSchool();
   private readonly swayClock = { value: 0 };
-  private readonly tracker = selectProvider(readTrackerFromUrl());
+  // Selected in start() after we've given the 8th Wall engine script a chance
+  // to load; picking here would always lose the race.
+  private tracker!: TrackingProvider;
   private readonly socket = new ReefSocket(defaultWsUrl());
   private readonly statusEl: HTMLElement;
   private lastFrameT = 0;
@@ -69,6 +73,11 @@ export class App {
   async start(): Promise<void> {
     this.setStatus('Starting camera…');
     await this.startCamera();
+    const preferred = readTrackerFromUrl();
+    if (preferred === 'auto' || preferred === 'eightwall') {
+      await EightWallProvider.waitUntilReady();
+    }
+    this.tracker = selectProvider(preferred);
     await this.tracker.init({
       markerImage: '',
       videoElement: this.opts.video,
@@ -105,7 +114,8 @@ export class App {
   stop(): void {
     this.running = false;
     this.socket.close();
-    void this.tracker.destroy();
+    // tracker is only assigned in start(); guard so stop() pre-start is safe.
+    if (this.tracker) void this.tracker.destroy();
   }
 
   private async startCamera(): Promise<void> {
