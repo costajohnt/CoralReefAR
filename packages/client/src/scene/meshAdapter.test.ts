@@ -70,4 +70,15 @@ describe('polypMesh', () => {
     expect(mat.roughness).toBeCloseTo(0.7);
     expect(mat.metalness).toBeCloseTo(0.05);
   });
+
+  test('material is translucent with a baseline emissive glow', () => {
+    const mat = polypMesh(fixtureMesh()).material as MeshStandardMaterial;
+
+    expect(mat.transparent).toBe(true);
+    expect(mat.opacity).toBeCloseTo(0.85);
+    // White emissive so it reads as self-illuminated without tinting vertex
+    // colors. installPulse later rides on top of this baseline.
+    expect(mat.emissive.getHex()).toBe(0xffffff);
+    expect(mat.emissiveIntensity).toBeCloseTo(0.2);
+  });
 });

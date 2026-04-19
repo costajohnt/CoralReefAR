@@ -3,6 +3,7 @@ import { computeGestureFrame, type PublicPolyp, type Mat4Like, type TouchPair } 
 import { Reef } from './scene/reef.js';
 import { installLighting } from './scene/lighting.js';
 import { installSway } from './scene/currentSway.js';
+import { installPulse } from './scene/pulse.js';
 import { FishSchool } from './sim/fish.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
@@ -20,6 +21,7 @@ export interface AppOptions {
 }
 
 const SWAY_INSTALLED = Symbol('sway-installed');
+const PULSE_INSTALLED = Symbol('pulse-installed');
 
 export class App {
   private readonly scene = new Scene();
@@ -150,9 +152,17 @@ export class App {
       const m = obj as Mesh;
       if (!m.isMesh) continue;
       const flags = m.userData as Record<PropertyKey, unknown>;
-      if (flags[SWAY_INSTALLED]) continue;
-      installSway(m, this.swayClock);
-      flags[SWAY_INSTALLED] = true;
+      if (!flags[SWAY_INSTALLED]) {
+        installSway(m, this.swayClock);
+        flags[SWAY_INSTALLED] = true;
+      }
+      if (!flags[PULSE_INSTALLED]) {
+        const polyp = m.userData.polyp as PublicPolyp | undefined;
+        if (polyp) {
+          installPulse(m, this.swayClock, polyp.seed);
+          flags[PULSE_INSTALLED] = true;
+        }
+      }
     }
   }
 
