@@ -9,14 +9,20 @@ import { perIpRateLimit } from '../security.js';
 import { counters } from '../metrics-registry.js';
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
-  const readLimit = perIpRateLimit({ tokensPerInterval: 60, intervalMs: 60_000 });
+  // Rate limits are opt-in. Default off while the project is in testing;
+  // set READ_RATE_LIMIT_PER_MIN / RATE_LIMIT_MAX env vars to re-enable.
+  const readLimit = config.readRateLimitPerMin > 0
+    ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
+    : null;
 
   app.get('/api/reef', async (req, reply) => {
-    const check = readLimit(req.ip || 'unknown');
-    if (!check.ok) {
-      counters.inc('rate_limited');
-      reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
-      return reply.status(429).send({ error: 'rate_limited' });
+    if (readLimit) {
+      const check = readLimit(req.ip || 'unknown');
+      if (!check.ok) {
+        counters.inc('rate_limited');
+        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
+        return reply.status(429).send({ error: 'rate_limited' });
+      }
     }
     const state: ReefState = {
       polyps: db.listPublicPolyps(),
@@ -38,7 +44,7 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     const already = db.countByDeviceSince(dh, windowStart);
-    if (already >= config.rateLimitMax) {
+    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
       counters.inc('rate_limited');
       const oldest = db.oldestPolypSince(dh, windowStart);
       const retryAfterMs = oldest !== null
