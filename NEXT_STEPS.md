@@ -71,19 +71,6 @@ absorbs the async-script race on the first user tap. MindAR (the old
 fallback) has been dropped — 8th Wall is the only active tracker, with
 `NoopProvider` as the desktop/dev path when the engine isn't loaded.
 
-### Still to do for AR (operator tasks)
-
-1. **Compile the pedestal marker.** 8th Wall's image-target
-   preprocessing now happens via the desktop app in
-   [github.com/8thwall/8thwall/apps/](https://github.com/8thwall/8thwall)
-   (post-shutdown workflow). Commit the target under
-   `assets/pedestal/`.
-2. **Real-device test.** Print the marker, point an iPhone (Safari)
-   and an Android (Chrome) at it, confirm anchor stability and the
-   walk-around-the-pedestal path.
-
-Tracking issue: [#28].
-
 ### Not to lose sight of
 
 - Niantic Spatial's binary-engine maintenance ends ~March 2026 and
@@ -92,32 +79,156 @@ Tracking issue: [#28].
   upstream. This is an installation piece that might run 2-3 years —
   worth a re-think if the engine stops meeting our needs.
 
-## Testing (what you still need to do)
+Tracking issue: [#28].
 
-### 1. Real-device AR smoke test
+## Operator runbook — exactly what you need to do
 
-Print `assets/pedestal/marker.svg` at ~180 mm square, matte paper.
-On an iPhone (Safari) and an Android (Chrome):
-- Load the live site.
-- Confirm tracker picks up the marker within a few seconds under
-  venue lighting.
-- Place a polyp; close the tab; reopen; the polyp persists.
-- In a second tab, admin-delete via `/admin`; the first tab's reef
-  updates live over the WebSocket.
+The code side is done. The remaining work is physical-world and
+can't be automated. Run these in order. Each step is a blocker for
+the next.
 
-Nothing here has ever been driven through a real camera. The vitest +
-integration tests cover the code but not the physical world.
+### Step 1 — Compile a pedestal image target (~15 min)
 
-### 2. Pedestal marker — production version
+You need a `.json` image-target file that the 8th Wall engine can
+use for tracking. Start with the placeholder `marker.svg` so you can
+smoke-test end-to-end cheaply before commissioning real artwork.
 
-`assets/pedestal/marker.svg` is a placeholder. Commission the real
-artwork when the design is ready (see
-`assets/pedestal/README.md` for the trackability guidelines).
+**1.1 — Rasterize the placeholder.**
+You need a PNG at ≥2048×2048 for the CLI. If you have
+`rsvg-convert`:
 
-### 3. NFC tags
+```sh
+brew install librsvg    # one-time, if not installed
+cd ~/dev/CoralReefAR
+rsvg-convert -w 2048 -h 2048 assets/pedestal/marker.svg > /tmp/pedestal.png
+```
 
-Program an NTAG215 batch with the live URL. Test one end-to-end (tap
-→ Safari/Chrome → AR startup) before programming the batch.
+No rsvg? Open `assets/pedestal/marker.svg` in Chrome, Print → Save
+as PDF, then use Preview on macOS to export as PNG at 2048×2048.
+
+**1.2 — Run the 8th Wall image-target CLI.**
+
+```sh
+npx @8thwall/image-target-cli@latest
+```
+
+It's interactive. When it prompts:
+- **Image path** → `/tmp/pedestal.png`
+- **Crop** → leave default (the full image)
+- **Target name** → `pedestal`
+- **Output folder** → `assets/pedestal/target/`
+
+It produces a directory containing a `pedestal.json` metadata file,
+a cropped image, a 263×350 thumbnail, and a 480×640 luminance
+image. The `.json` is what the engine consumes.
+
+> ⚠️ UI note: the CLI prompts may have changed between versions —
+> follow what the tool actually asks, not these exact labels.
+> Report back if anything's different so I can update the runbook.
+
+**1.3 — Commit the compiled target.**
+
+```sh
+git checkout -b add-compiled-pedestal-target
+git add assets/pedestal/target/
+git commit -m "Add compiled 8th Wall image-target for placeholder marker"
+git push -u origin add-compiled-pedestal-target
+```
+
+**1.4 — Ping me to wire it into the code.**
+The current `packages/client/src/tracking/eightwall.ts` still calls
+`XR8.XrController.configure({ imageTargets: ['pedestal'] })` (the
+retired cloud-named-target API). The self-hosted binary wants
+`imageTargetData: [<json>]` — i.e. the JSON bundled at build time.
+Once you've pushed the compiled target, I'll open a PR that
+imports the JSON and swaps the configure call. That PR can only
+land after step 1.3.
+
+### Step 2 — Print the marker (~5 min)
+
+Target: **~180 mm square, matte, heavyweight paper.**
+Glossy finishes and thin copier paper kill tracking — the marker
+lives under museum lighting and both will glare.
+
+```sh
+# If you rasterized in step 1.1, reuse that PNG:
+open -a Preview /tmp/pedestal.png
+# File → Print → Scale to 180 mm × 180 mm → Save as PDF / Print
+```
+
+Or print the SVG directly: open `assets/pedestal/marker.svg` in
+Chrome, Print, set page scaling so the marker fills a 180 mm
+square. Mount the print flat on top of the pedestal — bowed or
+tilted surfaces also kill tracking.
+
+### Step 3 — Smoke-test on real devices (~30 min)
+
+Once steps 1 + 2 are done **and** the follow-up code PR from 1.4
+has merged, open the live site on:
+
+- **iPhone** in Safari (not Chrome — Safari is the only browser
+  with camera access on iOS)
+- **Android** in Chrome
+
+For each device, confirm this golden path:
+
+1. Load the live URL. Camera permission prompt appears; grant it.
+2. Tap **Start**. Status text: "Looking for the reef…"
+3. Point the camera at the printed marker. Anchor should lock
+   within 2-3 seconds under venue lighting.
+4. Walk 90° around the pedestal while keeping the marker in
+   frame. The reef geometry should stay pinned to the marker —
+   no drift, no jitter.
+5. Tap the reef to place a polyp ghost. Pick species + color.
+   Tap **Grow**.
+6. Close the tab. Reopen. Your polyp persists. Anyone else's
+   polyps persist too.
+7. On a laptop at a second tab, open `/admin`, paste your
+   `ADMIN_TOKEN`, delete your polyp. The phone's live view
+   should update over WebSocket (≤1 s) — polyp disappears.
+
+**If tracking flakes**, the fix is almost always lighting
+(diffuse, overhead) or a larger/matte print. See
+`assets/pedestal/README.md` for trackability guidelines.
+
+**If anchor stability is poor across 4-6 test cycles**, step back
+and decide before committing to NFC tags: is the placeholder
+marker too symmetric? Is the print too small? Is the lighting
+wrong? Tuning those beats re-commissioning artwork.
+
+### Step 4 — Commission the production marker (optional, after step 3)
+
+`assets/pedestal/marker.svg` is a **placeholder**, not
+production artwork. Commission real artwork once you've
+confirmed the tracking workflow above actually works with the
+placeholder — no point paying a designer before you know the
+pipeline is sound.
+
+See `assets/pedestal/README.md` for the trackability
+characteristics artwork needs: asymmetric, feature-dense,
+mid-tone palette, matte print. When you get the final PNG,
+repeat step 1 (CLI → JSON) + step 2 (print) + step 3 (real-
+device re-test).
+
+### Step 5 — Program NFC tags
+
+Once the real marker is in place and step 3 passes again, batch-
+program **NTAG215** tags with the live URL (`https://jcosta.tech/CoralReefAR/ar.html`
+— confirm this is the URL you actually want).
+
+The tool I'd use: **NFC Tools** (free, iOS + Android). Encode a
+single URL record, tap-test one tag end-to-end (tap → phone opens
+browser → AR flow completes) before programming the rest of the
+batch. Don't program all the tags until one full cycle works.
+
+### Decide later — Fly billing
+
+`.github/workflows/fly-deploy.yml` is gated to `workflow_dispatch`
+only so main pushes don't fail red. If you want auto-deploy back,
+add a credit card at
+<https://fly.io/dashboard/john-costa-307/billing> then restore the
+`push: branches: [main]` trigger in that workflow. Beelink is the
+simpler path; Fly is a nice-to-have.
 
 ## Optional polish
 
