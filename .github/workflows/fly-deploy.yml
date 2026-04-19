@@ -1,0 +1,40 @@
+name: Fly deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Gated: only runs when the operator has wired FLY_API_TOKEN. Without it
+    # the job no-ops so main commits don't turn the repo red for unrelated
+    # contributors.
+    if: ${{ github.repository_owner == 'costajohnt' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "${FLY_API_TOKEN}" ]; then
+            echo "Skipping: FLY_API_TOKEN not set. See fly.toml for setup."
+            exit 0
+          fi
+          flyctl deploy --remote-only --image ghcr.io/costajohnt/coralreefar:latest

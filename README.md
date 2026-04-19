@@ -2,6 +2,11 @@
 
 Self-hosted, persistent, collaborative AR coral reef. See `PLAN.md` for the full spec.
 
+**Live demos**
+
+- [Static species preview](https://costajohnt.github.io/CoralReefAR/preview.html) — orbit-camera grid of all five procedurally-generated coral species, no server needed.
+- Full app: run the Docker image locally (`docker compose up -d`) or deploy to [Fly.io](#flyio) / your own host.
+
 ## Layout
 
 ```
@@ -27,11 +32,13 @@ The client proxies `/api` and `/ws` to the server in dev.
 
 For desktop testing (no camera or tracker), use `?tracker=noop` — the reef anchors a fixed distance in front of the camera.
 
-## Production (Beelink)
+## Production
 
-1. Copy `.env.example` to `.env` and fill in `ADMIN_TOKEN` and `CLOUDFLARE_TUNNEL_TOKEN`.
-2. Build the client once (`pnpm --filter @reef/client build`) and serve it via a static host (or add a Fastify static plugin).
-3. `docker compose up -d` on the Beelink.
+See `INSTALL.md` for the full runbook. Three paths:
+
+- **Self-hosted Beelink + Cloudflare Tunnel** (the original deploy target). Free ongoing cost, requires hardware.
+- **Fly.io** — `fly.toml` is checked in. One-time: `fly apps create coralreefar`, create a `reef_data` volume, set `ADMIN_TOKEN` + `CORS_ORIGINS` secrets, add a `FLY_API_TOKEN` repo secret. Then every push to main triggers `.github/workflows/fly-deploy.yml`. ~$5/mo for a shared-1x VM.
+- **GitHub Pages** (static-only) — `.github/workflows/pages.yml` builds the client and publishes the preview. No backend → no placement persistence, just the generator demo.
 
 ## Seeding the reef
 
