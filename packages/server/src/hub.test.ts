@@ -130,3 +130,22 @@ test('hub: heartbeat pings live clients and terminates silent ones', () => {
   assert.equal(silent.terminated, true);
   assert.equal(hub.size(), 1);
 });
+
+test('hub: a ping that throws terminates the socket and evicts the client', () => {
+  const hub = new Hub();
+  const healthy = fakeSocket();
+  const flaky = fakeSocket();
+  // Simulate a socket whose ping() synchronously throws (e.g. underlying
+  // stream already torn down). Replaces the default no-throw increment.
+  flaky.ping = (): never => { throw new Error('socket closed during ping'); };
+  hub.add(healthy);
+  hub.add(flaky);
+  assert.equal(hub.size(), 2);
+
+  // First tick: healthy is pinged and stays; flaky throws on ping, which
+  // must terminate the socket and drop it from the hub.
+  hub.heartbeatTick();
+  assert.equal(healthy.pings, 1);
+  assert.equal(flaky.terminated, true, 'terminate called on ping-throw');
+  assert.equal(hub.size(), 1, 'flaky client removed from hub');
+});

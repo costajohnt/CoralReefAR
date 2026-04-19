@@ -119,6 +119,14 @@ playBtn.addEventListener('click', () => {
 
 async function tick(): Promise<void> {
   while (playing) {
+    // playBtn is only disabled after the initial load resolves; a fast tap
+    // could enter tick() before snapshots arrive. Bail instead of dividing
+    // by zero and cycling NaN through the scrub handler.
+    if (snapshots.length === 0) {
+      playing = false;
+      playBtn.textContent = 'Play';
+      return;
+    }
     const cur = Number(scrubEl.value);
     const next = (cur + 1) % snapshots.length;
     scrubEl.value = String(next);
