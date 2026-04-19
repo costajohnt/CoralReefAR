@@ -9,8 +9,9 @@
   <!-- 8th Wall self-hosted engine binary. `async` means window.XR8 may not exist
        when the app module runs; EightWallProvider.waitUntilReady covers that race.
        `data-preload-chunks="slam"` prefetches the SLAM worker to avoid a second
-       RTT on first anchor-found. -->
-  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script>
+       RTT on first anchor-found. Version is pinned (not @1) so a bad minor
+       publish can't hit visitors silently; bump deliberately after smoke-testing. -->
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script>
 </head>
 <body>
   <div id="landing">
