@@ -94,6 +94,12 @@ git push origin v0.2.0
 Operators who pin to a version get reproducibility; the rest follow
 `:latest`.
 
+**First-time only**: new GHCR packages are created private by default.
+After the first successful release, open
+<https://github.com/users/costajohnt/packages/container/coralreefar/settings>
+and flip visibility to **Public** so operators can `docker pull`
+without a PAT.
+
 ## Questions
 
 Open a discussion or draft PR and tag me. Rough ideas welcome; nothing
