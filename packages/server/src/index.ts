@@ -1,9 +1,10 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import { resolve as resolvePath } from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { ReefDb } from './db.js';
 import { Hub } from './hub.js';
@@ -15,21 +16,48 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
 import { installSecurityHeaders } from './security.js';
 
-async function main(): Promise<void> {
-  const db = new ReefDb(config.dbPath);
+export interface MakeServerOptions {
+  dbPath?: string;
+  adminToken?: string;
+  corsOrigins?: string[];
+  clientDistDir?: string | undefined;
+  logger?: boolean;
+}
+
+export interface MakeServerResult {
+  app: FastifyInstance;
+  db: ReefDb;
+  hub: Hub;
+}
+
+/**
+ * Build the Fastify app with all plugins + routes registered. Does NOT
+ * start the sim/snapshot workers, the heartbeat, or listen on a port — main()
+ * does that. This split lets tests exercise the real plugin load order
+ * (where a Fastify-plugin-version mismatch would throw) without the noise
+ * of workers + network binding.
+ */
+export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServerResult> {
+  const dbPath = opts.dbPath ?? config.dbPath;
+  const adminToken = opts.adminToken ?? config.adminToken;
+  const corsOriginsList = opts.corsOrigins ?? config.corsOrigins;
+  const clientDistDir = opts.clientDistDir ?? config.clientDistDir;
+  const useLogger = opts.logger ?? true;
+
+  const db = new ReefDb(dbPath);
   const hub = new Hub();
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
   // rejecting.
-  const app = Fastify({ logger: true, trustProxy: true, bodyLimit: 8192 });
+  const app = Fastify({ logger: useLogger, trustProxy: true, bodyLimit: 8192 });
   const corsOrigin: boolean | string[] =
-    config.corsOrigins.length === 1 && config.corsOrigins[0] === '*' ? true : config.corsOrigins;
+    corsOriginsList.length === 1 && corsOriginsList[0] === '*' ? true : corsOriginsList;
   await app.register(cors, { origin: corsOrigin });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   installSecurityHeaders(app);
 
-  if (!config.adminToken) {
+  if (!adminToken) {
     app.log.warn('ADMIN_TOKEN is not set — admin endpoints will reject all requests');
   }
 
@@ -44,8 +72,8 @@ async function main(): Promise<void> {
   // Optional static hosting: serves the built Vite bundle out of the same
   // container so a single-host deploy doesn't need a separate nginx sidecar.
   // Unset in dev so the Vite dev server keeps handling the frontend.
-  if (config.clientDistDir) {
-    const root = resolvePath(config.clientDistDir);
+  if (clientDistDir) {
+    const root = resolvePath(clientDistDir);
     if (!existsSync(root)) {
       app.log.warn({ root }, 'CLIENT_DIST_DIR is set but does not exist — skipping static hosting');
     } else {
@@ -72,6 +100,12 @@ async function main(): Promise<void> {
     }));
   });
 
+  return { app, db, hub };
+}
+
+async function main(): Promise<void> {
+  const { app, db, hub } = await makeServer();
+
   const sim = new SimWorker(db, hub, config.simIntervalMs);
   sim.start();
   const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs);
@@ -92,7 +126,13 @@ async function main(): Promise<void> {
   app.log.info({ port: config.port }, 'reef server listening');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only run main() when this module is the entrypoint — not when imported by
+// a test file. Without this, importing `makeServer` from the smoke test would
+// also boot the full server on the real port.
+const isEntrypoint = process.argv[1] === fileURLToPath(import.meta.url);
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
