@@ -150,18 +150,26 @@ export class ReefDb {
     return (this.stmt.listDeletedPolyps.all() as PolypRow[]).map(rowToPublicPolyp);
   }
 
-  // Un-sets the deleted flag. Returns the public polyp if a previously
-  // soft-deleted polyp was restored, or null if the row is unknown or was
-  // already live.
-  restorePolyp(id: number): PublicPolyp | null {
+  // Un-sets the deleted flag. Returns a discriminated union so callers can
+  // distinguish "no such polyp" from "already live" — both map to 404 at the
+  // HTTP layer today, but 409 Conflict for already_live is an option and
+  // audit logs should record which case happened.
+  restorePolyp(id: number): RestoreResult {
     // Atomic UPDATE+SELECT — prevents a concurrent softDeletePolyp(id) from
     // slipping between the two statements and causing us to broadcast a
     // polyp_added for a row that's actually still-deleted.
-    let result: PublicPolyp | null = null;
+    let result: RestoreResult = { status: 'unknown' };
     this.db.transaction(() => {
-      if (this.stmt.restore.run(id).changes === 0) return;
+      if (this.stmt.restore.run(id).changes === 0) {
+        // Either the row doesn't exist or it's already live. Peek to find out.
+        const row = this.stmt.getPolypById.get(id) as PolypRow | undefined;
+        result = row ? { status: 'already_live' } : { status: 'unknown' };
+        return;
+      }
       const row = this.stmt.getPolypById.get(id) as PolypRow | undefined;
-      result = row ? rowToPublicPolyp(row) : null;
+      if (row) result = { status: 'restored', polyp: rowToPublicPolyp(row) };
+      // Extremely unlikely: UPDATE said 1 row changed but SELECT can't find it.
+      // Leave result as the default 'unknown' so the caller sends a 404.
     })();
     return result;
   }
@@ -230,6 +238,11 @@ export class ReefDb {
     return this.stmt.getSnapshot.get(id) as { id: number; takenAt: number; polypCount: number; stateJson: string } | undefined;
   }
 }
+
+export type RestoreResult =
+  | { status: 'restored'; polyp: PublicPolyp }
+  | { status: 'already_live' }
+  | { status: 'unknown' };
 
 export function rowToPublicPolyp(r: PolypRow): PublicPolyp {
   return {

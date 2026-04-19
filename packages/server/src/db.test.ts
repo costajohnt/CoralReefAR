@@ -45,6 +45,33 @@ test('DB: softDeletePolyp returns false for unknown id', () => {
   assert.equal(db.softDeletePolyp(999), false);
 });
 
+test('DB: restorePolyp returns { status: "unknown" } for id that was never inserted', () => {
+  const db = freshDb();
+  const result = db.restorePolyp(999);
+  assert.equal(result.status, 'unknown');
+});
+
+test('DB: restorePolyp returns { status: "already_live" } for a row that was never deleted', () => {
+  const db = freshDb();
+  const p = db.insertPolyp(basePolyp());
+  const result = db.restorePolyp(p.id);
+  assert.equal(result.status, 'already_live');
+});
+
+test('DB: restorePolyp returns { status: "restored", polyp } after a soft-delete', () => {
+  const db = freshDb();
+  const p = db.insertPolyp(basePolyp());
+  db.softDeletePolyp(p.id);
+  const result = db.restorePolyp(p.id);
+  assert.equal(result.status, 'restored');
+  if (result.status === 'restored') {
+    assert.equal(result.polyp.id, p.id);
+    assert.equal(result.polyp.species, 'branching');
+    assert.ok(!('deviceHash' in result.polyp));
+  }
+  assert.equal(db.listPublicPolyps().length, 1);
+});
+
 test('DB: countByDeviceSince counts within window', () => {
   const db = freshDb();
   const now = Date.now();
