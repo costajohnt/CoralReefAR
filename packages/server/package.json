@@ -17,7 +17,7 @@
     "@fastify/websocket": "^10.0.1",
     "@reef/generator": "workspace:*",
     "@reef/shared": "workspace:*",
-    "better-sqlite3": "^11.0.0",
+    "better-sqlite3": "^12.9.0",
     "fastify": "^4.27.0",
     "zod": "^3.23.8"
   },
