@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
 import { registerReefRoutes } from './reef.js';
+import { config } from '../config.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb; hub: Hub } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-rt-'));
@@ -78,15 +79,42 @@ test('POST /api/reef/polyp rejects out-of-bounds position', async () => {
   await app.close();
 });
 
-test('POST /api/reef/polyp returns 429 with retryAfterMs on rate limit', async () => {
-  const { app } = buildApp();
-  await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
-  const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
-  assert.equal(r.statusCode, 429);
-  const body = r.json() as { error: string; retryAfterMs: number };
-  assert.equal(body.error, 'rate_limited');
-  assert.ok(body.retryAfterMs > 0);
-  assert.ok(body.retryAfterMs <= 3_600_000);
-  assert.ok(r.headers['retry-after']);
-  await app.close();
+test('POST /api/reef/polyp returns 429 with retryAfterMs when RATE_LIMIT_MAX enabled', async () => {
+  // Rate limits are disabled by default; this test turns the write-side
+  // limit on to exercise the 429 path, then restores.
+  const savedMax = config.rateLimitMax;
+  config.rateLimitMax = 1;
+  try {
+    const { app } = buildApp();
+    await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    assert.equal(r.statusCode, 429);
+    const body = r.json() as { error: string; retryAfterMs: number };
+    assert.equal(body.error, 'rate_limited');
+    assert.ok(body.retryAfterMs > 0);
+    assert.ok(body.retryAfterMs <= 3_600_000);
+    assert.ok(r.headers['retry-after']);
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+  }
+});
+
+test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (default)', async () => {
+  const savedMax = config.rateLimitMax;
+  config.rateLimitMax = 0;
+  try {
+    const { app } = buildApp();
+    for (let i = 0; i < 5; i++) {
+      const r = await app.inject({
+        method: 'POST', url: '/api/reef/polyp',
+        headers: { 'user-agent': `test-ua-${i}` },
+        payload: { ...valid, seed: 100 + i },
+      });
+      assert.equal(r.statusCode, 201, `request ${i} should succeed, got ${r.statusCode}`);
+    }
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+  }
 });
