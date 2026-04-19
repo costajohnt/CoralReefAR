@@ -4,7 +4,7 @@ Self-hosted, persistent, collaborative AR coral reef. See `PLAN.md` for the full
 
 **Live demos**
 
-- [Static species preview](https://costajohnt.github.io/CoralReefAR/preview.html) — orbit-camera grid of all five procedurally-generated coral species, no server needed.
+- [Static species preview](https://jcosta.tech/CoralReefAR/preview.html) — orbit-camera grid of all five procedurally-generated coral species, no server needed.
 - Full app: run the Docker image locally (`docker compose up -d`) or deploy to [Fly.io](#flyio) / your own host.
 
 ## Layout
