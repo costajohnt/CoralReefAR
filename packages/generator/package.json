@@ -21,14 +21,14 @@
     "@reef/shared": "workspace:*"
   },
   "peerDependencies": {
-    "three": "^0.160.0"
+    "three": "^0.184.0"
   },
   "peerDependenciesMeta": {
     "three": { "optional": true }
   },
   "devDependencies": {
-    "three": "^0.160.0",
-    "@types/three": "^0.160.0",
+    "three": "^0.184.0",
+    "@types/three": "^0.184.0",
     "@types/node": "^20.14.0"
   }
 }
