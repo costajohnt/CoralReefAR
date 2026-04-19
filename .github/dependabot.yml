@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned to current versions — catches Node 20→24
+  # deprecations and minor-version action fixes as they ship.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+      include: scope
+
+  # Single pnpm workspace — Dependabot's npm ecosystem reads pnpm-lock.yaml
+  # at the root and proposes updates across all packages.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: deps
+      include: scope
+    # Batch patch + minor bumps together to keep PR noise down; majors still
+    # get their own PR so they're easy to review.
+    groups:
+      minor-patch:
+        applies-to: version-updates
+        update-types: [patch, minor]
+
+  # Dockerfile base image updates (alpine / node base).
+  - package-ecosystem: docker
+    directory: /infra
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: docker
