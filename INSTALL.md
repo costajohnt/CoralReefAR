@@ -126,12 +126,11 @@ The tracking layer needs a printed image as the origin anchor. 8th
 Wall SLAM extends tracking beyond the marker, so visitors only need
 the marker to be in-frame briefly.
 
-Note: 8th Wall's hosted platform retired Feb 28, 2026. The current
-tracking code targets the retired model; the migration path to
-self-hosted `@8thwall/engine-binary` is tracked in `NEXT_STEPS.md`
-under "AR tracker migration plan". No appKey or account is required
-in the self-hosted model — the engine loads via jsDelivr and runs
-without phoning home.
+Note: 8th Wall's hosted platform retired Feb 28, 2026. The client
+now loads the self-hosted `@8thwall/engine-binary@1.0.0` from
+jsDelivr — no appKey, no account, no phone-home. See `NEXT_STEPS.md`
+under "AR tracker" for the engine-EOL window and the operator
+runbook for compiling the pedestal image-target.
 
 A placeholder marker lives at `assets/pedestal/marker.svg` — good
 enough for local smoke testing but not for production. See

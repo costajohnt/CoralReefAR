@@ -6,8 +6,8 @@ it edited alongside the work.
 
 ## Current state
 
-- **Main branch CI**: green. 121 tests pass across 4 packages (shared 12 /
-  generator 22 / server 61 / client 26).
+- **Main branch CI**: green. 145 tests pass across 4 packages (shared 12 /
+  generator 22 / server 66 / client 45).
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 11 · node:25-alpine · happy-dom 19 · Oxlint. All fully
   up-to-date.
