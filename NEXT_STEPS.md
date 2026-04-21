@@ -26,7 +26,7 @@ it edited alongside the work.
 
 ## Deployment
 
-### What's actually running right now (as of 2026-04-19)
+### What's actually running right now (as of 2026-04-21)
 
 - **LXC 300** on the homelab Proxmox host (hostname `homelab`,
   192.168.5.100). Debian 12, 2 CPU / 2 GB RAM / 10 GB disk,
