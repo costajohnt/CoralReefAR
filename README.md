@@ -40,7 +40,7 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 - **Client**: TypeScript · Vite · Three.js. AR tracking via the
   self-hosted 8th Wall engine binary (noop fallback for desktop/dev).
   Two-finger pinch + twist for polyp placement.
-- **CI**: lint (Oxlint) · typecheck · build · 145 tests across four
+- **CI**: lint (Oxlint) · typecheck · build · 161 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout

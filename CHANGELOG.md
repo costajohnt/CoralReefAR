@@ -6,6 +6,34 @@ versions are SemVer.
 
 ## [Unreleased]
 
+### Added
+
+- **Full-app boot smoke test.** `packages/server/src/index.ts` now
+  exports a `makeServer()` factory; `boot.smoke.test.ts` exercises
+  the real plugin load order with an in-memory DB. Catches
+  Fastify-plugin-version mismatches (the exact class of bug that
+  bit v0.2.0's first two release-build attempts). (#55)
+- **Test coverage on previously-untested scene files.** 11 new tests
+  across `simDecor` (all three decoration branches + non-Mesh
+  no-op documentation) and `currentSway` (shader-anchor injection
+  assertions so Three.js include renames don't silently drop sway
+  in the next major). Partial close of #47. (#56)
+- **Operator runbook for the deployed LXC.** `NEXT_STEPS.md` now
+  documents what's running on the Beelink and how to manage it
+  (status, logs, admin-token retrieval, image updates, DB backup,
+  teardown). (#57)
+
+### Changed
+
+- **Test count** across four packages: 146 → 161 (shared 12 /
+  generator 22 / server 70 / client 57).
+
+## [0.2.0] — 2026-04-19
+
+First release after the self-hosted AR migration + a session-long
+audit + hardening cycle. See the full release notes on GitHub:
+<https://github.com/costajohnt/CoralReefAR/releases/tag/v0.2.0>.
+
 ### Changed
 
 - **AR tracker migrated to the self-hosted 8th Wall engine binary.**
