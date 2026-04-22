@@ -34,12 +34,8 @@ export class TreeDb {
 
   // ReefDb owns the underlying sqlite handle. Share it so migrations run once
   // and tree + landscape data live in the same file.
-  constructor(private readonly reef: ReefDb) {
-    // Access the raw db from ReefDb via a property we'll add, OR re-open the
-    // same file. Simplest: ReefDb already exposes its `db` (or we open by path).
-    // For this plan: add a getter `raw()` to ReefDb returning `this.db` if not
-    // already present.
-    this.db = (reef as unknown as { db: Database.Database }).db;
+  constructor(reef: ReefDb) {
+    this.db = reef.db;
 
     this.stmt = {
       insert: this.db.prepare(
