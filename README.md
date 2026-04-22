@@ -47,8 +47,6 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 - **CI**: lint (Oxlint) · typecheck · build · 180 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
-The playground ships as of v0.4.0.
-
 ## Layout
 
 ```

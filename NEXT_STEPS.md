@@ -6,8 +6,8 @@ it edited alongside the work.
 
 ## Current state
 
-- **Main branch CI**: green. 161 tests pass across 4 packages (shared 12 /
-  generator 22 / server 70 / client 57).
+- **Main branch CI**: green. 180 tests pass across 4 packages (shared 12 /
+  generator 22 / server 70 / client 76).
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
