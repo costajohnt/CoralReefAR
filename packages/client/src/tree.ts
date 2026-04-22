@@ -18,6 +18,7 @@ import { AttachIndicators } from './tree/indicators.js';
 import { TreePlacement } from './tree/placement.js';
 import { fetchTree, submitTreePolyp, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
 import { TreePicker } from './ui/treePicker.js';
+import { computeOrbitPose } from './playground/autoOrbit.js';
 
 // ------------------------------------------------------------------
 // Sentinel symbols so sway/pulse are installed at most once per mesh.
@@ -255,6 +256,7 @@ if (config.mode === 'interactive') {
 
 if (config.mode === 'screen') {
   picker.hide();
+  (document.getElementById('picker') as HTMLElement).classList.add('hidden');
   controls.enabled = false;
 }
 
@@ -331,7 +333,14 @@ async function loadInitial(): Promise<void> {
 function loop(t: number): void {
   swayClock.value = t / 1000;
 
-  controls.update();
+  if (config.mode === 'screen') {
+    const pose = computeOrbitPose(t / 1000);
+    camera.position.copy(pose.position);
+    camera.lookAt(pose.target);
+  } else {
+    controls.update();
+  }
+
   bloomSetup.render();
   requestAnimationFrame(loop);
 }
