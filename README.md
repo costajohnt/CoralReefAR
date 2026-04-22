@@ -49,9 +49,9 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
   - **Tree** (`tree.html`) — a different reef. Fractal branching-coral
     web built by attaching small composable pieces to each other's
     tips. Avatar-bioluminescent styling (bloom post-processing, vivid
-    palette). Planned — implementation in
+    palette). Implemented per
     [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
-- **CI**: lint (Oxlint) · typecheck · build · 180 tests across four
+- **CI**: lint (Oxlint) · typecheck · build · 313 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout

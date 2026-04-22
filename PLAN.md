@@ -9,8 +9,10 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Liveness:** Simulated currents, background growth, and ambient life. The reef changes visibly even with zero tappers.
 - **Tracking abstraction:** Swappable tracking provider interface so a future provider (WebXR image-tracking, another engine) can slot in without touching app code.
 - **Still $0 ongoing cost.** Everything self-hosted on existing Beelink + Cloudflare Tunnel.
-- **Dual surface:** the installation has both an AR layer (phone tapped to a pedestal) and a non-AR screen layer (`playground.html`) that shows the reef growing from a fixed orbit viewpoint on a wall-mounted display. Same backend, same sim loop, same geometry — two ways to experience the same living reef.
-- **Third surface (planned — tree mode):** a third entry (`tree.html`) for a different reef — a fractal branching-coral web where visitors attach small composable pieces to each other's exposed tips. Avatar-bioluminescent styling (bloom post-processing, vivid palette). Separate reef in the DB. Concept fully specified in [`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md). Phase 2 migrates the AR client to read the tree data so the pedestal AR view shows the same growing fractal structure the wall screen shows.
+- **Multiple surfaces:** the installation has three entry points sharing one backend:
+  - **AR** (phone tapped to pedestal) — SLAM-tracked reef anchor.
+  - **Playground** (`playground.html`) — orbit-camera non-AR view for a wall-mounted display next to the AR pedestal.
+  - **Branching web (tree mode)** (`tree.html`) — a different reef where visitors attach small composable pieces to each other's exposed tips, growing a fractal coral structure. Avatar-bioluminescent styling (bloom, vivid palette). Separate DB table (`tree_polyps`), separate WebSocket namespace (`/ws/tree`). Phase 2 will migrate the AR client to read tree data so the pedestal AR shows the same growing fractal the wall screen shows. See [`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md).
 
 ## Goals
 
