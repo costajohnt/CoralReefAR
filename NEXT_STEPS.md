@@ -179,6 +179,39 @@ Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
 
+### Step 0 — Non-AR testing via the playground (coming soon)
+
+Before investing in the marker print + NFC tag + real-device cycle,
+exercise the full reef pipeline without any AR dependencies. A new
+`playground.html` view is planned (see
+[`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](./docs/superpowers/plans/2026-04-22-playground-virtual-reef.md))
+that gives you:
+
+- Orbit-camera Three.js view of the reef (mouse-drag rotate, scroll zoom)
+- Click-to-place polyps on a virtual pedestal — same picker UI, same
+  submit path, same live WebSocket updates as the AR client
+- `?mode=screen` — auto-orbit camera with no UI, for the eventual
+  museum-screen display next to the physical pedestal
+- `?readonly=1` — browse-only mode for demo kiosks
+
+URLs (once shipped):
+
+```
+https://reef.home.local/playground.html           # interactive
+https://reef.home.local/playground.html?mode=screen
+https://reef.home.local/playground.html?readonly=1
+```
+
+Plus local dev: `pnpm --filter @reef/client dev` then
+`http://localhost:5173/playground.html?api=http://localhost:8787`.
+
+What it **doesn't** test: the 8th Wall engine, camera permissions,
+SLAM tracking, anchor stability, real lighting, the marker print.
+Steps 1-5 below remain necessary for AR verification.
+
+---
+
+
 Everything code-side is done, including compiling the placeholder
 pedestal image-target and wiring it into 8th Wall (PR #49). The
 remaining work is physical-world and can't be automated.
