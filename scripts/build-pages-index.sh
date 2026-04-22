@@ -39,6 +39,8 @@ cat > "$DIST/index.html" <<'HTML'
   <ul>
     <li><a href="preview.html">Species preview</a> — orbit-camera grid of all five procedurally-generated coral species. No server needed.</li>
     <li><a href="ar.html">AR app</a> — will fail to load the reef (no backend on Pages) but shows the startup screen.</li>
+    <li><a href="playground.html">Playground</a> — interactive reef (no AR needed, works against any deployed backend)</li>
+    <li><a href="playground.html?mode=screen">Screen view</a> — auto-orbit camera, demo-ready</li>
     <li><a href="https://github.com/costajohnt/CoralReefAR">Source + runbook</a></li>
     <li><a href="https://github.com/costajohnt/CoralReefAR/pkgs/container/coralreefar">Docker image on GHCR</a></li>
   </ul>
