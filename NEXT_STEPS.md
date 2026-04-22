@@ -4,10 +4,25 @@ What's done, what's open, and what you (the maintainer) still need to do
 manually. This file is the single source of truth for project state — keep
 it edited alongside the work.
 
+Related docs:
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — why the code looks how it
+  looks (running log of architectural choices + rationales)
+- [`docs/superpowers/plans/`](docs/superpowers/plans/) — TDD
+  implementation plans for active features
+- [`CHANGELOG.md`](CHANGELOG.md) — version history
+- [`INSTALL.md`](INSTALL.md) — operator deploy runbook
+- [`PLAN.md`](PLAN.md) — original project concept (v2)
+
 ## Current state
 
 - **Main branch CI**: green. 180 tests pass across 4 packages (shared 12 /
   generator 22 / server 70 / client 76).
+- **Deployed version**: v0.4.0 live on the Beelink LXC at
+  `https://reef.home.local/`. Three surfaces available:
+  `index.html` (AR, phone), `playground.html` (orbit camera, desktop),
+  `playground.html?mode=screen` (auto-orbit, museum display).
+- **Planned next**: tree mode (third surface) — implementation plan
+  merged (#72), execution pending.
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
