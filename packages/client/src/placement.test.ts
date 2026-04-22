@@ -96,3 +96,24 @@ describe('Placement.reset', () => {
     expect(placement.getLast()).toBeNull();
   });
 });
+
+describe('Placement.showGhost positionOverride', () => {
+  test('showGhost with positionOverride seeds lastResult without needing handleTap first', () => {
+    const anchor = new Group();
+    const camera = new PerspectiveCamera(60, 1, 0.01, 30);
+    const placement = new Placement(makeFakeReef(), camera, anchor);
+
+    // Precondition: no lastResult until handleTap (or override) runs.
+    expect(placement.getLast()).toBeNull();
+
+    const override = new Vector3(0.03, 0, 0.02);
+    placement.showGhost('branching', 1234, 'coral-pink', override);
+
+    const r = placement.getLast();
+    expect(r).not.toBeNull();
+    expect(r!.position.x).toBeCloseTo(0.03, 6);
+    expect(r!.position.z).toBeCloseTo(0.02, 6);
+    expect(r!.normal.y).toBeCloseTo(1, 6);
+    expect(r!.scale).toBe(1);
+  });
+});

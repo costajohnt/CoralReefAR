@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Scene, WebGLRenderer, type Mesh } from 'three';
+import { PerspectiveCamera, Scene, WebGLRenderer, Vector2, type Mesh } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PublicPolyp } from '@reef/shared';
 import { installLighting } from './scene/lighting.js';
@@ -6,10 +6,13 @@ import { installSway } from './scene/currentSway.js';
 import { installPulse } from './scene/pulse.js';
 import { Reef } from './scene/reef.js';
 import { FishSchool } from './sim/fish.js';
-import { fetchReef } from './net/api.js';
+import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { createPedestal } from './playground/scene.js';
 import { readPlaygroundConfig } from './playground/config.js';
+import { Placement } from './placement.js';
+import { Picker } from './ui/picker.js';
+import { computePlacementFromClick } from './playground/interaction.js';
 
 const SWAY_INSTALLED = Symbol('sway-installed');
 const PULSE_INSTALLED = Symbol('pulse-installed');
@@ -45,6 +48,85 @@ controls.minDistance = 0.2;
 controls.maxDistance = 1.2;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.enableDamping = true;
+
+const placement = new Placement(reef, camera, reef.anchor);
+const pickerRoot = document.getElementById('picker')!;
+const picker = new Picker(pickerRoot);
+const hintEl = document.getElementById('hint')!;
+
+let currentSeed = Math.floor(Math.random() * 0xffffffff);
+
+if (config.mode === 'interactive') {
+  picker.show();
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -(((e.clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    const hit = computePlacementFromClick(ndc, camera);
+    if (!hit) {
+      hintEl.textContent = 'Click on the pedestal top to place your polyp.';
+      return;
+    }
+    currentSeed = Math.floor(Math.random() * 0xffffffff);
+    const s = picker.get();
+    placement.showGhost(s.species, currentSeed, s.colorKey, hit);
+    picker.setCommittable(true);
+    hintEl.textContent = 'Happy with it? Click Grow.';
+  });
+
+  picker.onChange(({ species, colorKey }) => {
+    if (placement.getLast()) placement.updateGhost(species, currentSeed, colorKey);
+  });
+
+  picker.onReroll(() => {
+    if (!placement.getLast()) return;
+    currentSeed = Math.floor(Math.random() * 0xffffffff);
+    const s = picker.get();
+    placement.updateGhost(s.species, currentSeed, s.colorKey);
+  });
+
+  picker.onCancel(() => {
+    placement.reset();
+    picker.setCommittable(false);
+  });
+
+  picker.onCommit(async () => {
+    if (config.readonly) {
+      hintEl.textContent = 'Readonly mode — Grow is disabled.';
+      return;
+    }
+    const r = placement.getLast();
+    if (!r) return;
+    const s = picker.get();
+    picker.setSubmitting(true);
+    try {
+      const saved = await submitPolyp({
+        species: s.species,
+        seed: currentSeed,
+        colorKey: s.colorKey,
+        position: [r.position.x, r.position.y, r.position.z],
+        orientation: [r.orientation.x, r.orientation.y, r.orientation.z, r.orientation.w],
+        scale: r.scale,
+      });
+      placement.reset();
+      reef.addPolyp(saved, true);
+      installEffectsOnNewMeshes();
+      picker.setSubmitting(false);
+      picker.setCommittable(false);
+      hintEl.textContent = 'Grown. Click another spot to plant again.';
+    } catch (e) {
+      picker.setSubmitting(false);
+      if (e instanceof RateLimitError) {
+        hintEl.textContent = `Rate limit — try again in ${Math.ceil(e.retryAfterMs / 1000)}s.`;
+      } else {
+        hintEl.textContent = 'Server rejected the polyp. Check the console.';
+        console.error(e);
+      }
+    }
+  });
+}
 
 function installEffectsOnNewMeshes(): void {
   for (const obj of reef.all()) {

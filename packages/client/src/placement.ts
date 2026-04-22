@@ -70,7 +70,20 @@ export class Placement {
     return this.lastResult;
   }
 
-  showGhost(species: Species, seed: number, colorKey: string): void {
+  showGhost(species: Species, seed: number, colorKey: string, positionOverride?: Vector3): void {
+    // When positionOverride is provided (e.g. by the playground's own
+    // raycast helper), seed a fresh PlacementResult so the ghost renders
+    // at that point even though handleTap() was never called. Preserves
+    // existing AR-client callers that rely on handleTap populating
+    // lastResult first.
+    if (positionOverride) {
+      this.lastResult = {
+        position: positionOverride.clone(),
+        normal: new Vector3(0, 1, 0),
+        orientation: new Quaternion(),
+        scale: 1,
+      };
+    }
     this.clearGhost();
     const gen = generatePolyp({ species, seed, colorKey });
     const m = polypMesh(gen.mesh);
