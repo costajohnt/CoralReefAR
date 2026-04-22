@@ -25,8 +25,8 @@ versions are SemVer.
   parameter, letting callers that have already raycast their own
   placement point (e.g. the playground) seed the ghost without
   going through `handleTap()`. AR client behavior unchanged.
-- **Test count** across four packages: 161 → 177 (shared 12 /
-  generator 22 / server 70 / client 73).
+- **Test count** across four packages: 161 → 180 (shared 12 /
+  generator 22 / server 70 / client 76).
 
 ## [0.3.0] — 2026-04-21
 
