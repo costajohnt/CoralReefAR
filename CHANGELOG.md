@@ -6,15 +6,27 @@ versions are SemVer.
 
 ## [Unreleased]
 
-### Planned
+### Added
 
 - **Playground (`playground.html`)** — AR-free interactive reef view:
   orbit camera, click-to-place on a virtual pedestal, full picker +
-  commit flow, WebSocket live updates. Adds `?mode=screen` for a
-  museum-screen auto-orbit variant and `?readonly=1` for browse-only.
-  Reuses `Reef`, `Placement`, `Picker`, `ReefSocket`. Implementation
-  plan in
-  [`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](docs/superpowers/plans/2026-04-22-playground-virtual-reef.md).
+  commit flow, WebSocket live updates. `?mode=screen` drives an
+  auto-orbit camera for the eventual museum-screen display;
+  `?readonly=1` is a browse-only mode. `?api=URL` points at any
+  backend. Reuses `Reef`, `Placement`, `Picker`, `ReefSocket` and
+  the existing scene effects (sway, pulse, fish). Four new pure
+  modules under `packages/client/src/playground/` — `scene.ts`,
+  `config.ts`, `autoOrbit.ts`, `interaction.ts` — plus
+  `playground.ts` + `playground.html`.
+
+### Changed
+
+- `Placement.showGhost()` now accepts an optional `positionOverride`
+  parameter, letting callers that have already raycast their own
+  placement point (e.g. the playground) seed the ghost without
+  going through `handleTap()`. AR client behavior unchanged.
+- **Test count** across four packages: 161 → 180 (shared 12 /
+  generator 22 / server 70 / client 76).
 
 ## [0.3.0] — 2026-04-21
 

@@ -6,8 +6,8 @@ it edited alongside the work.
 
 ## Current state
 
-- **Main branch CI**: green. 161 tests pass across 4 packages (shared 12 /
-  generator 22 / server 70 / client 57).
+- **Main branch CI**: green. 180 tests pass across 4 packages (shared 12 /
+  generator 22 / server 70 / client 76).
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
@@ -179,13 +179,11 @@ Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
 
-### Step 0 — Non-AR testing via the playground (coming soon)
+### Step 0 — Non-AR testing via the playground
 
 Before investing in the marker print + NFC tag + real-device cycle,
-exercise the full reef pipeline without any AR dependencies. A new
-`playground.html` view is planned (see
-[`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](./docs/superpowers/plans/2026-04-22-playground-virtual-reef.md))
-that gives you:
+exercise the full reef pipeline without any AR dependencies. The
+`playground.html` view gives you:
 
 - Orbit-camera Three.js view of the reef (mouse-drag rotate, scroll zoom)
 - Click-to-place polyps on a virtual pedestal — same picker UI, same
@@ -194,7 +192,7 @@ that gives you:
   museum-screen display next to the physical pedestal
 - `?readonly=1` — browse-only mode for demo kiosks
 
-URLs (once shipped):
+URLs:
 
 ```
 https://reef.home.local/playground.html           # interactive
@@ -202,8 +200,7 @@ https://reef.home.local/playground.html?mode=screen
 https://reef.home.local/playground.html?readonly=1
 ```
 
-Plus local dev: `pnpm --filter @reef/client dev` then
-`http://localhost:5173/playground.html?api=http://localhost:8787`.
+Local dev: `pnpm --filter @reef/client dev` → `http://localhost:5173/playground.html?api=http://localhost:8787`.
 
 What it **doesn't** test: the 8th Wall engine, camera permissions,
 SLAM tracking, anchor stability, real lighting, the marker print.

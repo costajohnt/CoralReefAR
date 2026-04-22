@@ -18,12 +18,11 @@ For desktop dev without a camera / pedestal, open
 `http://localhost:5173/?tracker=noop` — the reef anchors a fixed
 distance in front of the virtual camera.
 
-Better option once the playground ships:
+Or skip AR entirely and use the playground:
 `http://localhost:5173/playground.html?api=http://localhost:8787`.
-It's a proper orbit-camera view with click-to-place and the full
-picker UI — no AR code-paths involved. See
-[`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](./docs/superpowers/plans/2026-04-22-playground-virtual-reef.md)
-for the implementation plan.
+Orbit-camera view, click-to-place, full picker UI — no AR
+code-paths involved. Add `?mode=screen` for the auto-orbit
+museum-display variant.
 
 ## Testing
 
