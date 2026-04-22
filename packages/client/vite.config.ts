@@ -23,6 +23,7 @@ export default defineConfig({
         main: resolve(import.meta.dirname, 'index.html'),
         preview: resolve(import.meta.dirname, 'preview.html'),
         timelapse: resolve(import.meta.dirname, 'timelapse.html'),
+        playground: resolve(import.meta.dirname, 'playground.html'),
       },
       output: {
         // Pull Three.js into its own vendor chunk so all three HTML entries
