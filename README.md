@@ -43,10 +43,11 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     marker tracking, two-finger pinch + twist placement on phone.
   - **Playground** (`playground.html`) — AR-free orbit-camera view
     with click-to-place, for iterating without marker/phone. Adds
-    `?mode=screen` for a fixed museum-display variant. Planned —
-    implementation in `docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`.
-- **CI**: lint (Oxlint) · typecheck · build · 161 tests across four
+    `?mode=screen` for a fixed museum-display variant.
+- **CI**: lint (Oxlint) · typecheck · build · 177 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
+
+The playground ships as of v0.4.0.
 
 ## Layout
 
