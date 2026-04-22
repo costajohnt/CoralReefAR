@@ -10,6 +10,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Tracking abstraction:** Swappable tracking provider interface so a future provider (WebXR image-tracking, another engine) can slot in without touching app code.
 - **Still $0 ongoing cost.** Everything self-hosted on existing Beelink + Cloudflare Tunnel.
 - **Dual surface:** the installation has both an AR layer (phone tapped to a pedestal) and a non-AR screen layer (`playground.html`) that shows the reef growing from a fixed orbit viewpoint on a wall-mounted display. Same backend, same sim loop, same geometry — two ways to experience the same living reef.
+- **Third surface (planned — tree mode):** a third entry (`tree.html`) for a different reef — a fractal branching-coral web where visitors attach small composable pieces to each other's exposed tips. Avatar-bioluminescent styling (bloom post-processing, vivid palette). Separate reef in the DB. Concept fully specified in [`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md). Phase 2 migrates the AR client to read the tree data so the pedestal AR view shows the same growing fractal structure the wall screen shows.
 
 ## Goals
 

@@ -4,10 +4,25 @@ What's done, what's open, and what you (the maintainer) still need to do
 manually. This file is the single source of truth for project state — keep
 it edited alongside the work.
 
+Related docs:
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — why the code looks how it
+  looks (running log of architectural choices + rationales)
+- [`docs/superpowers/plans/`](docs/superpowers/plans/) — TDD
+  implementation plans for active features
+- [`CHANGELOG.md`](CHANGELOG.md) — version history
+- [`INSTALL.md`](INSTALL.md) — operator deploy runbook
+- [`PLAN.md`](PLAN.md) — original project concept (v2)
+
 ## Current state
 
 - **Main branch CI**: green. 180 tests pass across 4 packages (shared 12 /
   generator 22 / server 70 / client 76).
+- **Deployed version**: v0.4.0 live on the Beelink LXC at
+  `https://reef.home.local/`. Three surfaces available:
+  `index.html` (AR, phone), `playground.html` (orbit camera, desktop),
+  `playground.html?mode=screen` (auto-orbit, museum display).
+- **Planned next**: tree mode (third surface) — implementation plan
+  merged (#72), execution pending.
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
@@ -178,6 +193,32 @@ fallback) has been dropped — 8th Wall is the only active tracker, with
 Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
+
+### Step 0.5 — Tree mode testing (coming soon)
+
+A new third surface, `tree.html`, is planned — see
+[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md).
+Different from the landscape playground: visitors attach small
+composable branch pieces to each other's exposed tips, growing a
+fractal coral web. Avatar-bioluminescent styling (bloom, vivid
+palette, no translucency). Separate reef in the DB — doesn't share
+polyps with the landscape view.
+
+Usage (once shipped):
+
+```
+https://reef.home.local/tree.html              # interactive
+https://reef.home.local/tree.html?mode=screen  # auto-orbit demo view
+https://reef.home.local/tree.html?readonly=1   # browse-only
+```
+
+The tree's pedestal is auto-seeded with one Starburst piece at
+install time, so visitors always have something to branch off
+(the first visitor's experience isn't an empty stage).
+
+Phase 2 of the plan: once the tree's visuals feel right, migrate the
+AR client to read from the tree data so visitors at the pedestal see
+the same fractal reef growing in AR that the wall screen shows.
 
 ### Step 0 — Non-AR testing via the playground
 

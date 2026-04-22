@@ -37,13 +37,20 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 - **pnpm monorepo**: `shared / generator / server / client`.
 - **Server**: TypeScript · Fastify · better-sqlite3 · `ws` via
   `@fastify/websocket`. Zero external services.
-- **Client**: TypeScript · Vite · Three.js. Two surfaces share one
-  backend:
+- **Client**: TypeScript · Vite · Three.js. Multiple surfaces share
+  one backend:
   - **AR** (`index.html`) — self-hosted 8th Wall engine binary, pedestal
     marker tracking, two-finger pinch + twist placement on phone.
+    Renders the landscape reef.
   - **Playground** (`playground.html`) — AR-free orbit-camera view
-    with click-to-place, for iterating without marker/phone. Adds
-    `?mode=screen` for a fixed museum-display variant.
+    with click-to-place, for iterating without marker/phone. Renders
+    the landscape reef. `?mode=screen` variant for a fixed
+    museum-display.
+  - **Tree** (`tree.html`) — a different reef. Fractal branching-coral
+    web built by attaching small composable pieces to each other's
+    tips. Avatar-bioluminescent styling (bloom post-processing, vivid
+    palette). Planned — implementation in
+    [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
 - **CI**: lint (Oxlint) · typecheck · build · 180 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
