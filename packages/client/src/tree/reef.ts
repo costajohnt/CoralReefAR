@@ -126,6 +126,13 @@ export class TreeReef {
     return this.byId.get(id)?.mesh;
   }
 
+  /** Returns the world attach points and world bounding box for a registered piece, or undefined if not found. */
+  getPieceEntry(id: number): { worldAttachPoints: AttachPoint[]; worldBox: Box3 } | undefined {
+    const entry = this.byId.get(id);
+    if (!entry) return undefined;
+    return { worldAttachPoints: entry.worldAttachPoints, worldBox: entry.worldBox };
+  }
+
   *allPieces(): Iterable<{ polyp: PublicTreePolyp; mesh: Mesh }> {
     for (const entry of this.byId.values()) {
       yield { polyp: entry.polyp, mesh: entry.mesh };
