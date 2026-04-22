@@ -4,7 +4,7 @@ import { generateForked } from './forked.js';
 
 describe('generateForked', () => {
   test('produces a mesh with positions/normals/indices', () => {
-    const out = generateForked({ seed: 1, colorKey: 'coral-pink' });
+    const out = generateForked({ seed: 1, colorKey: 'neon-magenta' });
     assert.ok(out.mesh.positions.length > 0, 'positions should be non-empty');
     assert.strictEqual(out.mesh.positions.length % 3, 0, 'positions length must be divisible by 3');
     assert.strictEqual(out.mesh.normals.length, out.mesh.positions.length, 'normals length must match positions');
@@ -13,12 +13,12 @@ describe('generateForked', () => {
   });
 
   test('exposes exactly 2 attach points (two tips of the Y)', () => {
-    const out = generateForked({ seed: 1, colorKey: 'coral-pink' });
+    const out = generateForked({ seed: 1, colorKey: 'neon-magenta' });
     assert.strictEqual(out.attachPoints.length, 2);
   });
 
   test('attach-point normals are unit length', () => {
-    const out = generateForked({ seed: 1, colorKey: 'teal' });
+    const out = generateForked({ seed: 1, colorKey: 'neon-cyan' });
     for (const ap of out.attachPoints) {
       const n = Math.hypot(ap.normal.x, ap.normal.y, ap.normal.z);
       assert.ok(Math.abs(n - 1) < 1e-5, `normal magnitude should be 1, got ${n}`);
@@ -26,14 +26,14 @@ describe('generateForked', () => {
   });
 
   test('attach-point tips are diverging (not identical positions)', () => {
-    const [a, b] = generateForked({ seed: 1, colorKey: 'coral-pink' }).attachPoints;
+    const [a, b] = generateForked({ seed: 1, colorKey: 'neon-magenta' }).attachPoints;
     const dx = a!.position.x - b!.position.x;
     const dz = a!.position.z - b!.position.z;
     assert.ok(Math.hypot(dx, dz) > 0.01, 'tips must be laterally separated by more than 0.01');
   });
 
   test('bounding box contains all vertex positions', () => {
-    const out = generateForked({ seed: 1, colorKey: 'coral-pink' });
+    const out = generateForked({ seed: 1, colorKey: 'neon-magenta' });
     const { min, max } = out.boundingBox;
     for (let i = 0; i < out.mesh.positions.length; i += 3) {
       const x = out.mesh.positions[i]!;
