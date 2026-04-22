@@ -6,6 +6,26 @@ versions are SemVer.
 
 ## [Unreleased]
 
+### Planned
+
+- **Tree mode (`tree.html`)** — a third client surface for a
+  fractal branching-coral web. Visitors attach small composable
+  pieces to each other's exposed tips, growing a structure over
+  days. Avatar-bioluminescent styling: bloom post-processing,
+  vivid palette (magenta / cyan / violet / lime / orange), no
+  translucency. Five variants (forked / trident / starburst / claw
+  / wishbone) with 1-4 attach slots each. Separate reef in the DB
+  (`tree_polyps` table, `/api/tree/*`, `/ws/tree`), seeded with a
+  random Starburst at install so visitors always have something to
+  branch off. Implementation plan in
+  [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
+
+## [0.4.0] — 2026-04-22
+
+Playground — AR-free interactive reef view + museum screen mode.
+Full release notes:
+<https://github.com/costajohnt/CoralReefAR/releases/tag/v0.4.0>.
+
 ### Added
 
 - **Playground (`playground.html`)** — AR-free interactive reef view:

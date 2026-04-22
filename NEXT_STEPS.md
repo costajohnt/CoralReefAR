@@ -179,6 +179,32 @@ Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
 
+### Step 0.5 — Tree mode testing (coming soon)
+
+A new third surface, `tree.html`, is planned — see
+[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md).
+Different from the landscape playground: visitors attach small
+composable branch pieces to each other's exposed tips, growing a
+fractal coral web. Avatar-bioluminescent styling (bloom, vivid
+palette, no translucency). Separate reef in the DB — doesn't share
+polyps with the landscape view.
+
+Usage (once shipped):
+
+```
+https://reef.home.local/tree.html              # interactive
+https://reef.home.local/tree.html?mode=screen  # auto-orbit demo view
+https://reef.home.local/tree.html?readonly=1   # browse-only
+```
+
+The tree's pedestal is auto-seeded with one Starburst piece at
+install time, so visitors always have something to branch off
+(the first visitor's experience isn't an empty stage).
+
+Phase 2 of the plan: once the tree's visuals feel right, migrate the
+AR client to read from the tree data so visitors at the pedestal see
+the same fractal reef growing in AR that the wall screen shows.
+
 ### Step 0 — Non-AR testing via the playground
 
 Before investing in the marker print + NFC tag + real-device cycle,

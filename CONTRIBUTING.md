@@ -24,6 +24,12 @@ Orbit-camera view, click-to-place, full picker UI — no AR
 code-paths involved. Add `?mode=screen` for the auto-orbit
 museum-display variant.
 
+Once the tree-mode surface ships (planned in
+[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md)):
+`http://localhost:5173/tree.html?api=http://localhost:8787`. A
+different reef — fractal branching-coral web with Avatar-bioluminescent
+styling. Click attach-point orbs on existing pieces to build outward.
+
 ## Testing
 
 Each package has its own suite. Run them all:
