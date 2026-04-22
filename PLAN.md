@@ -9,6 +9,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Liveness:** Simulated currents, background growth, and ambient life. The reef changes visibly even with zero tappers.
 - **Tracking abstraction:** Swappable tracking provider interface so a future provider (WebXR image-tracking, another engine) can slot in without touching app code.
 - **Still $0 ongoing cost.** Everything self-hosted on existing Beelink + Cloudflare Tunnel.
+- **Dual surface (planned):** the installation has both an AR layer (phone tapped to a pedestal) and a non-AR screen layer (`playground.html`) that shows the reef growing from a fixed orbit viewpoint on a wall-mounted display. Same backend, same sim loop, same geometry — two ways to experience the same living reef. Detailed plan in [`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](./docs/superpowers/plans/2026-04-22-playground-virtual-reef.md).
 
 ## Goals
 

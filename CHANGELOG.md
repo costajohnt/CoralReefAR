@@ -6,6 +6,22 @@ versions are SemVer.
 
 ## [Unreleased]
 
+### Planned
+
+- **Playground (`playground.html`)** — AR-free interactive reef view:
+  orbit camera, click-to-place on a virtual pedestal, full picker +
+  commit flow, WebSocket live updates. Adds `?mode=screen` for a
+  museum-screen auto-orbit variant and `?readonly=1` for browse-only.
+  Reuses `Reef`, `Placement`, `Picker`, `ReefSocket`. Implementation
+  plan in
+  [`docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`](docs/superpowers/plans/2026-04-22-playground-virtual-reef.md).
+
+## [0.3.0] — 2026-04-21
+
+Fastify 5 migration + dep hygiene sweep + boot smoke test.
+Full release notes:
+<https://github.com/costajohnt/CoralReefAR/releases/tag/v0.3.0>.
+
 ### Added
 
 - **Full-app boot smoke test.** `packages/server/src/index.ts` now
@@ -25,6 +41,14 @@ versions are SemVer.
 
 ### Changed
 
+- **Fastify 4 → 5 migration** (closes #54). `fastify` `^4.27.0` →
+  `^5.8.5`; `@fastify/cors` unpinned from `^9.0.1` → `^11.2.0`;
+  `@fastify/static` `^7.0.4` → `^8.0.0`; `@fastify/websocket`
+  `^10.0.1` → `^11.2.0`. Zero code changes — the boot smoke test
+  validated the full plugin stack.
+- **Dep bumps**: `oxlint` 0.15 → 1.61 (codebase already clean against
+  new ruleset), `happy-dom` 19 → 20, `@types/node` 20 → 25, plus 4
+  GH Actions bumps.
 - **Test count** across four packages: 146 → 161 (shared 12 /
   generator 22 / server 70 / client 57).
 

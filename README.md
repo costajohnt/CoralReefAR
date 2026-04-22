@@ -37,9 +37,14 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
 - **pnpm monorepo**: `shared / generator / server / client`.
 - **Server**: TypeScript · Fastify · better-sqlite3 · `ws` via
   `@fastify/websocket`. Zero external services.
-- **Client**: TypeScript · Vite · Three.js. AR tracking via the
-  self-hosted 8th Wall engine binary (noop fallback for desktop/dev).
-  Two-finger pinch + twist for polyp placement.
+- **Client**: TypeScript · Vite · Three.js. Two surfaces share one
+  backend:
+  - **AR** (`index.html`) — self-hosted 8th Wall engine binary, pedestal
+    marker tracking, two-finger pinch + twist placement on phone.
+  - **Playground** (`playground.html`) — AR-free orbit-camera view
+    with click-to-place, for iterating without marker/phone. Adds
+    `?mode=screen` for a fixed museum-display variant. Planned —
+    implementation in `docs/superpowers/plans/2026-04-22-playground-virtual-reef.md`.
 - **CI**: lint (Oxlint) · typecheck · build · 161 tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
