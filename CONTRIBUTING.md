@@ -18,17 +18,17 @@ For desktop dev without a camera / pedestal, open
 `http://localhost:5173/?tracker=noop` — the reef anchors a fixed
 distance in front of the virtual camera.
 
-Or skip AR entirely and use the playground:
+Or use the playground:
 `http://localhost:5173/playground.html?api=http://localhost:8787`.
 Orbit-camera view, click-to-place, full picker UI — no AR
 code-paths involved. Add `?mode=screen` for the auto-orbit
 museum-display variant.
 
-Once the tree-mode surface ships (planned in
-[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md)):
+Or use tree mode:
 `http://localhost:5173/tree.html?api=http://localhost:8787`. A
 different reef — fractal branching-coral web with Avatar-bioluminescent
-styling. Click attach-point orbs on existing pieces to build outward.
+styling. Click attach-point orbs on existing pieces to build outward. See
+[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md) for the spec.
 
 ## Testing
 

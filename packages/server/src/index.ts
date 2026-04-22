@@ -15,6 +15,9 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
 import { installSecurityHeaders } from './security.js';
+import { TreeDb } from './tree/db.js';
+import { registerTreeRoutes } from './tree/routes.js';
+import { seedRootIfEmpty } from './tree/seed.js';
 
 export interface MakeServerOptions {
   dbPath?: string;
@@ -28,6 +31,8 @@ export interface MakeServerResult {
   app: FastifyInstance;
   db: ReefDb;
   hub: Hub;
+  treeDb: TreeDb;
+  treeHub: Hub;
 }
 
 /**
@@ -46,6 +51,9 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
 
   const db = new ReefDb(dbPath);
   const hub = new Hub();
+  const treeDb = new TreeDb(db);
+  const treeHub = new Hub();
+  seedRootIfEmpty(treeDb);
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
@@ -68,6 +76,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   registerAdminRoutes(app, db, hub);
   registerStatsRoutes(app, db);
   registerMetricsRoutes(app, db, hub);
+  registerTreeRoutes(app, treeDb, treeHub);
 
   // Optional static hosting: serves the built Vite bundle out of the same
   // container so a single-host deploy doesn't need a separate nginx sidecar.
@@ -100,22 +109,40 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
     }));
   });
 
-  return { app, db, hub };
+  app.get('/ws/tree', { websocket: true }, (sock) => {
+    const ws = sock as unknown as {
+      readyState: number;
+      send: (data: string) => void;
+      on: (event: 'close' | 'pong', cb: () => void) => void;
+      ping?(): void;
+      terminate?(): void;
+    };
+    treeHub.add(ws);
+    ws.send(JSON.stringify({
+      type: 'tree_hello',
+      polypCount: treeDb.listLive().length,
+      serverTime: Date.now(),
+    }));
+  });
+
+  return { app, db, hub, treeDb, treeHub };
 }
 
 async function main(): Promise<void> {
-  const { app, db, hub } = await makeServer();
+  const { app, db, hub, treeHub } = await makeServer();
 
   const sim = new SimWorker(db, hub, config.simIntervalMs);
   sim.start();
   const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs);
   snapshots.start();
   hub.startHeartbeat();
+  treeHub.startHeartbeat();
 
   const shutdown = async (): Promise<void> => {
     sim.stop();
     snapshots.stop();
     hub.stopHeartbeat();
+    treeHub.stopHeartbeat();
     await app.close();
     process.exit(0);
   };

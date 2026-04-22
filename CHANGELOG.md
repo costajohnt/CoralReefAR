@@ -6,19 +6,20 @@ versions are SemVer.
 
 ## [Unreleased]
 
-### Planned
+### Added
 
 - **Tree mode (`tree.html`)** — a third client surface for a
   fractal branching-coral web. Visitors attach small composable
   pieces to each other's exposed tips, growing a structure over
-  days. Avatar-bioluminescent styling: bloom post-processing,
+  time. Avatar-bioluminescent styling: bloom post-processing,
   vivid palette (magenta / cyan / violet / lime / orange), no
   translucency. Five variants (forked / trident / starburst / claw
   / wishbone) with 1-4 attach slots each. Separate reef in the DB
   (`tree_polyps` table, `/api/tree/*`, `/ws/tree`), seeded with a
   random Starburst at install so visitors always have something to
-  branch off. Implementation plan in
+  branch off. Implements
   [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
+  Phase 2 will migrate the AR client to read tree data.
 
 ## [0.4.0] — 2026-04-22
 

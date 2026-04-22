@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#01060d" />
+  <title>Coral Reef — Tree</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+  <style>
+    body { margin: 0; background: #01060d; overflow: hidden; }
+    #gl { display: block; width: 100vw; height: 100vh; }
+    #mode-badge {
+      position: fixed; top: 12px; left: 12px; padding: 4px 8px;
+      font: 500 11px/1 system-ui, sans-serif; color: #9ab;
+      background: rgba(0,0,0,0.35); border-radius: 3px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="mode-badge"></div>
+  <div id="picker" class="hidden" role="region" aria-label="Plant a polyp">
+    <div class="picker-row" role="group" aria-label="Variant">
+      <button type="button" data-variant="forked">Forked</button>
+      <button type="button" data-variant="trident">Trident</button>
+      <button type="button" data-variant="starburst">Starburst</button>
+      <button type="button" data-variant="claw">Claw</button>
+      <button type="button" data-variant="wishbone">Wishbone</button>
+    </div>
+    <div id="colors" class="picker-row" role="group" aria-label="Color"></div>
+    <div class="picker-actions">
+      <button id="rerollBtn" type="button" disabled aria-label="Regenerate shape">Reroll shape</button>
+      <button id="cancelBtn" type="button" disabled aria-label="Cancel placement">Cancel</button>
+    </div>
+    <button id="growBtn" type="button" disabled>Grow it</button>
+    <p id="hint" aria-live="polite">Click the pedestal to place your polyp.</p>
+  </div>
+  <a id="admin-link" style="display:none"></a>
+  <script type="module" src="/src/tree.ts"></script>
+</body>
+</html>

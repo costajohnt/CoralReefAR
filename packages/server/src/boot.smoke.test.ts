@@ -57,3 +57,17 @@ test('smoke: explicit CORS_ORIGINS list binds without throwing', async () => {
   const res = await app.inject({ method: 'GET', url: '/healthz' });
   assert.equal(res.statusCode, 200);
 });
+
+test('smoke: /api/tree returns a seeded state (not empty) on fresh boot', async () => {
+  const { app } = await makeServer({
+    dbPath: ':memory:', adminToken: '', corsOrigins: ['*'],
+    clientDistDir: undefined, logger: false,
+  });
+  after(async () => { await app.close(); });
+
+  const res = await app.inject({ method: 'GET', url: '/api/tree' });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body) as { polyps: unknown[] };
+  // seedRootIfEmpty ran at boot — expect exactly one root.
+  assert.equal(body.polyps.length, 1);
+});

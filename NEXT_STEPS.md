@@ -15,14 +15,14 @@ Related docs:
 
 ## Current state
 
-- **Main branch CI**: green. 180 tests pass across 4 packages (shared 12 /
-  generator 22 / server 70 / client 76).
+- **Main branch CI**: green. 313 tests pass across 4 packages (shared 19 /
+  generator 54 / server 92 / client 148).
 - **Deployed version**: v0.4.0 live on the Beelink LXC at
   `https://reef.home.local/`. Three surfaces available:
   `index.html` (AR, phone), `playground.html` (orbit camera, desktop),
   `playground.html?mode=screen` (auto-orbit, museum display).
-- **Planned next**: tree mode (third surface) — implementation plan
-  merged (#72), execution pending.
+- **Latest**: tree mode (third surface) — fully implemented. Phase 2
+  (AR client migration) ahead.
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
@@ -194,32 +194,6 @@ Tracking issue: [#28].
 
 ## Operator runbook — exactly what you need to do
 
-### Step 0.5 — Tree mode testing (coming soon)
-
-A new third surface, `tree.html`, is planned — see
-[`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md).
-Different from the landscape playground: visitors attach small
-composable branch pieces to each other's exposed tips, growing a
-fractal coral web. Avatar-bioluminescent styling (bloom, vivid
-palette, no translucency). Separate reef in the DB — doesn't share
-polyps with the landscape view.
-
-Usage (once shipped):
-
-```
-https://reef.home.local/tree.html              # interactive
-https://reef.home.local/tree.html?mode=screen  # auto-orbit demo view
-https://reef.home.local/tree.html?readonly=1   # browse-only
-```
-
-The tree's pedestal is auto-seeded with one Starburst piece at
-install time, so visitors always have something to branch off
-(the first visitor's experience isn't an empty stage).
-
-Phase 2 of the plan: once the tree's visuals feel right, migrate the
-AR client to read from the tree data so visitors at the pedestal see
-the same fractal reef growing in AR that the wall screen shows.
-
 ### Step 0 — Non-AR testing via the playground
 
 Before investing in the marker print + NFC tag + real-device cycle,
@@ -246,6 +220,31 @@ Local dev: `pnpm --filter @reef/client dev` → `http://localhost:5173/playgroun
 What it **doesn't** test: the 8th Wall engine, camera permissions,
 SLAM tracking, anchor stability, real lighting, the marker print.
 Steps 1-5 below remain necessary for AR verification.
+
+### Step 0.5 — Non-AR tree mode testing
+
+A third client surface, `tree.html`, is now live. Different from the
+landscape playground: visitors attach small composable branch pieces to
+each other's exposed tips, growing a fractal coral web. Avatar-bioluminescent
+styling (bloom post-processing, vivid palette, no translucency). Separate
+reef in the DB (`tree_polyps` table), seeded with one Starburst root at
+install so visitors always have something to branch off. Phase 2 will migrate
+the AR client to read the tree data so the pedestal AR view shows the same
+growing fractal structure.
+
+URLs:
+
+```
+https://reef.home.local/tree.html              # interactive
+https://reef.home.local/tree.html?mode=screen  # auto-orbit demo view
+https://reef.home.local/tree.html?readonly=1   # browse-only
+```
+
+Local dev: `pnpm --filter @reef/client dev` → `http://localhost:5173/tree.html?api=http://localhost:8787`.
+
+What it exercises: fetching initial tree state, clicking attach-point orbs,
+picker UI + color selection, bloom aesthetic, screen mode (auto-orbit for a
+museum wall pedestal next to the AR display).
 
 ---
 

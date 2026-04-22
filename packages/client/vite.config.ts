@@ -24,6 +24,7 @@ export default defineConfig({
         preview: resolve(import.meta.dirname, 'preview.html'),
         timelapse: resolve(import.meta.dirname, 'timelapse.html'),
         playground: resolve(import.meta.dirname, 'playground.html'),
+        tree: resolve(import.meta.dirname, 'tree.html'),
       },
       output: {
         // Pull Three.js into its own vendor chunk so all three HTML entries

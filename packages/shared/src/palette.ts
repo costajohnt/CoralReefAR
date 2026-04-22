@@ -15,6 +15,11 @@ export const REEF_PALETTE: readonly PaletteEntry[] = [
   { key: 'sand', name: 'Sand', hex: '#e6cfa7' },
   { key: 'cerulean', name: 'Cerulean', hex: '#1d6fa5' },
   { key: 'plum', name: 'Plum', hex: '#6d2e46' },
+  { key: 'neon-magenta', name: 'Neon Magenta', hex: '#ff1ad9' },
+  { key: 'neon-cyan', name: 'Neon Cyan', hex: '#2dffe4' },
+  { key: 'neon-violet', name: 'Neon Violet', hex: '#8a4dff' },
+  { key: 'neon-lime', name: 'Neon Lime', hex: '#b0ff3a' },
+  { key: 'neon-orange', name: 'Neon Orange', hex: '#ff6a2a' },
 ] as const;
 
 const byKey = new Map(REEF_PALETTE.map((p) => [p.key, p] as const));

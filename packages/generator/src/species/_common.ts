@@ -1,6 +1,15 @@
+import { hexToRgb, paletteByKey } from '@reef/shared';
 import type { RNG } from '../rng.js';
 
 export type Rgb = [number, number, number];
+
+/**
+ * Resolve a palette key to a normalised [r, g, b] triple in [0, 1]^3.
+ * Used by tree-mode variant generators that receive a colorKey string.
+ */
+export function colorVec3(colorKey: string): Rgb {
+  return hexToRgb(paletteByKey(colorKey).hex);
+}
 
 export function tintColor(rng: RNG, base: Rgb, jitter = 0.12): Rgb {
   return [
