@@ -13,6 +13,7 @@ import { readPlaygroundConfig } from './playground/config.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
 import { computePlacementFromClick } from './playground/interaction.js';
+import { computeOrbitPose } from './playground/autoOrbit.js';
 
 const SWAY_INSTALLED = Symbol('sway-installed');
 const PULSE_INSTALLED = Symbol('pulse-installed');
@@ -128,6 +129,13 @@ if (config.mode === 'interactive') {
   });
 }
 
+if (config.mode === 'screen') {
+  // Hide the picker and take over camera movement.
+  picker.hide();
+  (document.getElementById('picker') as HTMLElement).classList.add('hidden');
+  controls.enabled = false;
+}
+
 function installEffectsOnNewMeshes(): void {
   for (const obj of reef.all()) {
     const m = obj as Mesh;
@@ -195,7 +203,15 @@ function loop(t: number): void {
   swayClock.value = t / 1000;
   fish.update(dt);
   reef.animateGrowth(t);
-  controls.update();
+
+  if (config.mode === 'screen') {
+    const pose = computeOrbitPose(t / 1000);
+    camera.position.copy(pose.position);
+    camera.lookAt(pose.target);
+  } else {
+    controls.update();
+  }
+
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
