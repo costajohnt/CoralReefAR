@@ -302,3 +302,99 @@ describe('COMMIT_REJECTED', () => {
     expect(reduce(s, { type: 'COMMIT_REJECTED', error: 'x' })).toBe(s);
   });
 });
+
+describe('CLEAR_CLICKED', () => {
+  test('from idle → resetting with picker inherited', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const next = reduce(s, { type: 'CLEAR_CLICKED' });
+    expect(next).toEqual({ kind: 'resetting', picker: s.picker });
+  });
+
+  test('from placing → resetting with picker inherited', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'CLEAR_CLICKED' });
+    expect(next).toEqual({ kind: 'resetting', picker: s.picker });
+  });
+
+  test('from submitting → resetting', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'CLEAR_CLICKED' });
+    expect(next).toEqual({ kind: 'resetting', picker: s.picker });
+  });
+
+  test('from resetting: no-op', () => {
+    const s: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    expect(reduce(s, { type: 'CLEAR_CLICKED' })).toBe(s);
+  });
+});
+
+describe('RESET_RESOLVED', () => {
+  test('from resetting → idle with picker inherited', () => {
+    const s: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    expect(reduce(s, { type: 'RESET_RESOLVED' }))
+      .toEqual({ kind: 'idle', picker: s.picker });
+  });
+
+  test('outside resetting: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'RESET_RESOLVED' })).toBe(s);
+  });
+});
+
+describe('RESET_REJECTED', () => {
+  test('from resetting → idle with picker inherited', () => {
+    const s: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    expect(reduce(s, { type: 'RESET_REJECTED', error: 'x' }))
+      .toEqual({ kind: 'idle', picker: s.picker });
+  });
+
+  test('outside resetting: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'RESET_REJECTED', error: 'x' })).toBe(s);
+  });
+});
+
+describe('TREE_RESET_EXTERNAL', () => {
+  test('from any kind → idle with picker inherited', () => {
+    const idle = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const placing: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'wishbone', colorKey: 'neon-lime' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const submitting: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'claw', colorKey: 'neon-violet' },
+      parentId: 2, attachIndex: 1, seed: 20,
+    };
+    const resetting: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'trident', colorKey: 'neon-orange' },
+    };
+    expect(reduce(idle, { type: 'TREE_RESET_EXTERNAL' }))
+      .toEqual({ kind: 'idle', picker: idle.picker });
+    expect(reduce(placing, { type: 'TREE_RESET_EXTERNAL' }))
+      .toEqual({ kind: 'idle', picker: placing.picker });
+    expect(reduce(submitting, { type: 'TREE_RESET_EXTERNAL' }))
+      .toEqual({ kind: 'idle', picker: submitting.picker });
+    expect(reduce(resetting, { type: 'TREE_RESET_EXTERNAL' }))
+      .toEqual({ kind: 'idle', picker: resetting.picker });
+  });
+});

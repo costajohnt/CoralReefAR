@@ -118,6 +118,17 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         blocked: false,
       };
     }
+    case 'CLEAR_CLICKED': {
+      if (state.kind === 'resetting') return state;
+      return { kind: 'resetting', picker: state.picker };
+    }
+    case 'RESET_RESOLVED':
+    case 'RESET_REJECTED': {
+      if (state.kind !== 'resetting') return state;
+      return { kind: 'idle', picker: state.picker };
+    }
+    case 'TREE_RESET_EXTERNAL':
+      return { kind: 'idle', picker: state.picker };
     default:
       return state;
   }
