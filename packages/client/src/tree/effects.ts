@@ -5,6 +5,7 @@ import type { TreePlacement } from './placement.js';
 import type { AttachIndicators } from './indicators.js';
 import type { TreePicker } from '../ui/treePicker.js';
 import type { TreeState, TreeAction } from './state.js';
+import { submitTreePolyp } from './api.js';
 
 export interface EffectsDeps {
   placement: TreePlacement;
@@ -79,6 +80,53 @@ export function createEffects(deps: EffectsDeps): Effects {
         deps.placement.reset();
         deps.picker.setCommittable(false);
         deps.hintEl.textContent = 'Cancelled. Click a glowing dot to try again.';
+        return;
+      }
+
+      // Grow: placing → submitting. Fire the POST and wire its resolution.
+      if (prev.kind === 'placing' && next.kind === 'submitting') {
+        deps.picker.setSubmitting(true);
+        submitTreePolyp(
+          {
+            variant: next.picker.variant,
+            seed: next.seed,
+            colorKey: next.picker.colorKey,
+            parentId: next.parentId,
+            attachIndex: next.attachIndex,
+          },
+          deps.apiBase,
+        ).then(
+          () => deps.dispatch({ type: 'COMMIT_RESOLVED' }),
+          (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            deps.hintEl.textContent = `Grow failed: ${msg}`;
+            deps.dispatch({ type: 'COMMIT_REJECTED', error: msg });
+          },
+        );
+        return;
+      }
+
+      // Commit resolved: submitting → idle via COMMIT_RESOLVED.
+      // (submitting → idle can also happen via TREE_RESET_EXTERNAL; that case
+      // is handled by the external-reset branch in Task 11.)
+      if (
+        prev.kind === 'submitting' && next.kind === 'idle' &&
+        action.type === 'COMMIT_RESOLVED'
+      ) {
+        deps.placement.reset();
+        deps.picker.setSubmitting(false);
+        deps.picker.setCommittable(false);
+        deps.hintEl.textContent = 'Grown! Click another dot to plant again.';
+        return;
+      }
+
+      // Commit rejected: submitting → placing. Hint was set by the reject
+      // callback above; just unwind the submitting UI.
+      if (
+        prev.kind === 'submitting' && next.kind === 'placing' &&
+        action.type === 'COMMIT_REJECTED'
+      ) {
+        deps.picker.setSubmitting(false);
         return;
       }
     },
