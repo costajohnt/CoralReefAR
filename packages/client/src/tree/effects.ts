@@ -5,7 +5,7 @@ import type { TreePlacement } from './placement.js';
 import type { AttachIndicators } from './indicators.js';
 import type { TreePicker } from '../ui/treePicker.js';
 import type { TreeState, TreeAction } from './state.js';
-import { submitTreePolyp } from './api.js';
+import { fetchTree, resetTree, submitTreePolyp } from './api.js';
 
 export interface EffectsDeps {
   placement: TreePlacement;
@@ -127,6 +127,78 @@ export function createEffects(deps: EffectsDeps): Effects {
         action.type === 'COMMIT_REJECTED'
       ) {
         deps.picker.setSubmitting(false);
+        return;
+      }
+
+      // Clear: any → resetting. Wipe the ghost immediately, fire the API.
+      if (prev.kind !== 'resetting' && next.kind === 'resetting') {
+        deps.placement.reset();
+        deps.picker.setCommittable(false);
+        deps.hintEl.textContent = 'Clearing…';
+        resetTree(deps.apiBase).then(
+          async () => {
+            // Clear local reef, then re-fetch authoritative state.
+            deps.treeReef.clear();
+            deps.indicators.refresh([]);
+            try {
+              const { polyps } = await fetchTree(deps.apiBase);
+              deps.addPiecesAndRefresh(polyps);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              deps.hintEl.textContent = `Clear: re-fetch failed — ${msg}`;
+            }
+            deps.dispatch({ type: 'RESET_RESOLVED' });
+          },
+          (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            deps.hintEl.textContent = `Clear failed: ${msg}`;
+            deps.dispatch({ type: 'RESET_REJECTED', error: msg });
+          },
+        );
+        return;
+      }
+
+      // Resetting → idle via RESET_RESOLVED. Success hint.
+      if (
+        prev.kind === 'resetting' && next.kind === 'idle' &&
+        action.type === 'RESET_RESOLVED'
+      ) {
+        deps.hintEl.textContent = 'Cleared. Click a glowing dot to start growing.';
+        return;
+      }
+
+      // Resetting → idle via RESET_REJECTED. Error hint was already written
+      // by the reject callback above; no further work.
+      if (
+        prev.kind === 'resetting' && next.kind === 'idle' &&
+        action.type === 'RESET_REJECTED'
+      ) {
+        return;
+      }
+
+      // TREE_RESET_EXTERNAL: any → idle. The socket handler in tree.ts
+      // already called treeReef.clear() and indicators.refresh(); here we
+      // just drop any pending ghost and unwind submit UI if applicable.
+      //
+      // Four cases depending on `prev.kind`:
+      //   - placing/submitting: a remote user reset while we were interacting.
+      //   - resetting: our own local clear — the server's tree_reset echo
+      //     arrived before our HTTP resolve. Success hint.
+      //   - idle: nothing to do (no ghost, no UI to unwind).
+      if (next.kind === 'idle' && action.type === 'TREE_RESET_EXTERNAL') {
+        if (prev.kind === 'placing') {
+          deps.placement.reset();
+          deps.picker.setCommittable(false);
+          deps.hintEl.textContent = 'Tree was reset by another user.';
+        } else if (prev.kind === 'submitting') {
+          deps.placement.reset();
+          deps.picker.setSubmitting(false);
+          deps.picker.setCommittable(false);
+          deps.hintEl.textContent = 'Tree was reset by another user.';
+        } else if (prev.kind === 'resetting') {
+          deps.hintEl.textContent = 'Cleared. Click a glowing dot to start growing.';
+        }
+        // prev === 'idle': no-op.
         return;
       }
     },
