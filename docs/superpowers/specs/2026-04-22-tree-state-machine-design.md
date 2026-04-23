@@ -44,9 +44,9 @@ Three layers with strict boundaries:
 
 **Layer 2 — Effect runner (`packages/client/src/tree/effects.ts`)**
 
-- `createEffects(deps): { apply(prev, next) }` factory.
+- `createEffects(deps): { apply(prev, next, action) }` factory.
 - Dependencies are injected so the runner can be tested or swapped: `placement`, `indicators`, `picker`, `controls`, `hintEl`, `apiBase`, `treeReef`, `dispatch`.
-- `apply(prev, next)` compares the two states and fires exactly the side effects implied by the transition. Runs synchronously.
+- `apply(prev, next, action)` fires the side effects implied by the transition. The action is included so transitions that share a `(prev, next)` pair but differ in meaning can be distinguished — notably `submitting → idle` (either COMMIT_RESOLVED or TREE_RESET_EXTERNAL) and `resetting → idle` (RESET_RESOLVED or RESET_REJECTED). Runs synchronously.
 - `placement.showGhost` is synchronous; its result (`mesh` or `null`) is immediately dispatched as `PLACEMENT_OK` or `PLACEMENT_BLOCKED`. That dispatch re-enters `apply`, which only updates commit-button/hint for a pure `blocked` flip — no infinite loop.
 - Only the explicit async calls (`submitTreePolyp`, `resetTree`) defer and dispatch their terminal actions (`COMMIT_RESOLVED`/`REJECTED`, `RESET_RESOLVED`/`REJECTED`) on resolution.
 
