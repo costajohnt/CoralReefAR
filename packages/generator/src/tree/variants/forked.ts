@@ -1,5 +1,11 @@
 import type { VariantGenerateInput, VariantOutput } from '../variant.js';
-import { tipAttachPoint, emitFrustum, computeAABB } from '../variant.js';
+import {
+  tipAttachPoint,
+  emitFrustum,
+  computeAABB,
+  seededRand,
+  jitter,
+} from '../variant.js';
 import { colorVec3 } from '../../species/_common.js';
 
 const TRUNK_BASE_RADIUS = 0.008;
@@ -9,7 +15,8 @@ const BRANCH_LENGTH = 0.045;
 const BRANCH_BASE_RADIUS = 0.006;
 const BRANCH_TIP_RADIUS = 0.003;
 const BRANCH_ANGLE = Math.PI / 6; // 30°
-const SEGMENTS = 6;
+const SEGMENTS = 10;
+const NOISE_AMP = 0.12;
 
 export function generateForked(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -18,33 +25,54 @@ export function generateForked(input: VariantGenerateInput): VariantOutput {
   const indices: number[] = [];
   const color = colorVec3(input.colorKey);
 
-  // Trunk: frustum from (0,0,0) up to (0, TRUNK_HEIGHT, 0).
+  // Per-piece dimensional jitter: each rolled constant gets ±% of its base
+  // so no two pieces of the same variant look identical.
+  const rand = seededRand(input.seed);
+  const trunkHeight = jitter(rand, TRUNK_HEIGHT, 0.1);
+  const branchLength = jitter(rand, BRANCH_LENGTH, 0.15);
+  const branchAngle = jitter(rand, BRANCH_ANGLE, 0.12);
+  const angleAsymmetry = jitter(rand, 1, 0.15); // branches don't mirror exactly
+  const trunkBaseR = jitter(rand, TRUNK_BASE_RADIUS, 0.1);
+  const trunkTipR = jitter(rand, TRUNK_TIP_RADIUS, 0.1);
+  const branchBaseR = jitter(rand, BRANCH_BASE_RADIUS, 0.1);
+  const branchTipR = jitter(rand, BRANCH_TIP_RADIUS, 0.15);
+
+  // Trunk: frustum from (0,0,0) up to (0, trunkHeight, 0).
   emitFrustum(
     positions, normals, colors, indices,
     { x: 0, y: 0, z: 0 },
-    { x: 0, y: TRUNK_HEIGHT, z: 0 },
-    TRUNK_BASE_RADIUS, TRUNK_TIP_RADIUS, color, SEGMENTS,
+    { x: 0, y: trunkHeight, z: 0 },
+    trunkBaseR, trunkTipR, color, SEGMENTS,
+    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
   );
 
-  // Two branches: diverging in ±X, each tilted BRANCH_ANGLE from vertical.
+  // Two branches — slightly asymmetric so the Y isn't a mirror.
+  const angleA = branchAngle;
+  const angleB = branchAngle * angleAsymmetry;
   const tipA = {
-    x: Math.sin(BRANCH_ANGLE) * BRANCH_LENGTH,
-    y: TRUNK_HEIGHT + Math.cos(BRANCH_ANGLE) * BRANCH_LENGTH,
+    x: Math.sin(angleA) * branchLength,
+    y: trunkHeight + Math.cos(angleA) * branchLength,
     z: 0,
   };
-  const tipB = { x: -tipA.x, y: tipA.y, z: 0 };
-  const dirA = { x: Math.sin(BRANCH_ANGLE), y: Math.cos(BRANCH_ANGLE), z: 0 };
-  const dirB = { x: -dirA.x, y: dirA.y, z: 0 };
+  const tipB = {
+    x: -Math.sin(angleB) * branchLength,
+    y: trunkHeight + Math.cos(angleB) * branchLength,
+    z: 0,
+  };
+  const dirA = { x: Math.sin(angleA), y: Math.cos(angleA), z: 0 };
+  const dirB = { x: -Math.sin(angleB), y: Math.cos(angleB), z: 0 };
 
   emitFrustum(
     positions, normals, colors, indices,
-    { x: 0, y: TRUNK_HEIGHT, z: 0 }, tipA,
-    BRANCH_BASE_RADIUS, BRANCH_TIP_RADIUS, color, SEGMENTS,
+    { x: 0, y: trunkHeight, z: 0 }, tipA,
+    branchBaseR, branchTipR, color, SEGMENTS,
+    { seed: input.seed * 11 + 2, noiseAmplitude: NOISE_AMP },
   );
   emitFrustum(
     positions, normals, colors, indices,
-    { x: 0, y: TRUNK_HEIGHT, z: 0 }, tipB,
-    BRANCH_BASE_RADIUS, BRANCH_TIP_RADIUS, color, SEGMENTS,
+    { x: 0, y: trunkHeight, z: 0 }, tipB,
+    branchBaseR, branchTipR, color, SEGMENTS,
+    { seed: input.seed * 13 + 3, noiseAmplitude: NOISE_AMP },
   );
 
   return {

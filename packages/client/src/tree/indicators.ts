@@ -7,7 +7,7 @@ export interface AttachSlot {
   worldNormal: Vector3;
 }
 
-const INDICATOR_RADIUS = 0.004;
+const INDICATOR_RADIUS = 0.007;
 const INDICATOR_SEGMENTS = 12;
 
 function makeIndicatorMesh(): Mesh {

@@ -8,12 +8,21 @@ import {
 } from 'three';
 import { createFin } from './fishParts.js';
 
-const ORBIT_RADIUS = 0.22;
-const ORBIT_HEIGHT = 0.1;
-const ORBIT_PERIOD_SEC = 7;
+const DEFAULT_ORBIT_RADIUS = 0.22;
+const DEFAULT_ORBIT_HEIGHT = 0.1;
+const DEFAULT_ORBIT_PERIOD_SEC = 7;
 
 const BODY_RADIUS = 0.007;
 const BODY_LENGTH = 0.028;
+
+export interface ClownfishOrbitParams {
+  orbitRadius?: number;
+  orbitHeight?: number;
+  orbitPeriodSec?: number;
+  phaseRad?: number;
+  /** +1 clockwise (viewed from +Y), -1 counter-clockwise. Defaults to -1. */
+  direction?: 1 | -1;
+}
 
 const BODY_COLOR = 0xff7028;   // saturated orange
 const STRIPE_COLOR = 0xffffff; // white bands
@@ -27,8 +36,18 @@ const FIN_COLOR = 0x1a1a1a;    // near-black fin edges (real clownfish)
 export class Clownfish {
   readonly group = new Group();
   private readonly tailNode: Group;
+  private readonly orbitRadius: number;
+  private readonly orbitHeight: number;
+  private readonly orbitPeriodSec: number;
+  private readonly phaseRad: number;
+  private readonly direction: 1 | -1;
 
-  constructor() {
+  constructor(params: ClownfishOrbitParams = {}) {
+    this.orbitRadius = params.orbitRadius ?? DEFAULT_ORBIT_RADIUS;
+    this.orbitHeight = params.orbitHeight ?? DEFAULT_ORBIT_HEIGHT;
+    this.orbitPeriodSec = params.orbitPeriodSec ?? DEFAULT_ORBIT_PERIOD_SEC;
+    this.phaseRad = params.phaseRad ?? 0;
+    this.direction = params.direction ?? -1;
     // Body: orange elongated sphere, slight taper via Y scale < 1.
     const bodyGeom = new SphereGeometry(BODY_RADIUS, 18, 12);
     const bodyMat = new MeshStandardMaterial({
@@ -110,21 +129,24 @@ export class Clownfish {
   }
 
   update(clockSec: number): void {
-    const angle = -(clockSec / ORBIT_PERIOD_SEC) * Math.PI * 2;
-    const x = Math.cos(angle) * ORBIT_RADIUS;
-    const z = Math.sin(angle) * ORBIT_RADIUS;
-    const yBob = Math.sin(clockSec * 1.7) * 0.012;
-    this.group.position.set(x, ORBIT_HEIGHT + yBob, z);
+    const angle =
+      this.direction * (clockSec / this.orbitPeriodSec) * Math.PI * 2 + this.phaseRad;
+    const x = Math.cos(angle) * this.orbitRadius;
+    const z = Math.sin(angle) * this.orbitRadius;
+    const yBob = Math.sin(clockSec * 1.7 + this.phaseRad) * 0.012;
+    this.group.position.set(x, this.orbitHeight + yBob, z);
 
-    const ahead = -((clockSec + 0.05) / ORBIT_PERIOD_SEC) * Math.PI * 2;
+    const ahead =
+      this.direction * ((clockSec + 0.05) / this.orbitPeriodSec) * Math.PI * 2 +
+      this.phaseRad;
     const lookTarget = new Vector3(
-      Math.cos(ahead) * ORBIT_RADIUS,
-      ORBIT_HEIGHT + yBob,
-      Math.sin(ahead) * ORBIT_RADIUS,
+      Math.cos(ahead) * this.orbitRadius,
+      this.orbitHeight + yBob,
+      Math.sin(ahead) * this.orbitRadius,
     );
     this.group.lookAt(lookTarget);
 
     // Faster, livelier tail wag than the shark.
-    this.tailNode.rotation.y = Math.sin(clockSec * 6.5) * 0.35;
+    this.tailNode.rotation.y = Math.sin(clockSec * 6.5 + this.phaseRad) * 0.35;
   }
 }

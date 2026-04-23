@@ -7,12 +7,22 @@ import {
 } from 'three';
 import { createFin } from './fishParts.js';
 
-const ORBIT_RADIUS = 0.32;
-const ORBIT_HEIGHT = 0.14;
-const ORBIT_PERIOD_SEC = 18;
+const DEFAULT_ORBIT_RADIUS = 0.32;
+const DEFAULT_ORBIT_HEIGHT = 0.14;
+const DEFAULT_ORBIT_PERIOD_SEC = 18;
 
 const BODY_RADIUS = 0.012;
 const BODY_LENGTH = 0.075;
+
+export interface SharkOrbitParams {
+  orbitRadius?: number;
+  orbitHeight?: number;
+  orbitPeriodSec?: number;
+  /** Starting offset in radians so multiple sharks don't stack. */
+  phaseRad?: number;
+  /** +1 clockwise (viewed from +Y), -1 counter-clockwise. */
+  direction?: 1 | -1;
+}
 
 const BODY_COLOR = 0x1a2837;
 const BELLY_COLOR = 0xc8d4df;
@@ -26,8 +36,18 @@ const EMISSIVE = 0x3a6b8c;
 export class Shark {
   readonly group = new Group();
   private readonly tailNode: Group;
+  private readonly orbitRadius: number;
+  private readonly orbitHeight: number;
+  private readonly orbitPeriodSec: number;
+  private readonly phaseRad: number;
+  private readonly direction: 1 | -1;
 
-  constructor() {
+  constructor(params: SharkOrbitParams = {}) {
+    this.orbitRadius = params.orbitRadius ?? DEFAULT_ORBIT_RADIUS;
+    this.orbitHeight = params.orbitHeight ?? DEFAULT_ORBIT_HEIGHT;
+    this.orbitPeriodSec = params.orbitPeriodSec ?? DEFAULT_ORBIT_PERIOD_SEC;
+    this.phaseRad = params.phaseRad ?? 0;
+    this.direction = params.direction ?? 1;
     const bodyMat = new MeshStandardMaterial({
       color: BODY_COLOR,
       emissive: EMISSIVE,
@@ -108,11 +128,17 @@ export class Shark {
   }
 
   update(clockSec: number): void {
-    const angle = (clockSec / ORBIT_PERIOD_SEC) * Math.PI * 2;
-    const x = Math.cos(angle) * ORBIT_RADIUS;
-    const z = Math.sin(angle) * ORBIT_RADIUS;
-    this.group.position.set(x, ORBIT_HEIGHT, z);
-    const tangent = new Vector3(-Math.sin(angle), 0, Math.cos(angle));
+    const angle =
+      this.direction * (clockSec / this.orbitPeriodSec) * Math.PI * 2 + this.phaseRad;
+    const x = Math.cos(angle) * this.orbitRadius;
+    const z = Math.sin(angle) * this.orbitRadius;
+    this.group.position.set(x, this.orbitHeight, z);
+    // Tangent of motion at the current angle, sign depends on orbit direction.
+    const tangent = new Vector3(
+      -Math.sin(angle) * this.direction,
+      0,
+      Math.cos(angle) * this.direction,
+    );
     this.group.lookAt(this.group.position.clone().add(tangent));
 
     // Tail wag — slow sinuous sway, just a few degrees either side.
