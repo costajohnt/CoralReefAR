@@ -108,18 +108,23 @@ export class TreeReef {
     if (!entry) return;
 
     this.anchor.remove(entry.mesh);
-    entry.mesh.geometry.dispose();
-    if (Array.isArray(entry.mesh.material)) {
-      for (const m of entry.mesh.material) m.dispose();
-    } else {
-      entry.mesh.material.dispose();
-    }
+    disposeMeshTree(entry.mesh);
 
     this.byId.delete(id);
 
     if (entry.polyp.parentId !== null) {
       this.claimedSlots.delete(`${entry.polyp.parentId}/${entry.polyp.attachIndex}`);
     }
+  }
+
+  /** Removes every registered piece. Used by the reset flow. */
+  clear(): void {
+    for (const entry of this.byId.values()) {
+      this.anchor.remove(entry.mesh);
+      disposeMeshTree(entry.mesh);
+    }
+    this.byId.clear();
+    this.claimedSlots.clear();
   }
 
   getPiece(id: number): Mesh | undefined {
@@ -182,4 +187,20 @@ export class TreeReef {
 
     return out;
   }
+}
+
+/** Disposes a mesh plus every Mesh descendant (e.g. the joint sphere child
+ *  added by generateTreeVariantMesh). Avoids geometry/material leaks. */
+function disposeMeshTree(root: Mesh): void {
+  root.traverse((obj) => {
+    if ((obj as Mesh).isMesh) {
+      const m = obj as Mesh;
+      m.geometry.dispose();
+      if (Array.isArray(m.material)) {
+        for (const mat of m.material) mat.dispose();
+      } else {
+        (m.material as { dispose: () => void }).dispose();
+      }
+    }
+  });
 }

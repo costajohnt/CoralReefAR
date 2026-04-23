@@ -19,6 +19,15 @@ export async function submitTreePolyp(input: TreePolypInput, apiBase = ''): Prom
   return r.json() as Promise<PublicTreePolyp>;
 }
 
+export async function resetTree(apiBase = ''): Promise<{ polyps: PublicTreePolyp[] }> {
+  const r = await fetch(`${apiBase}/api/tree/reset`, { method: 'POST' });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => '');
+    throw new Error(`resetTree ${r.status}${detail ? ` ${detail}` : ''}`);
+  }
+  return r.json() as Promise<{ polyps: PublicTreePolyp[] }>;
+}
+
 /**
  * Reconnecting WebSocket with exponential backoff. Capped at 30s between
  * tries. Fires every server message to each registered handler.

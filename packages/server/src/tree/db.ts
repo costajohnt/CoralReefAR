@@ -30,6 +30,7 @@ export class TreeDb {
     countLiveChildren: Database.Statement;
     softDelete: Database.Statement;
     hasAny: Database.Statement;
+    softDeleteAll: Database.Statement;
   };
 
   // ReefDb owns the underlying sqlite handle. Share it so migrations run once
@@ -63,7 +64,20 @@ export class TreeDb {
       hasAny: this.db.prepare(
         'SELECT 1 FROM tree_polyps WHERE deleted = 0 LIMIT 1',
       ),
+      softDeleteAll: this.db.prepare(
+        'UPDATE tree_polyps SET deleted = 1 WHERE deleted = 0',
+      ),
     };
+  }
+
+  /**
+   * Soft-delete every live polyp. Used by the reset endpoint so visitors can
+   * wipe the tree and start over. Soft-delete (rather than hard DELETE) keeps
+   * history in the DB; the partial unique index on (parent_id, attach_index)
+   * frees the slots so a fresh root can be inserted immediately after.
+   */
+  deleteAll(): void {
+    this.stmt.softDeleteAll.run();
   }
 
   insertRoot(input: InsertRootInput): PublicTreePolyp {

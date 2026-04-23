@@ -2,12 +2,27 @@ import type { FastifyInstance } from 'fastify';
 import { TreePolypInputSchema } from '@reef/shared';
 import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
+import { seedRootIfEmpty } from './seed.js';
 
 export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub): void {
   app.get('/api/tree', async () => ({
     polyps: tree.listLive(),
     serverTime: Date.now(),
   }));
+
+  // Reset: soft-delete every live polyp, then seed a fresh Starburst root so
+  // the tree never boots into a "no attach point" state. Clients re-fetch
+  // after the call (see packages/client/src/tree/api.ts).
+  app.post('/api/tree/reset', async () => {
+    tree.deleteAll();
+    seedRootIfEmpty(tree);
+    const polyps = tree.listLive();
+    hub.broadcast({ type: 'tree_reset' } as never);
+    if (polyps[0]) {
+      hub.broadcast({ type: 'tree_polyp_added', polyp: polyps[0] } as never);
+    }
+    return { polyps };
+  });
 
   app.post('/api/tree/polyp', async (req, reply) => {
     const parsed = TreePolypInputSchema.safeParse(req.body);
