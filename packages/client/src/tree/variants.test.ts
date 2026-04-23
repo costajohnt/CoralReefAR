@@ -18,12 +18,14 @@ describe('generateTreeVariantMesh', () => {
     expect(result.attachPointsLocal).toHaveLength(ATTACH_COUNTS[variant]);
   });
 
-  test('applies Avatar material preset (opacity 1 + high emissive)', () => {
+  test('applies Avatar material preset (slightly transparent + palette-tinted emissive)', () => {
     const result = generateTreeVariantMesh({ variant: 'starburst', seed: 1, colorKey: 'neon-cyan' });
     const mat = result.mesh.material as MeshStandardMaterial;
-    expect(mat.opacity).toBe(1);
-    expect(mat.transparent).toBe(false);
-    expect(mat.emissiveIntensity).toBeGreaterThanOrEqual(0.9);
+    expect(mat.transparent).toBe(true);
+    expect(mat.opacity).toBeGreaterThan(0.6);
+    expect(mat.opacity).toBeLessThan(0.95);
+    // Emissive should match the neon-cyan palette hex (#2dffe4), not default white.
+    expect(mat.emissive.getHexString()).toBe('2dffe4');
   });
 
   test('returns a Box3 bounding box', () => {

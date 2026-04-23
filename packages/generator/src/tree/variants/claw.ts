@@ -1,5 +1,11 @@
 import type { VariantGenerateInput, VariantOutput } from '../variant.js';
-import { tipAttachPoint, emitFrustum, computeAABB } from '../variant.js';
+import {
+  tipAttachPoint,
+  emitFrustum,
+  computeAABB,
+  seededRand,
+  jitter,
+} from '../variant.js';
 import { colorVec3 } from '../../species/_common.js';
 
 const STRAIGHT_SEG_LENGTH = 0.03;
@@ -10,9 +16,10 @@ const TRUNK_TIP_RADIUS = 0.005;
 const CLAW_LENGTH = 0.025;
 const CLAW_BASE_RADIUS = 0.005;
 const CLAW_TIP_RADIUS = 0.002;
-const BEND_ANGLE = Math.PI / 3;              // 60° off vertical at the midpoint
-const CLAW_SPLIT_ANGLE = Math.PI / 8;        // ~22° fork angle between the two tips
-const SEGMENTS = 6;
+const BEND_ANGLE = Math.PI / 3;
+const CLAW_SPLIT_ANGLE = Math.PI / 8;
+const SEGMENTS = 10;
+const NOISE_AMP = 0.12;
 
 export function generateClaw(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -21,45 +28,79 @@ export function generateClaw(input: VariantGenerateInput): VariantOutput {
   const indices: number[] = [];
   const color = colorVec3(input.colorKey);
 
+  const rand = seededRand(input.seed);
+  const straightLen = jitter(rand, STRAIGHT_SEG_LENGTH, 0.12);
+  const bentLen = jitter(rand, BENT_SEG_LENGTH, 0.15);
+  const bendAngle = jitter(rand, BEND_ANGLE, 0.1);
+  const splitAngle = jitter(rand, CLAW_SPLIT_ANGLE, 0.2);
+  const splitAsymmetry = jitter(rand, 1, 0.18);
+  const clawLenA = jitter(rand, CLAW_LENGTH, 0.15);
+  const clawLenB = jitter(rand, CLAW_LENGTH, 0.15);
+
   // Segment 1: straight up from origin to midpoint.
   const midBase = { x: 0, y: 0, z: 0 };
-  const midApex = { x: 0, y: STRAIGHT_SEG_LENGTH, z: 0 };
-  emitFrustum(positions, normals, colors, indices,
-    midBase, midApex, TRUNK_BASE_RADIUS, TRUNK_MID_RADIUS, color, SEGMENTS);
+  const midApex = { x: 0, y: straightLen, z: 0 };
+  emitFrustum(
+    positions, normals, colors, indices,
+    midBase, midApex,
+    jitter(rand, TRUNK_BASE_RADIUS, 0.1),
+    jitter(rand, TRUNK_MID_RADIUS, 0.1),
+    color, SEGMENTS,
+    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
+  );
 
-  // Segment 2: bent — from midApex in a direction tilted BEND_ANGLE off vertical toward +X.
-  const bentDir = { x: Math.sin(BEND_ANGLE), y: Math.cos(BEND_ANGLE), z: 0 };
+  // Segment 2: bent.
+  const bentDir = { x: Math.sin(bendAngle), y: Math.cos(bendAngle), z: 0 };
   const bentEnd = {
-    x: midApex.x + bentDir.x * BENT_SEG_LENGTH,
-    y: midApex.y + bentDir.y * BENT_SEG_LENGTH,
+    x: midApex.x + bentDir.x * bentLen,
+    y: midApex.y + bentDir.y * bentLen,
     z: 0,
   };
-  emitFrustum(positions, normals, colors, indices,
-    midApex, bentEnd, TRUNK_MID_RADIUS, TRUNK_TIP_RADIUS, color, SEGMENTS);
+  emitFrustum(
+    positions, normals, colors, indices,
+    midApex, bentEnd,
+    jitter(rand, TRUNK_MID_RADIUS, 0.1),
+    jitter(rand, TRUNK_TIP_RADIUS, 0.1),
+    color, SEGMENTS,
+    { seed: input.seed * 7 + 2, noiseAmplitude: NOISE_AMP },
+  );
 
-  // Two claw tips splitting from bentEnd — symmetric around the bentDir axis in XY plane.
-  // Rotate bentDir by ±CLAW_SPLIT_ANGLE around the Z axis.
+  // Two claw tips with asymmetric split angles.
   const rot = (angle: number) => ({
     x: Math.cos(angle) * bentDir.x - Math.sin(angle) * bentDir.y,
     y: Math.sin(angle) * bentDir.x + Math.cos(angle) * bentDir.y,
     z: 0,
   });
-  const dirA = rot(+CLAW_SPLIT_ANGLE);
-  const dirB = rot(-CLAW_SPLIT_ANGLE);
+  const angleA = splitAngle;
+  const angleB = -splitAngle * splitAsymmetry;
+  const dirA = rot(angleA);
+  const dirB = rot(angleB);
   const tipA = {
-    x: bentEnd.x + dirA.x * CLAW_LENGTH,
-    y: bentEnd.y + dirA.y * CLAW_LENGTH,
+    x: bentEnd.x + dirA.x * clawLenA,
+    y: bentEnd.y + dirA.y * clawLenA,
     z: 0,
   };
   const tipB = {
-    x: bentEnd.x + dirB.x * CLAW_LENGTH,
-    y: bentEnd.y + dirB.y * CLAW_LENGTH,
+    x: bentEnd.x + dirB.x * clawLenB,
+    y: bentEnd.y + dirB.y * clawLenB,
     z: 0,
   };
-  emitFrustum(positions, normals, colors, indices,
-    bentEnd, tipA, CLAW_BASE_RADIUS, CLAW_TIP_RADIUS, color, SEGMENTS);
-  emitFrustum(positions, normals, colors, indices,
-    bentEnd, tipB, CLAW_BASE_RADIUS, CLAW_TIP_RADIUS, color, SEGMENTS);
+  emitFrustum(
+    positions, normals, colors, indices,
+    bentEnd, tipA,
+    jitter(rand, CLAW_BASE_RADIUS, 0.1),
+    jitter(rand, CLAW_TIP_RADIUS, 0.15),
+    color, SEGMENTS,
+    { seed: input.seed * 11 + 3, noiseAmplitude: NOISE_AMP },
+  );
+  emitFrustum(
+    positions, normals, colors, indices,
+    bentEnd, tipB,
+    jitter(rand, CLAW_BASE_RADIUS, 0.1),
+    jitter(rand, CLAW_TIP_RADIUS, 0.15),
+    color, SEGMENTS,
+    { seed: input.seed * 13 + 4, noiseAmplitude: NOISE_AMP },
+  );
 
   return {
     mesh: {

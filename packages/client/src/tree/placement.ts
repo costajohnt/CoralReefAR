@@ -63,8 +63,7 @@ export class TreePlacement {
     })(this.reef.allWorldBoxes());
 
     if (wouldCollide(worldBox, otherBoxes)) {
-      generated.mesh.geometry.dispose();
-      (generated.mesh.material as { dispose: () => void }).dispose();
+      disposeMeshDeep(generated.mesh);
       return null;
     }
 
@@ -87,8 +86,7 @@ export class TreePlacement {
   reset(): void {
     if (this.ghost) {
       this.ghostAnchor.remove(this.ghost);
-      this.ghost.geometry.dispose();
-      (this.ghost.material as { dispose: () => void }).dispose();
+      disposeMeshDeep(this.ghost);
       this.ghost = null;
     }
     this.pending = null;
@@ -97,4 +95,35 @@ export class TreePlacement {
   getPending(): PendingTreePiece | null {
     return this.pending;
   }
+
+  /**
+   * Spin the current ghost around its local +Y axis (which is aligned with
+   * the parent's attach-point normal by construction in showGhost). Lets the
+   * user orient the piece before committing — e.g. aim a Forked piece's two
+   * branches in a specific direction. No-op when no ghost is pending.
+   */
+  rotateGhost(deltaRad: number): void {
+    if (!this.ghost) return;
+    this.ghost.rotateY(deltaRad);
+  }
+}
+
+/**
+ * Disposes a mesh + any Mesh children (e.g. the joint sphere added by
+ * generateTreeVariantMesh). Without this, rerolling a ghost leaks the child
+ * geometry/material each time.
+ */
+function disposeMeshDeep(mesh: Mesh): void {
+  mesh.traverse((obj) => {
+    if ((obj as Mesh).isMesh) {
+      const m = obj as Mesh;
+      m.geometry.dispose();
+      const mat = m.material as { dispose: () => void } | { dispose: () => void }[];
+      if (Array.isArray(mat)) {
+        for (const x of mat) x.dispose();
+      } else {
+        mat.dispose();
+      }
+    }
+  });
 }

@@ -15,11 +15,27 @@
       background: rgba(0,0,0,0.35); border-radius: 3px;
       pointer-events: none;
     }
+    #toolbar {
+      position: fixed; top: 12px; right: 12px; display: flex; gap: 6px;
+      font: 500 12px/1 system-ui, sans-serif;
+    }
+    #toolbar button {
+      padding: 6px 10px; color: #cfe; background: rgba(10,20,32,0.75);
+      border: 1px solid rgba(120,180,220,0.25); border-radius: 4px;
+      cursor: pointer;
+    }
+    #toolbar button:hover { background: rgba(20,40,60,0.85); }
+    #toolbar button:active { transform: translateY(1px); }
   </style>
 </head>
 <body>
   <canvas id="gl"></canvas>
   <div id="mode-badge"></div>
+  <div id="toolbar" aria-label="Tree controls">
+    <button id="clearBtn" type="button">Clear</button>
+    <button id="addSharkBtn" type="button">Add shark</button>
+    <button id="addClownfishBtn" type="button">Add clownfish</button>
+  </div>
   <div id="picker" class="hidden" role="region" aria-label="Plant a polyp">
     <div class="picker-row" role="group" aria-label="Variant">
       <button type="button" data-variant="forked">Forked</button>
