@@ -89,3 +89,80 @@ describe('COLOR_CHOSEN', () => {
     });
   });
 });
+
+describe('ATTACH_CLICKED', () => {
+  test('from idle → placing with picker inherited, blocked false', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 5, attachIndex: 2, seed: 77 });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 5, attachIndex: 2, seed: 77, blocked: false,
+    });
+  });
+
+  test('from placing → placing with new params, blocked reset to false', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: true,
+    };
+    const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 3, attachIndex: 1, seed: 55 });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
+      parentId: 3, attachIndex: 1, seed: 55, blocked: false,
+    });
+  });
+
+  test('from submitting: no-op (same reference returned)', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 9, attachIndex: 9, seed: 9 });
+    expect(next).toBe(s);
+  });
+
+  test('from resetting: no-op (same reference returned)', () => {
+    const s: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 1, attachIndex: 0, seed: 1 });
+    expect(next).toBe(s);
+  });
+});
+
+describe('REROLL_CLICKED', () => {
+  test('from placing → placing with new variant + seed, blocked reset', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: true,
+    };
+    const next = reduce(s, { type: 'REROLL_CLICKED', variant: 'claw', seed: 42 });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: { variant: 'claw', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 42, blocked: false,
+    });
+  });
+
+  test('from idle: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const next = reduce(s, { type: 'REROLL_CLICKED', variant: 'claw', seed: 42 });
+    expect(next).toBe(s);
+  });
+
+  test('from submitting: no-op', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'REROLL_CLICKED', variant: 'claw', seed: 42 });
+    expect(next).toBe(s);
+  });
+});

@@ -59,6 +59,28 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
       const picker = { ...state.picker, colorKey: action.colorKey };
       return { ...state, picker };
     }
+    case 'ATTACH_CLICKED': {
+      if (state.kind === 'idle' || state.kind === 'placing') {
+        return {
+          kind: 'placing',
+          picker: state.picker,
+          parentId: action.parentId,
+          attachIndex: action.attachIndex,
+          seed: action.seed,
+          blocked: false,
+        };
+      }
+      return state;
+    }
+    case 'REROLL_CLICKED': {
+      if (state.kind !== 'placing') return state;
+      return {
+        ...state,
+        picker: { ...state.picker, variant: action.variant },
+        seed: action.seed,
+        blocked: false,
+      };
+    }
     default:
       return state;
   }
