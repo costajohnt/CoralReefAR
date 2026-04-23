@@ -19,3 +19,73 @@ describe('reduce default behavior', () => {
     expect(reduce(s, a)).toBe(s);
   });
 });
+
+describe('VARIANT_CHOSEN', () => {
+  test('in idle: updates picker.variant, seed ignored', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'claw', seed: 123 });
+    expect(next).toEqual({ kind: 'idle', picker: { variant: 'claw', colorKey: 'neon-cyan' } });
+  });
+
+  test('in placing: updates both picker.variant and seed', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'wishbone', seed: 99 });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 99, blocked: false,
+    });
+  });
+
+  test('in submitting: updates picker.variant and seed', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'trident', seed: 42 });
+    expect(next).toEqual({
+      kind: 'submitting',
+      picker: { variant: 'trident', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 42,
+    });
+  });
+
+  test('in resetting: updates picker.variant; no seed field exists', () => {
+    const s: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'starburst', seed: 7 });
+    expect(next).toEqual({
+      kind: 'resetting',
+      picker: { variant: 'starburst', colorKey: 'neon-cyan' },
+    });
+  });
+});
+
+describe('COLOR_CHOSEN', () => {
+  test('in idle: updates picker.colorKey', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const next = reduce(s, { type: 'COLOR_CHOSEN', colorKey: 'neon-magenta' });
+    expect(next).toEqual({ kind: 'idle', picker: { variant: 'forked', colorKey: 'neon-magenta' } });
+  });
+
+  test('in placing: preserves seed, updates picker.colorKey only', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'COLOR_CHOSEN', colorKey: 'neon-lime' });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-lime' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    });
+  });
+});

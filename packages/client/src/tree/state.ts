@@ -44,6 +44,22 @@ export function initialState(picker: PickerSelection): TreeState {
   return { kind: 'idle', picker };
 }
 
-export function reduce(state: TreeState, _action: TreeAction): TreeState {
-  return state;
+export function reduce(state: TreeState, action: TreeAction): TreeState {
+  switch (action.type) {
+    case 'VARIANT_CHOSEN': {
+      const picker = { ...state.picker, variant: action.variant };
+      switch (state.kind) {
+        case 'idle':      return { ...state, picker };
+        case 'placing':   return { ...state, picker, seed: action.seed };
+        case 'submitting':return { ...state, picker, seed: action.seed };
+        case 'resetting': return { ...state, picker };
+      }
+    }
+    case 'COLOR_CHOSEN': {
+      const picker = { ...state.picker, colorKey: action.colorKey };
+      return { ...state, picker };
+    }
+    default:
+      return state;
+  }
 }
