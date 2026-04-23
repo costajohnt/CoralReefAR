@@ -26,6 +26,7 @@ import { TREE_VARIANTS, TreePicker } from './ui/treePicker.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
 import { Shark } from './tree/shark.js';
 import { Clownfish } from './tree/clownfish.js';
+import { Jellyfish } from './tree/jellyfish.js';
 import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
 import { createEffects } from './tree/effects.js';
 
@@ -134,6 +135,17 @@ function spawnClownfish(): void {
   scene.add(c.group);
   creatures.push(c);
 }
+function spawnJellyfish(): void {
+  const j = new Jellyfish({
+    orbitRadius: 0.18 + Math.random() * 0.14,
+    orbitHeight: 0.1 + Math.random() * 0.2,
+    orbitPeriodSec: 20 + Math.random() * 12,
+    phaseRad: Math.random() * Math.PI * 2,
+    direction: Math.random() < 0.5 ? 1 : -1,
+  });
+  scene.add(j.group);
+  creatures.push(j);
+}
 
 // ------------------------------------------------------------------
 // Picker + state machine
@@ -184,9 +196,11 @@ picker.onCommit(() => dispatch({ type: 'GROW_CLICKED' }));
 const clearBtn = document.getElementById('clearBtn') as HTMLButtonElement | null;
 const addSharkBtn = document.getElementById('addSharkBtn') as HTMLButtonElement | null;
 const addClownfishBtn = document.getElementById('addClownfishBtn') as HTMLButtonElement | null;
+const addJellyfishBtn = document.getElementById('addJellyfishBtn') as HTMLButtonElement | null;
 if (clearBtn) clearBtn.addEventListener('click', () => dispatch({ type: 'CLEAR_CLICKED' }));
 if (addSharkBtn) addSharkBtn.addEventListener('click', spawnShark);
 if (addClownfishBtn) addClownfishBtn.addEventListener('click', spawnClownfish);
+if (addJellyfishBtn) addJellyfishBtn.addEventListener('click', spawnJellyfish);
 
 // ------------------------------------------------------------------
 // Pointer-drag: rotate ghost in place instead of orbiting while placing.
