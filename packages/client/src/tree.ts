@@ -10,15 +10,19 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PublicTreePolyp } from '@reef/shared';
 import { installLighting } from './scene/lighting.js';
 import { installSway } from './scene/currentSway.js';
-import { installPulse } from './scene/pulse.js';
+import { installTreePulse } from './tree/pulse.js';
 import { readTreeConfig } from './tree/config.js';
 import { createTreePedestal, createBloomComposer } from './tree/scene.js';
 import { TreeReef } from './tree/reef.js';
 import { AttachIndicators } from './tree/indicators.js';
 import { TreePlacement } from './tree/placement.js';
 import { fetchTree, submitTreePolyp, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
-import { TreePicker } from './ui/treePicker.js';
+import { TREE_VARIANTS, TreePicker } from './ui/treePicker.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
+import { FishSchool } from './sim/fish.js';
+import { Shark } from './tree/shark.js';
+import { Clownfish } from './tree/clownfish.js';
+import type { PointsMaterial } from 'three';
 
 // ------------------------------------------------------------------
 // Sentinel symbols so sway/pulse are installed at most once per mesh.
@@ -79,6 +83,26 @@ const placement = new TreePlacement(treeReef);
 scene.add(placement.ghostAnchor);
 
 // ------------------------------------------------------------------
+// Fish + shark + clownfish
+// ------------------------------------------------------------------
+// Tiny background school: reuse FishSchool but retint to a pale cool white
+// that reads against the dark/bloom scene (landscape's yellow looks dingy
+// here). Count is lower + radius tighter since the tree's visible mass is
+// smaller than the landscape reef's.
+const fish = new FishSchool(40, 0.55);
+(fish.points.material as PointsMaterial).color.setHex(0xbfe8ff);
+(fish.points.material as PointsMaterial).needsUpdate = true;
+scene.add(fish.points);
+
+// One lone shark making slow laps on a wide orbit.
+const shark = new Shark();
+scene.add(shark.group);
+
+// One bright clownfish orbiting opposite the shark on a tighter path.
+const clownfish = new Clownfish();
+scene.add(clownfish.group);
+
+// ------------------------------------------------------------------
 // Shared clock for sway/pulse animations
 // ------------------------------------------------------------------
 const swayClock = { value: 0 };
@@ -89,9 +113,9 @@ const swayClock = { value: 0 };
 
 /**
  * Walk all pieces in treeReef and install sway/pulse on any new meshes.
- * Tree emissive baseline is higher (see Task 15), so pulse amplitude
- * is applied at the same rate — the higher baseline is set in the
- * material itself; installPulse drives around it.
+ * Uses the tree-specific pulse (higher baseline, larger amplitude) so the
+ * Avatar-bioluminescent glow is visibly breathing rather than sitting at
+ * the dim landscape baseline.
  */
 function installEffectsOnNewPieces(): void {
   for (const { polyp, mesh } of treeReef.allPieces()) {
@@ -101,7 +125,7 @@ function installEffectsOnNewPieces(): void {
       flags[SWAY_INSTALLED] = true;
     }
     if (!flags[PULSE_INSTALLED]) {
-      installPulse(mesh as Mesh, swayClock, polyp.seed);
+      installTreePulse(mesh as Mesh, swayClock, polyp.seed);
       flags[PULSE_INSTALLED] = true;
     }
   }
@@ -200,6 +224,13 @@ if (config.mode === 'interactive') {
 
   picker.onReroll(() => {
     if (pendingParentId === null) return;
+    // Pick a new variant different from the current one. Variant geometry is
+    // deterministic from its constants (seed is stored but not consumed by
+    // the generator), so rerolling only the seed would be a visual no-op.
+    const current = picker.get().variant;
+    const options = TREE_VARIANTS.filter((v) => v !== current);
+    const nextVariant = options[Math.floor(Math.random() * options.length)]!;
+    picker.setVariant(nextVariant);
     currentSeed = Math.floor(Math.random() * 0xffffffff);
     const s = picker.get();
     const ghost = placement.showGhost(
@@ -330,11 +361,20 @@ async function loadInitial(): Promise<void> {
 // ------------------------------------------------------------------
 // Render loop
 // ------------------------------------------------------------------
+let lastT = 0;
 function loop(t: number): void {
-  swayClock.value = t / 1000;
+  const tSec = t / 1000;
+  const dt = lastT === 0 ? 0 : Math.min(tSec - lastT, 0.1);
+  lastT = tSec;
+
+  swayClock.value = tSec;
+
+  fish.update(dt);
+  shark.update(tSec);
+  clownfish.update(tSec);
 
   if (config.mode === 'screen') {
-    const pose = computeOrbitPose(t / 1000);
+    const pose = computeOrbitPose(tSec);
     camera.position.copy(pose.position);
     camera.lookAt(pose.target);
   } else {

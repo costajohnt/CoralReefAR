@@ -1,6 +1,6 @@
 import { Box3, MeshStandardMaterial, Vector3 } from 'three';
 import type { Mesh } from 'three';
-import type { AttachPoint, TreeVariant } from '@reef/shared';
+import { paletteByKey, type AttachPoint, type TreeVariant } from '@reef/shared';
 import { generateTreeVariant } from '@reef/generator';
 import { polypMesh } from '../scene/meshAdapter.js';
 import { applyTreeMaterial } from './material.js';
@@ -19,7 +19,8 @@ export function generateTreeVariantMesh(input: {
   const { mesh: meshData, attachPoints, boundingBox: bb } = generateTreeVariant(input);
 
   const mesh = polypMesh(meshData);
-  applyTreeMaterial(mesh.material as MeshStandardMaterial);
+  const hex = paletteByKey(input.colorKey).hex;
+  applyTreeMaterial(mesh.material as MeshStandardMaterial, hex);
 
   const boundingBox = new Box3(
     new Vector3(bb.min.x, bb.min.y, bb.min.z),

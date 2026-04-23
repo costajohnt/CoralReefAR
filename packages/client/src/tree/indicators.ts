@@ -12,12 +12,15 @@ const INDICATOR_SEGMENTS = 12;
 
 function makeIndicatorMesh(): Mesh {
   const geom = new SphereGeometry(INDICATOR_RADIUS, INDICATOR_SEGMENTS, INDICATOR_SEGMENTS);
+  // Cool-blue tint + low emissive so the orbs read as subtle "clickable
+  // hints" rather than dominant bright-white spots. Kept below the bloom
+  // threshold so they don't pick up halos from the post-processing pass.
   const mat = new MeshStandardMaterial({
-    color: 0xffffff,
-    emissive: 0xffffff,
-    emissiveIntensity: 1.2,
-    transparent: false,
-    opacity: 1,
+    color: 0x7aa4c4,
+    emissive: 0x2f5a7a,
+    emissiveIntensity: 0.25,
+    transparent: true,
+    opacity: 0.55,
   });
   return new Mesh(geom, mat);
 }

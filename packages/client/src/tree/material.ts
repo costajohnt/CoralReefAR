@@ -1,16 +1,14 @@
-import type { MeshStandardMaterial } from 'three';
-
-export const TREE_EMISSIVE_INTENSITY = 1.0;
+import { Color, type MeshStandardMaterial } from 'three';
 
 /**
- * Avatar-bioluminescent aesthetic: fully opaque, emissive matches the
- * surface color, vertex colors still drive per-piece hue. Downstream a
- * bloom post-processing pass turns the emissive into halos.
+ * Avatar-bioluminescent aesthetic: slight translucency + emissive tinted to
+ * the piece's palette hex (not a flat white, which would desaturate the
+ * vertex colors under the bloom pass). The pulse helper overrides
+ * emissiveIntensity per frame; the color set here is what glows.
  */
-export function applyTreeMaterial(mat: MeshStandardMaterial): void {
-  mat.transparent = false;
-  mat.opacity = 1;
-  mat.emissive.copy(mat.color);
-  mat.emissiveIntensity = TREE_EMISSIVE_INTENSITY;
+export function applyTreeMaterial(mat: MeshStandardMaterial, emissiveHex: string): void {
+  mat.transparent = true;
+  mat.opacity = 0.78;
+  mat.emissive = new Color(emissiveHex);
   mat.needsUpdate = true;
 }

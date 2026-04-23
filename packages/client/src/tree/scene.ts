@@ -37,9 +37,13 @@ export function createBloomComposer(
   composer.addPass(new RenderPass(scene, camera));
   const bloomPass = new UnrealBloomPass(
     new Vector2(renderer.domElement.width, renderer.domElement.height),
-    1.2,  // strength
-    0.6,  // radius
-    0.4,  // threshold
+    // Low threshold so mid-pulse pieces reliably halo (the persistent "slight
+    // glow" around branches). Strength stays modest so the glow doesn't
+    // overpower the surface color. Raise threshold if pieces look washed-out;
+    // lower strength if the glow feels too strong.
+    0.55, // strength
+    0.5,  // radius
+    0.3,  // threshold
   );
   composer.addPass(bloomPass);
   return {

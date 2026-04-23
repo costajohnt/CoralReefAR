@@ -42,6 +42,14 @@ export class TreePicker {
   onChange(l: TreePickerListener): void { this.listeners.push(l); }
   get(): TreePickerState { return this.state; }
 
+  setVariant(variant: TreeVariant): void {
+    if (!TREE_VARIANTS.includes(variant)) return;
+    if (this.state.variant === variant) return;
+    this.state = { ...this.state, variant };
+    this.highlight();
+    this.emit();
+  }
+
   setCommittable(ok: boolean): void {
     this.growBtn.disabled = !ok;
     this.rerollBtn.disabled = !ok;
