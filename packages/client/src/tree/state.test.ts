@@ -200,3 +200,105 @@ describe('PLACEMENT_OK', () => {
     expect(reduce(s, { type: 'PLACEMENT_OK' })).toBe(s);
   });
 });
+
+describe('CANCEL_CLICKED', () => {
+  test('from placing → idle with picker inherited', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'CANCEL_CLICKED' });
+    expect(next).toEqual({ kind: 'idle', picker: s.picker });
+  });
+
+  test('from idle/submitting/resetting: no-op', () => {
+    const idle = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const submitting: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const resetting: TreeState = {
+      kind: 'resetting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+    };
+    expect(reduce(idle, { type: 'CANCEL_CLICKED' })).toBe(idle);
+    expect(reduce(submitting, { type: 'CANCEL_CLICKED' })).toBe(submitting);
+    expect(reduce(resetting, { type: 'CANCEL_CLICKED' })).toBe(resetting);
+  });
+});
+
+describe('GROW_CLICKED', () => {
+  test('from placing (blocked=false) → submitting with fields copied', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'GROW_CLICKED' });
+    expect(next).toEqual({
+      kind: 'submitting',
+      picker: s.picker,
+      parentId: 1, attachIndex: 0, seed: 10,
+    });
+  });
+
+  test('from placing (blocked=true): no-op', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: true,
+    };
+    expect(reduce(s, { type: 'GROW_CLICKED' })).toBe(s);
+  });
+
+  test('from idle/submitting/resetting: no-op', () => {
+    const idle = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    const submitting: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    expect(reduce(idle, { type: 'GROW_CLICKED' })).toBe(idle);
+    expect(reduce(submitting, { type: 'GROW_CLICKED' })).toBe(submitting);
+  });
+});
+
+describe('COMMIT_RESOLVED', () => {
+  test('from submitting → idle with picker inherited', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'COMMIT_RESOLVED' });
+    expect(next).toEqual({ kind: 'idle', picker: s.picker });
+  });
+
+  test('outside submitting: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'COMMIT_RESOLVED' })).toBe(s);
+  });
+});
+
+describe('COMMIT_REJECTED', () => {
+  test('from submitting → placing with blocked=false, fields carried', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    };
+    const next = reduce(s, { type: 'COMMIT_REJECTED', error: 'boom' });
+    expect(next).toEqual({
+      kind: 'placing',
+      picker: s.picker,
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    });
+  });
+
+  test('outside submitting: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'COMMIT_REJECTED', error: 'x' })).toBe(s);
+  });
+});

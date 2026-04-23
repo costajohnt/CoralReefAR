@@ -89,6 +89,35 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
       if (state.kind !== 'placing') return state;
       return { ...state, blocked: false };
     }
+    case 'CANCEL_CLICKED': {
+      if (state.kind !== 'placing') return state;
+      return { kind: 'idle', picker: state.picker };
+    }
+    case 'GROW_CLICKED': {
+      if (state.kind !== 'placing' || state.blocked) return state;
+      return {
+        kind: 'submitting',
+        picker: state.picker,
+        parentId: state.parentId,
+        attachIndex: state.attachIndex,
+        seed: state.seed,
+      };
+    }
+    case 'COMMIT_RESOLVED': {
+      if (state.kind !== 'submitting') return state;
+      return { kind: 'idle', picker: state.picker };
+    }
+    case 'COMMIT_REJECTED': {
+      if (state.kind !== 'submitting') return state;
+      return {
+        kind: 'placing',
+        picker: state.picker,
+        parentId: state.parentId,
+        attachIndex: state.attachIndex,
+        seed: state.seed,
+        blocked: false,
+      };
+    }
     default:
       return state;
   }
