@@ -34,10 +34,69 @@ export interface Effects {
   apply(prev: TreeState, next: TreeState, action: TreeAction): void;
 }
 
-export function createEffects(_deps: EffectsDeps): Effects {
+export function createEffects(deps: EffectsDeps): Effects {
   return {
-    apply(_prev: TreeState, _next: TreeState, _action: TreeAction): void {
-      // Filled in by subsequent tasks.
+    apply(prev: TreeState, next: TreeState, action: TreeAction): void {
+      // Entering placing from elsewhere, or changing slot/variant/seed/color
+      // within placing → re-show the ghost and refresh indicators hint.
+      if (
+        next.kind === 'placing' &&
+        (prev.kind !== 'placing' || hasPlacingIdentityChanged(prev, next))
+      ) {
+        const { variant, colorKey } = next.picker;
+        const ghost = deps.placement.showGhost(
+          variant,
+          next.seed,
+          colorKey,
+          next.parentId,
+          next.attachIndex,
+        );
+        if (ghost) {
+          deps.dispatch({ type: 'PLACEMENT_OK' });
+          deps.picker.setCommittable(true);
+          deps.hintEl.textContent = 'Happy with it? Click Grow.';
+        } else {
+          deps.dispatch({ type: 'PLACEMENT_BLOCKED' });
+          deps.picker.setCommittable(false);
+          deps.hintEl.textContent = 'That spot is blocked. Try another dot or reroll.';
+        }
+        return;
+      }
+
+      // Pure blocked flip within placing (triggered by PLACEMENT_BLOCKED/OK
+      // dispatched after showGhost — which already ran above).
+      if (
+        next.kind === 'placing' && prev.kind === 'placing' &&
+        !hasPlacingIdentityChanged(prev, next) &&
+        prev.blocked !== next.blocked
+      ) {
+        deps.picker.setCommittable(!next.blocked);
+        return;
+      }
+
+      // Leaving placing for idle (cancel).
+      if (prev.kind === 'placing' && next.kind === 'idle' && action.type === 'CANCEL_CLICKED') {
+        deps.placement.reset();
+        deps.picker.setCommittable(false);
+        deps.hintEl.textContent = 'Cancelled. Click a glowing dot to try again.';
+        return;
+      }
     },
   };
+}
+
+/** True when the placing-state identity fields (slot + variant + seed + color)
+ *  changed between prev and next. Used to decide whether to re-show the ghost
+ *  vs. only updating the commit button for a pure blocked flip. */
+function hasPlacingIdentityChanged(
+  prev: TreeState & { kind: 'placing' },
+  next: TreeState & { kind: 'placing' },
+): boolean {
+  return (
+    prev.parentId !== next.parentId ||
+    prev.attachIndex !== next.attachIndex ||
+    prev.seed !== next.seed ||
+    prev.picker.variant !== next.picker.variant ||
+    prev.picker.colorKey !== next.picker.colorKey
+  );
 }
