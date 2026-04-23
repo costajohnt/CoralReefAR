@@ -1,5 +1,4 @@
 // packages/client/src/tree/effects.ts
-import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { TreeReef } from './reef.js';
 import type { TreePlacement } from './placement.js';
 import type { AttachIndicators } from './indicators.js';
@@ -12,7 +11,6 @@ export interface EffectsDeps {
   treeReef: TreeReef;
   indicators: AttachIndicators;
   picker: TreePicker;
-  controls: OrbitControls;
   hintEl: HTMLElement;
   apiBase: string;
   /** Called by async callbacks inside effects to drive state transitions. */

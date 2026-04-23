@@ -143,7 +143,7 @@ const picker = new TreePicker(pickerRoot);
 const hintEl = document.getElementById('hint')!;
 
 const effects = createEffects({
-  placement, treeReef, indicators: attachIndicators, picker, controls,
+  placement, treeReef, indicators: attachIndicators, picker,
   hintEl, apiBase: config.apiBase,
   dispatch: (action) => dispatch(action),
   addPiecesAndRefresh,
