@@ -8,27 +8,26 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PublicTreePolyp } from '@reef/shared';
-import { installLighting } from './scene/lighting.js';
 import { installSway } from './scene/currentSway.js';
 import { installTreePulse } from './tree/pulse.js';
 import { readTreeConfig } from './tree/config.js';
-import { createTreePedestal, createBloomComposer } from './tree/scene.js';
+import {
+  createTreePedestal,
+  createBloomComposer,
+  createUnderwaterBackground,
+  createUnderwaterFog,
+  installUnderwaterLighting,
+} from './tree/scene.js';
 import { TreeReef } from './tree/reef.js';
 import { AttachIndicators } from './tree/indicators.js';
 import { TreePlacement } from './tree/placement.js';
-import { fetchTree, submitTreePolyp, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
+import { fetchTree, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
 import { TREE_VARIANTS, TreePicker } from './ui/treePicker.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
-import { FishSchool } from './sim/fish.js';
 import { Shark } from './tree/shark.js';
 import { Clownfish } from './tree/clownfish.js';
-import type { PointsMaterial } from 'three';
-
-// ------------------------------------------------------------------
-// Sentinel symbols so sway/pulse are installed at most once per mesh.
-// ------------------------------------------------------------------
-const SWAY_INSTALLED = Symbol('sway-installed');
-const PULSE_INSTALLED = Symbol('pulse-installed');
+import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
+import { createEffects } from './tree/effects.js';
 
 // ------------------------------------------------------------------
 // Config + canvas
@@ -45,10 +44,11 @@ const renderer = new WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 
 const scene = new Scene();
-scene.background = null;
+scene.background = createUnderwaterBackground();
+scene.fog = createUnderwaterFog();
 renderer.setClearColor(0x01060d, 1);
 
-installLighting(scene);
+installUnderwaterLighting(scene);
 scene.add(createTreePedestal());
 
 // ------------------------------------------------------------------
@@ -65,13 +65,10 @@ controls.maxDistance = 1.2;
 controls.maxPolarAngle = Math.PI / 2 - 0.05;
 controls.enableDamping = true;
 
-// ------------------------------------------------------------------
-// Bloom composer
-// ------------------------------------------------------------------
 const bloomSetup = createBloomComposer(renderer, scene, camera);
 
 // ------------------------------------------------------------------
-// Tree objects
+// Tree content + placement
 // ------------------------------------------------------------------
 const treeReef = new TreeReef();
 scene.add(treeReef.anchor);
@@ -83,40 +80,12 @@ const placement = new TreePlacement(treeReef);
 scene.add(placement.ghostAnchor);
 
 // ------------------------------------------------------------------
-// Fish + shark + clownfish
+// Sway/pulse effect installer (used on every newly-added piece).
 // ------------------------------------------------------------------
-// Tiny background school: reuse FishSchool but retint to a pale cool white
-// that reads against the dark/bloom scene (landscape's yellow looks dingy
-// here). Count is lower + radius tighter since the tree's visible mass is
-// smaller than the landscape reef's.
-const fish = new FishSchool(40, 0.55);
-(fish.points.material as PointsMaterial).color.setHex(0xbfe8ff);
-(fish.points.material as PointsMaterial).needsUpdate = true;
-scene.add(fish.points);
-
-// One lone shark making slow laps on a wide orbit.
-const shark = new Shark();
-scene.add(shark.group);
-
-// One bright clownfish orbiting opposite the shark on a tighter path.
-const clownfish = new Clownfish();
-scene.add(clownfish.group);
-
-// ------------------------------------------------------------------
-// Shared clock for sway/pulse animations
-// ------------------------------------------------------------------
+const SWAY_INSTALLED = Symbol('sway-installed');
+const PULSE_INSTALLED = Symbol('pulse-installed');
 const swayClock = { value: 0 };
 
-// ------------------------------------------------------------------
-// Sway/pulse helpers
-// ------------------------------------------------------------------
-
-/**
- * Walk all pieces in treeReef and install sway/pulse on any new meshes.
- * Uses the tree-specific pulse (higher baseline, larger amplitude) so the
- * Avatar-bioluminescent glow is visibly breathing rather than sitting at
- * the dim landscape baseline.
- */
 function installEffectsOnNewPieces(): void {
   for (const { polyp, mesh } of treeReef.allPieces()) {
     const flags = mesh.userData as Record<PropertyKey, unknown>;
@@ -131,20 +100,164 @@ function installEffectsOnNewPieces(): void {
   }
 }
 
+function addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
+  const sorted = [...polyps].sort((a, b) => a.createdAt - b.createdAt);
+  for (const polyp of sorted) treeReef.addPiece(polyp);
+  installEffectsOnNewPieces();
+  attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+}
+
 // ------------------------------------------------------------------
-// Picker (tree variant)
+// Spawnable sea life — empty by default.
+// ------------------------------------------------------------------
+interface SwimmingCreature { update: (clockSec: number) => void; }
+const creatures: SwimmingCreature[] = [];
+function spawnShark(): void {
+  const s = new Shark({
+    orbitRadius: 0.25 + Math.random() * 0.15,
+    orbitHeight: 0.05 + Math.random() * 0.2,
+    orbitPeriodSec: 14 + Math.random() * 10,
+    phaseRad: Math.random() * Math.PI * 2,
+    direction: Math.random() < 0.5 ? 1 : -1,
+  });
+  scene.add(s.group);
+  creatures.push(s);
+}
+function spawnClownfish(): void {
+  const c = new Clownfish({
+    orbitRadius: 0.15 + Math.random() * 0.15,
+    orbitHeight: 0.04 + Math.random() * 0.2,
+    orbitPeriodSec: 5 + Math.random() * 6,
+    phaseRad: Math.random() * Math.PI * 2,
+    direction: Math.random() < 0.5 ? 1 : -1,
+  });
+  scene.add(c.group);
+  creatures.push(c);
+}
+
+// ------------------------------------------------------------------
+// Picker + state machine
 // ------------------------------------------------------------------
 const pickerRoot = document.getElementById('picker')!;
 const picker = new TreePicker(pickerRoot);
 const hintEl = document.getElementById('hint')!;
 
-let currentSeed = Math.floor(Math.random() * 0xffffffff);
+const effects = createEffects({
+  placement, treeReef, indicators: attachIndicators, picker, controls,
+  hintEl, apiBase: config.apiBase,
+  dispatch: (action) => dispatch(action),
+  addPiecesAndRefresh,
+});
+
+let state: TreeState = initialState(picker.get());
+
+function dispatch(action: TreeAction): void {
+  const prev = state;
+  state = reduce(state, action);
+  if (state !== prev) effects.apply(prev, state, action);
+}
+
+// Wire picker → dispatch.
+picker.onChange((sel) => {
+  const current = state.picker;
+  if (sel.variant !== current.variant) {
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    dispatch({ type: 'VARIANT_CHOSEN', variant: sel.variant, seed });
+  }
+  if (sel.colorKey !== current.colorKey) {
+    dispatch({ type: 'COLOR_CHOSEN', colorKey: sel.colorKey });
+  }
+});
+picker.onReroll(() => {
+  if (state.kind !== 'placing') return;
+  const options = TREE_VARIANTS.filter((v) => v !== state.picker.variant);
+  const variant = options[Math.floor(Math.random() * options.length)]!;
+  const seed = Math.floor(Math.random() * 0xffffffff);
+  dispatch({ type: 'REROLL_CLICKED', variant, seed });
+});
+picker.onCancel(() => dispatch({ type: 'CANCEL_CLICKED' }));
+picker.onCommit(() => dispatch({ type: 'GROW_CLICKED' }));
 
 // ------------------------------------------------------------------
-// Pending attach slot — set on click, cleared on commit/cancel
+// Toolbar → dispatch / direct spawn
 // ------------------------------------------------------------------
-let pendingParentId: number | null = null;
-let pendingAttachIndex = 0;
+const clearBtn = document.getElementById('clearBtn') as HTMLButtonElement | null;
+const addSharkBtn = document.getElementById('addSharkBtn') as HTMLButtonElement | null;
+const addClownfishBtn = document.getElementById('addClownfishBtn') as HTMLButtonElement | null;
+if (clearBtn) clearBtn.addEventListener('click', () => dispatch({ type: 'CLEAR_CLICKED' }));
+if (addSharkBtn) addSharkBtn.addEventListener('click', spawnShark);
+if (addClownfishBtn) addClownfishBtn.addEventListener('click', spawnClownfish);
+
+// ------------------------------------------------------------------
+// Pointer-drag: rotate ghost in place instead of orbiting while placing.
+// ------------------------------------------------------------------
+let dragState: { lastX: number; moved: boolean } | null = null;
+let suppressNextClick = false;
+const DRAG_THRESHOLD_PX = 3;
+const ROT_SENSITIVITY = 0.0055;
+
+canvas.addEventListener(
+  'pointerdown',
+  (ev) => {
+    if (state.kind !== 'placing') return;
+    if (config.mode !== 'screen') controls.enabled = false;
+    dragState = { lastX: ev.clientX, moved: false };
+    canvas.setPointerCapture(ev.pointerId);
+  },
+  { capture: true },
+);
+canvas.addEventListener('pointermove', (ev) => {
+  if (!dragState) return;
+  const dx = ev.clientX - dragState.lastX;
+  if (!dragState.moved && Math.abs(dx) > DRAG_THRESHOLD_PX) dragState.moved = true;
+  if (dragState.moved) {
+    placement.rotateGhost(dx * ROT_SENSITIVITY);
+    dragState.lastX = ev.clientX;
+  }
+});
+canvas.addEventListener('pointerup', (ev) => {
+  if (!dragState) return;
+  if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId);
+  suppressNextClick = dragState.moved;
+  dragState = null;
+  if (config.mode !== 'screen') controls.enabled = true;
+});
+
+// ------------------------------------------------------------------
+// Click (attach-orb pick) — interactive mode only
+// ------------------------------------------------------------------
+if (config.mode === 'interactive') {
+  picker.show();
+  const raycaster = new Raycaster();
+  raycaster.params.Points = { threshold: 0.01 };
+
+  canvas.addEventListener('click', (ev) => {
+    if (suppressNextClick) { suppressNextClick = false; return; }
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new Vector2(
+      ((ev.clientX - rect.left) / rect.width) * 2 - 1,
+      -(((ev.clientY - rect.top) / rect.height) * 2 - 1),
+    );
+    raycaster.setFromCamera(ndc, camera);
+    const intersects = raycaster.intersectObjects(attachIndicators.group.children, false);
+    if (intersects.length === 0) {
+      if (state.kind === 'idle') {
+        hintEl.textContent = 'Click a glowing dot to attach your piece.';
+      }
+      return;
+    }
+    const hit = intersects[0]!;
+    const ud = hit.object.userData as { parentId?: number; attachIndex?: number };
+    if (ud.parentId === undefined || ud.attachIndex === undefined) return;
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    dispatch({
+      type: 'ATTACH_CLICKED',
+      parentId: ud.parentId,
+      attachIndex: ud.attachIndex,
+      seed,
+    });
+  });
+}
 
 // ------------------------------------------------------------------
 // Resize
@@ -161,217 +274,58 @@ window.addEventListener('resize', resize);
 resize();
 
 // ------------------------------------------------------------------
-// Interactive mode: click handler + picker wiring
-// ------------------------------------------------------------------
-if (config.mode === 'interactive') {
-  picker.show();
-
-  const raycaster = new Raycaster();
-  // Make raycaster threshold generous enough to pick small indicator spheres.
-  raycaster.params.Points = { threshold: 0.01 };
-
-  canvas.addEventListener('click', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const ndc = new Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -(((e.clientY - rect.top) / rect.height) * 2 - 1),
-    );
-
-    raycaster.setFromCamera(ndc, camera);
-    const intersects = raycaster.intersectObjects(attachIndicators.group.children, false);
-    if (intersects.length === 0) {
-      hintEl.textContent = 'Click a glowing dot to attach your piece.';
-      return;
-    }
-
-    const hit = intersects[0]!;
-    const ud = hit.object.userData as { parentId?: number; attachIndex?: number };
-    if (ud.parentId === undefined || ud.attachIndex === undefined) return;
-
-    pendingParentId = ud.parentId;
-    pendingAttachIndex = ud.attachIndex;
-    currentSeed = Math.floor(Math.random() * 0xffffffff);
-
-    const s = picker.get();
-    const ghost = placement.showGhost(
-      s.variant,
-      currentSeed,
-      s.colorKey,
-      pendingParentId,
-      pendingAttachIndex,
-    );
-
-    if (ghost) {
-      picker.setCommittable(true);
-      hintEl.textContent = 'Happy with it? Click Grow.';
-    } else {
-      hintEl.textContent = 'That spot is blocked. Try another dot.';
-    }
-  });
-
-  picker.onChange(({ variant, colorKey }) => {
-    if (pendingParentId === null) return;
-    const ghost = placement.showGhost(
-      variant,
-      currentSeed,
-      colorKey,
-      pendingParentId,
-      pendingAttachIndex,
-    );
-    picker.setCommittable(!!ghost);
-    if (!ghost) hintEl.textContent = 'That spot is blocked. Try another dot.';
-  });
-
-  picker.onReroll(() => {
-    if (pendingParentId === null) return;
-    // Pick a new variant different from the current one. Variant geometry is
-    // deterministic from its constants (seed is stored but not consumed by
-    // the generator), so rerolling only the seed would be a visual no-op.
-    const current = picker.get().variant;
-    const options = TREE_VARIANTS.filter((v) => v !== current);
-    const nextVariant = options[Math.floor(Math.random() * options.length)]!;
-    picker.setVariant(nextVariant);
-    currentSeed = Math.floor(Math.random() * 0xffffffff);
-    const s = picker.get();
-    const ghost = placement.showGhost(
-      s.variant,
-      currentSeed,
-      s.colorKey,
-      pendingParentId,
-      pendingAttachIndex,
-    );
-    picker.setCommittable(!!ghost);
-  });
-
-  picker.onCancel(() => {
-    placement.reset();
-    pendingParentId = null;
-    picker.setCommittable(false);
-    hintEl.textContent = 'Cancelled. Click a dot to try again.';
-  });
-
-  picker.onCommit(async () => {
-    if (config.readonly) {
-      hintEl.textContent = 'Readonly mode — Grow is disabled.';
-      return;
-    }
-    const pending = placement.getPending();
-    if (!pending) return;
-
-    picker.setSubmitting(true);
-    try {
-      await submitTreePolyp(
-        {
-          variant: pending.variant,
-          seed: pending.seed,
-          colorKey: pending.colorKey,
-          parentId: pending.parentId,
-          attachIndex: pending.attachIndex,
-        },
-        config.apiBase,
-      );
-      // The socket echo (tree_polyp_added) will call treeReef.addPiece and
-      // placement.reset(). No need to add the piece locally here — let the
-      // server broadcast drive it (consistent with the playground pattern).
-      picker.setSubmitting(false);
-      picker.setCommittable(false);
-      hintEl.textContent = 'Grown! Click another dot to plant again.';
-      pendingParentId = null;
-    } catch (e) {
-      picker.setSubmitting(false);
-      hintEl.textContent = 'Server rejected the piece. Check the console.';
-      console.error(e);
-    }
-  });
-}
-
-if (config.mode === 'screen') {
-  picker.hide();
-  (document.getElementById('picker') as HTMLElement).classList.add('hidden');
-  controls.enabled = false;
-}
-
-// ------------------------------------------------------------------
-// WebSocket
-// ------------------------------------------------------------------
-function buildTreeWsUrl(): string {
-  if (!config.apiBase) return defaultTreeWsUrl();
-  const u = new URL(config.apiBase);
-  const proto = u.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${u.host}/ws/tree`;
-}
-
-const socket = new TreeSocket(buildTreeWsUrl());
-socket.on((msg) => {
-  if (msg.type === 'tree_hello') {
-    console.log(`[tree] connected — server has ${msg.polypCount} piece(s)`);
-  } else if (msg.type === 'tree_polyp_added') {
-    // Avoid double-adding if the addPiece call throws on duplicate.
-    try {
-      addAndRefresh(msg.polyp);
-    } catch (err) {
-      // Parent might not be registered yet in a race — log and ignore.
-      console.warn('[tree] tree_polyp_added could not add piece', err);
-      return;
-    }
-    // If this matches the current pending ghost, resolve it.
-    const pending = placement.getPending();
-    if (
-      pending &&
-      pending.parentId === msg.polyp.parentId &&
-      pending.attachIndex === msg.polyp.attachIndex &&
-      pending.variant === msg.polyp.variant &&
-      pending.seed === msg.polyp.seed
-    ) {
-      placement.reset();
-    }
-  } else if (msg.type === 'tree_polyp_removed') {
-    treeReef.removePiece(msg.id);
-    attachIndicators.refresh(treeReef.getAvailableAttachPoints());
-  }
-});
-
-function addAndRefresh(polyp: PublicTreePolyp): void {
-  treeReef.addPiece(polyp);
-  installEffectsOnNewPieces();
-  attachIndicators.refresh(treeReef.getAvailableAttachPoints());
-}
-
-// ------------------------------------------------------------------
 // Initial fetch
 // ------------------------------------------------------------------
-async function loadInitial(): Promise<void> {
+(async () => {
   try {
-    const state = await fetchTree(config.apiBase);
-    // Sort ascending so parents are always inserted before children.
-    const sorted = [...state.polyps].sort((a, b) => a.createdAt - b.createdAt);
-    for (const polyp of sorted) {
-      treeReef.addPiece(polyp);
-    }
-    installEffectsOnNewPieces();
-    attachIndicators.refresh(treeReef.getAvailableAttachPoints());
-    if (hintEl && config.mode === 'interactive') {
-      hintEl.textContent = 'Click a glowing dot to attach your piece.';
+    const { polyps } = await fetchTree(config.apiBase);
+    addPiecesAndRefresh(polyps);
+    if (config.mode === 'interactive') {
+      hintEl.textContent = polyps.length
+        ? 'Click a glowing dot to attach your piece.'
+        : 'Click Clear and grow something new.';
     }
   } catch (e) {
     console.error('[tree] Failed to load tree', e);
+    hintEl.textContent = 'Failed to load tree. Check the server.';
   }
+})();
+
+// ------------------------------------------------------------------
+// WebSocket: tree content updates (idempotent on polyp id)
+// ------------------------------------------------------------------
+function buildTreeWsUrl(): string {
+  if (config.apiBase) {
+    return config.apiBase.replace(/^http/, 'ws') + '/ws/tree';
+  }
+  return defaultTreeWsUrl();
 }
+const socket = new TreeSocket(buildTreeWsUrl());
+socket.on((msg) => {
+  if (msg.type === 'tree_hello') {
+    // No-op; initial state was fetched via HTTP.
+  } else if (msg.type === 'tree_polyp_added') {
+    treeReef.addPiece(msg.polyp);
+    installEffectsOnNewPieces();
+    attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+  } else if (msg.type === 'tree_polyp_removed') {
+    treeReef.removePiece(msg.id);
+    attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+  } else if (msg.type === 'tree_reset') {
+    treeReef.clear();
+    attachIndicators.refresh([]);
+    dispatch({ type: 'TREE_RESET_EXTERNAL' });
+  }
+});
+socket.connect();
 
 // ------------------------------------------------------------------
 // Render loop
 // ------------------------------------------------------------------
-let lastT = 0;
 function loop(t: number): void {
   const tSec = t / 1000;
-  const dt = lastT === 0 ? 0 : Math.min(tSec - lastT, 0.1);
-  lastT = tSec;
-
   swayClock.value = tSec;
-
-  fish.update(dt);
-  shark.update(tSec);
-  clownfish.update(tSec);
+  for (const c of creatures) c.update(tSec);
 
   if (config.mode === 'screen') {
     const pose = computeOrbitPose(tSec);
@@ -380,11 +334,7 @@ function loop(t: number): void {
   } else {
     controls.update();
   }
-
   bloomSetup.render();
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-
-void loadInitial();
-socket.connect();
