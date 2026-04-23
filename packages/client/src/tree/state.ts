@@ -81,6 +81,14 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         blocked: false,
       };
     }
+    case 'PLACEMENT_BLOCKED': {
+      if (state.kind !== 'placing') return state;
+      return { ...state, blocked: true };
+    }
+    case 'PLACEMENT_OK': {
+      if (state.kind !== 'placing') return state;
+      return { ...state, blocked: false };
+    }
     default:
       return state;
   }

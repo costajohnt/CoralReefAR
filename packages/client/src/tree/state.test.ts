@@ -166,3 +166,37 @@ describe('REROLL_CLICKED', () => {
     expect(next).toBe(s);
   });
 });
+
+describe('PLACEMENT_BLOCKED', () => {
+  test('in placing: sets blocked=true', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    };
+    const next = reduce(s, { type: 'PLACEMENT_BLOCKED' });
+    expect(next).toEqual({ ...s, blocked: true });
+  });
+
+  test('outside placing: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'PLACEMENT_BLOCKED' })).toBe(s);
+  });
+});
+
+describe('PLACEMENT_OK', () => {
+  test('in placing: sets blocked=false', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: true,
+    };
+    const next = reduce(s, { type: 'PLACEMENT_OK' });
+    expect(next).toEqual({ ...s, blocked: false });
+  });
+
+  test('outside placing: no-op', () => {
+    const s = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(s, { type: 'PLACEMENT_OK' })).toBe(s);
+  });
+});
