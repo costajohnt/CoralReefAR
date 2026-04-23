@@ -398,3 +398,77 @@ describe('TREE_RESET_EXTERNAL', () => {
       .toEqual({ kind: 'idle', picker: resetting.picker });
   });
 });
+
+describe('reduce — no-op matrix', () => {
+  // Sample states of each kind, populated with deterministic field values.
+  const samples: Record<TreeState['kind'], TreeState> = {
+    idle: { kind: 'idle', picker: { variant: 'forked', colorKey: 'neon-cyan' } },
+    placing: {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, blocked: false,
+    },
+    submitting: {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10,
+    },
+    resetting: { kind: 'resetting', picker: { variant: 'forked', colorKey: 'neon-cyan' } },
+  };
+
+  // The `valid` matrix lists which action types produce a real transition
+  // (non-identity result) from each state kind.
+  const valid: Record<TreeState['kind'], readonly TreeAction['type'][]> = {
+    idle: ['VARIANT_CHOSEN', 'COLOR_CHOSEN', 'ATTACH_CLICKED', 'CLEAR_CLICKED', 'TREE_RESET_EXTERNAL'],
+    placing: [
+      'VARIANT_CHOSEN', 'COLOR_CHOSEN', 'ATTACH_CLICKED', 'REROLL_CLICKED',
+      'PLACEMENT_BLOCKED', 'PLACEMENT_OK', 'CANCEL_CLICKED', 'GROW_CLICKED',
+      'CLEAR_CLICKED', 'TREE_RESET_EXTERNAL',
+    ],
+    submitting: [
+      'VARIANT_CHOSEN', 'COLOR_CHOSEN',
+      'COMMIT_RESOLVED', 'COMMIT_REJECTED',
+      'CLEAR_CLICKED', 'TREE_RESET_EXTERNAL',
+    ],
+    resetting: [
+      'VARIANT_CHOSEN', 'COLOR_CHOSEN',
+      'RESET_RESOLVED', 'RESET_REJECTED',
+      'TREE_RESET_EXTERNAL',
+    ],
+  };
+
+  // Every TreeAction shape with sample payload, enumerated once.
+  const allActions: TreeAction[] = [
+    { type: 'VARIANT_CHOSEN', variant: 'claw', seed: 1 },
+    { type: 'COLOR_CHOSEN', colorKey: 'neon-magenta' },
+    { type: 'ATTACH_CLICKED', parentId: 1, attachIndex: 0, seed: 1 },
+    { type: 'REROLL_CLICKED', variant: 'wishbone', seed: 2 },
+    { type: 'PLACEMENT_BLOCKED' },
+    { type: 'PLACEMENT_OK' },
+    { type: 'CANCEL_CLICKED' },
+    { type: 'GROW_CLICKED' },
+    { type: 'COMMIT_RESOLVED' },
+    { type: 'COMMIT_REJECTED', error: 'x' },
+    { type: 'CLEAR_CLICKED' },
+    { type: 'RESET_RESOLVED' },
+    { type: 'RESET_REJECTED', error: 'x' },
+    { type: 'TREE_RESET_EXTERNAL' },
+  ];
+
+  for (const kind of Object.keys(samples) as Array<TreeState['kind']>) {
+    const state = samples[kind];
+    for (const action of allActions) {
+      const expectIdentity = !valid[kind].includes(action.type);
+      test(`${kind} + ${action.type} → ${expectIdentity ? 'identity' : 'transition'}`, () => {
+        const next = reduce(state, action);
+        if (expectIdentity) {
+          expect(next).toBe(state);
+        } else {
+          // For covered transitions we already assert specifics elsewhere;
+          // here just ensure we *didn't* return identity.
+          expect(next).not.toBe(state);
+        }
+      });
+    }
+  }
+});
