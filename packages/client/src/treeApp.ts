@@ -27,7 +27,17 @@ export interface TreeAppOptions {
   statusEl: HTMLElement;
 }
 
-const SCALE = 5;
+const DEFAULT_SCALE = 5;
+
+/** Read a positive-finite `?scale=N` override from the URL. Falls back
+ *  to DEFAULT_SCALE if missing or malformed. Exists so field testing
+ *  can tune room-filling size without a rebuild. */
+function readScaleFromUrl(): number {
+  const raw = new URLSearchParams(globalThis.location?.search ?? '').get('scale');
+  if (!raw) return DEFAULT_SCALE;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_SCALE;
+}
 
 const SWAY_INSTALLED = Symbol('sway-installed');
 const PULSE_INSTALLED = Symbol('pulse-installed');
@@ -58,12 +68,14 @@ export class TreeApp {
   private readonly hintEl: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly apiBase: string;
+  private readonly anchorScale: number;
 
   constructor(readonly opts: TreeAppOptions) {
     this.statusEl = opts.statusEl;
 
     const params = new URLSearchParams(globalThis.location?.search ?? '');
     this.apiBase = params.get('api') ?? '';
+    this.anchorScale = readScaleFromUrl();
 
     this.renderer = new WebGLRenderer({
       canvas: opts.canvas,
@@ -127,7 +139,7 @@ export class TreeApp {
     });
 
     this.tracker.onAnchorFound(({ pose }) => {
-      applyAnchorPose(this.treeReef.anchor, pose.elements, SCALE);
+      applyAnchorPose(this.treeReef.anchor, pose.elements, this.anchorScale);
       this.treeReef.anchor.visible = true;
       this.setStatus('Tap a glowing dot to attach your branch.');
       this.picker.show();
