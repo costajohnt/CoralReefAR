@@ -96,10 +96,15 @@ export class TreeApp {
   }
 
   async start(): Promise<void> {
-    this.setStatus('Starting camera…');
-    await this.startCamera();
-
     const preferred = readTrackerFromUrl();
+    // Noop tracker renders into the canvas without a video feed; skipping
+    // camera init makes desktop + headless testing viable without real
+    // permissions or a real camera device.
+    if (preferred !== 'noop') {
+      this.setStatus('Starting camera…');
+      await this.startCamera();
+    }
+
     if (preferred === 'auto' || preferred === 'eightwall') {
       await EightWallProvider.waitUntilReady();
     }
