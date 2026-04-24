@@ -15,14 +15,20 @@ Related docs:
 
 ## Current state
 
-- **Main branch CI**: green. 313 tests pass across 4 packages (shared 19 /
-  generator 54 / server 92 / client 148).
+- **Main branch CI**: green. 434 tests pass across 4 packages (shared 21 /
+  generator 54 / server 99 / client 334 as of tree-overnight tip; +121
+  from the mid-April baseline as the tree surface has grown).
 - **Deployed version**: v0.4.0 live on the Beelink LXC at
-  `https://reef.home.local/`. Three surfaces available:
-  `index.html` (AR, phone), `playground.html` (orbit camera, desktop),
-  `playground.html?mode=screen` (auto-orbit, museum display).
-- **Latest**: tree mode (third surface) — fully implemented. Phase 2
-  (AR client migration) ahead.
+  `https://reef.home.local/`. Three surfaces available on main:
+  `index.html` (AR landscape, phone), `playground.html` (orbit camera,
+  desktop), `playground.html?mode=screen` (auto-orbit, museum display),
+  `tree.html` (desktop tree sandbox — PRs #73-#77).
+- **In flight on `tree-overnight`**: Phase A (persisted drag yaw,
+  committed) + Phase B (AR client reads tree data — in progress via
+  background agent). Not yet a PR. See
+  `docs/superpowers/specs/2026-04-24-ar-phase-2-migration.md` for design
+  rationale and `docs/superpowers/plans/2026-04-24-ar-phase-2-migration.md`
+  for task breakdown.
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
   @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
   node:25-alpine · happy-dom 19 · Oxlint.
