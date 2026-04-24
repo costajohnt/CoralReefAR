@@ -112,8 +112,40 @@ function addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
 // ------------------------------------------------------------------
 // Spawnable sea life — empty by default.
 // ------------------------------------------------------------------
+type CreatureType = 'shark' | 'clownfish' | 'jellyfish' | 'seaTurtle';
 interface SwimmingCreature { update: (clockSec: number) => void; }
-const creatures: SwimmingCreature[] = [];
+interface TrackedCreature {
+  type: CreatureType;
+  instance: SwimmingCreature;
+  group: import('three').Group;
+}
+const creatures: TrackedCreature[] = [];
+
+function removeCreature(type: CreatureType): boolean {
+  const idx = [...creatures].map((c, i) => ({ c, i })).reverse()
+    .find(({ c }) => c.type === type)?.i ?? -1;
+  if (idx === -1) return false;
+  const [removed] = creatures.splice(idx, 1);
+  if (!removed) return false;
+  scene.remove(removed.group);
+  removed.group.traverse((obj) => {
+    const mesh = obj as import('three').Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose();
+      if (Array.isArray(mesh.material)) {
+        for (const m of mesh.material) (m as import('three').Material).dispose();
+      } else {
+        (mesh.material as import('three').Material | undefined)?.dispose();
+      }
+    }
+  });
+  return true;
+}
+
+function countCreatures(type: CreatureType): number {
+  return creatures.filter((c) => c.type === type).length;
+}
+
 function spawnShark(): void {
   const s = new Shark({
     orbitRadius: 0.25 + Math.random() * 0.15,
@@ -123,7 +155,7 @@ function spawnShark(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(s.group);
-  creatures.push(s);
+  creatures.push({ type: 'shark', instance: s, group: s.group });
 }
 function spawnClownfish(): void {
   const c = new Clownfish({
@@ -134,7 +166,7 @@ function spawnClownfish(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(c.group);
-  creatures.push(c);
+  creatures.push({ type: 'clownfish', instance: c, group: c.group });
 }
 function spawnJellyfish(): void {
   const j = new Jellyfish({
@@ -145,7 +177,7 @@ function spawnJellyfish(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(j.group);
-  creatures.push(j);
+  creatures.push({ type: 'jellyfish', instance: j, group: j.group });
 }
 function spawnSeaTurtle(): void {
   const t = new SeaTurtle({
@@ -156,7 +188,7 @@ function spawnSeaTurtle(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(t.group);
-  creatures.push(t);
+  creatures.push({ type: 'seaTurtle', instance: t, group: t.group });
 }
 
 // ------------------------------------------------------------------
@@ -364,7 +396,7 @@ socket.connect();
 function loop(t: number): void {
   const tSec = t / 1000;
   swayClock.value = tSec;
-  for (const c of creatures) c.update(tSec);
+  for (const c of creatures) c.instance.update(tSec);
 
   if (config.mode === 'screen') {
     const pose = computeOrbitPose(tSec);
