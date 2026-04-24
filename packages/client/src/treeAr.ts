@@ -1,8 +1,4 @@
 import { TreeApp } from './treeApp.js';
-import { readTreeConfig } from './tree/config.js';
-
-const config = readTreeConfig();
-void config;
 
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
 const landing = document.getElementById('landing')!;
