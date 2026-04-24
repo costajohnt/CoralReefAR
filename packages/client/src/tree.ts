@@ -336,9 +336,20 @@ socket.on((msg) => {
     treeReef.addPiece(msg.polyp);
     installEffectsOnNewPieces();
     attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+    // If someone built on top of our last commit, we can no longer undo it
+    // (the server enforces leaf-only deletes). Invalidate lastCommittedId.
+    if (
+      state.kind !== 'undoing' &&
+      'lastCommittedId' in state &&
+      state.lastCommittedId !== null &&
+      msg.polyp.parentId === state.lastCommittedId
+    ) {
+      dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
+    }
   } else if (msg.type === 'tree_polyp_removed') {
     treeReef.removePiece(msg.id);
     attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+    dispatch({ type: 'TREE_POLYP_REMOVED_EXTERNAL', id: msg.id });
   } else if (msg.type === 'tree_reset') {
     treeReef.clear();
     attachIndicators.refresh([]);
