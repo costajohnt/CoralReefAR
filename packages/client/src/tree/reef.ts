@@ -62,7 +62,12 @@ export class TreeReef {
         attach.normal.y,
         attach.normal.z,
       ).normalize();
-      const quat = new Quaternion().setFromUnitVectors(localUp, targetNormal);
+      const alignQuat = new Quaternion().setFromUnitVectors(localUp, targetNormal);
+
+      // Optional yaw around the attach-point normal (drag-rotation at commit).
+      // Applied after alignment so the piece spins in-plane on its mounting point.
+      const yawQuat = new Quaternion().setFromAxisAngle(targetNormal, polyp.attachYaw);
+      const quat = yawQuat.multiply(alignQuat);
 
       const position = new Vector3(attach.position.x, attach.position.y, attach.position.z);
       matrix.compose(position, quat, new Vector3(1, 1, 1));

@@ -33,13 +33,13 @@ describe('VARIANT_CHOSEN', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'wishbone', seed: 99 });
     expect(next).toEqual({
       kind: 'placing',
       picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 99, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 99, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 
@@ -47,13 +47,13 @@ describe('VARIANT_CHOSEN', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'VARIANT_CHOSEN', variant: 'trident', seed: 42 });
     expect(next).toEqual({
       kind: 'submitting',
       picker: { variant: 'trident', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 42, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 42, yawRad: 0, lastCommittedId: null,
     });
   });
 
@@ -89,13 +89,13 @@ describe('COLOR_CHOSEN', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'COLOR_CHOSEN', colorKey: 'neon-lime' });
     expect(next).toEqual({
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-lime' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 });
@@ -107,7 +107,7 @@ describe('ATTACH_CLICKED', () => {
     expect(next).toEqual({
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 5, attachIndex: 2, seed: 77, blocked: false, lastCommittedId: null,
+      parentId: 5, attachIndex: 2, seed: 77, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 
@@ -121,13 +121,13 @@ describe('ATTACH_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: true, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: true, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 3, attachIndex: 1, seed: 55 });
     expect(next).toEqual({
       kind: 'placing',
       picker: { variant: 'wishbone', colorKey: 'neon-cyan' },
-      parentId: 3, attachIndex: 1, seed: 55, blocked: false, lastCommittedId: null,
+      parentId: 3, attachIndex: 1, seed: 55, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 
@@ -135,7 +135,7 @@ describe('ATTACH_CLICKED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 9, attachIndex: 9, seed: 9 });
     expect(next).toBe(s);
@@ -157,13 +157,13 @@ describe('REROLL_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: true, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: true, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'REROLL_CLICKED', variant: 'claw', seed: 42 });
     expect(next).toEqual({
       kind: 'placing',
       picker: { variant: 'claw', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 42, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 42, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 
@@ -177,10 +177,69 @@ describe('REROLL_CLICKED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'REROLL_CLICKED', variant: 'claw', seed: 42 });
     expect(next).toBe(s);
+  });
+});
+
+describe('GHOST_ROTATED', () => {
+  test('in placing: accumulates deltaRad onto yawRad', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0.2, blocked: false, lastCommittedId: null,
+    };
+    const next = reduce(s, { type: 'GHOST_ROTATED', deltaRad: 0.3 });
+    expect(next).toEqual({ ...s, yawRad: 0.5 });
+  });
+
+  test('supports negative deltas', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 1, blocked: false, lastCommittedId: null,
+    };
+    const next = reduce(s, { type: 'GHOST_ROTATED', deltaRad: -0.4 });
+    expect((next as typeof s).yawRad).toBeCloseTo(0.6);
+  });
+
+  test('ATTACH_CLICKED resets yaw to 0 even when re-entering placing', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 2, blocked: false, lastCommittedId: null,
+    };
+    const next = reduce(s, { type: 'ATTACH_CLICKED', parentId: 3, attachIndex: 1, seed: 99 });
+    expect((next as typeof s).yawRad).toBe(0);
+  });
+
+  test('GROW_CLICKED carries yaw into submitting', () => {
+    const s: TreeState = {
+      kind: 'placing',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0.7, blocked: false, lastCommittedId: null,
+    };
+    const next = reduce(s, { type: 'GROW_CLICKED' });
+    expect(next.kind).toBe('submitting');
+    if (next.kind === 'submitting') expect(next.yawRad).toBe(0.7);
+  });
+
+  test('COMMIT_REJECTED carries yaw back into placing (so user can retry without re-rotating)', () => {
+    const s: TreeState = {
+      kind: 'submitting',
+      picker: { variant: 'forked', colorKey: 'neon-cyan' },
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0.9, lastCommittedId: null,
+    };
+    const next = reduce(s, { type: 'COMMIT_REJECTED', error: 'boom' });
+    expect(next.kind).toBe('placing');
+    if (next.kind === 'placing') expect(next.yawRad).toBe(0.9);
+  });
+
+  test('outside placing: no-op', () => {
+    const idle = initialState({ variant: 'forked', colorKey: 'neon-cyan' });
+    expect(reduce(idle, { type: 'GHOST_ROTATED', deltaRad: 1 })).toBe(idle);
   });
 });
 
@@ -189,7 +248,7 @@ describe('PLACEMENT_BLOCKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'PLACEMENT_BLOCKED' });
     expect(next).toEqual({ ...s, blocked: true });
@@ -206,7 +265,7 @@ describe('PLACEMENT_OK', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: true, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: true, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'PLACEMENT_OK' });
     expect(next).toEqual({ ...s, blocked: false });
@@ -223,7 +282,7 @@ describe('CANCEL_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'CANCEL_CLICKED' });
     expect(next).toEqual({ kind: 'idle', picker: s.picker, lastCommittedId: null });
@@ -233,7 +292,7 @@ describe('CANCEL_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: 7,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: 7,
     };
     const next = reduce(s, { type: 'CANCEL_CLICKED' });
     expect(next).toMatchObject({ kind: 'idle', lastCommittedId: 7 });
@@ -244,7 +303,7 @@ describe('CANCEL_CLICKED', () => {
     const submitting: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const resetting: TreeState = {
       kind: 'resetting',
@@ -262,13 +321,13 @@ describe('GROW_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'GROW_CLICKED' });
     expect(next).toEqual({
       kind: 'submitting',
       picker: s.picker,
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     });
   });
 
@@ -276,7 +335,7 @@ describe('GROW_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: true, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: true, lastCommittedId: null,
     };
     expect(reduce(s, { type: 'GROW_CLICKED' })).toBe(s);
   });
@@ -286,7 +345,7 @@ describe('GROW_CLICKED', () => {
     const submitting: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     expect(reduce(idle, { type: 'GROW_CLICKED' })).toBe(idle);
     expect(reduce(submitting, { type: 'GROW_CLICKED' })).toBe(submitting);
@@ -298,7 +357,7 @@ describe('COMMIT_RESOLVED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'COMMIT_RESOLVED', polypId: 42 });
     expect(next).toEqual({ kind: 'idle', picker: s.picker, lastCommittedId: 42 });
@@ -315,13 +374,13 @@ describe('COMMIT_REJECTED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'COMMIT_REJECTED', error: 'boom' });
     expect(next).toEqual({
       kind: 'placing',
       picker: s.picker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     });
   });
 
@@ -329,7 +388,7 @@ describe('COMMIT_REJECTED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: 5,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: 5,
     };
     const next = reduce(s, { type: 'COMMIT_REJECTED', error: 'boom' });
     expect(next).toMatchObject({ kind: 'placing', lastCommittedId: 5 });
@@ -352,7 +411,7 @@ describe('CLEAR_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'CLEAR_CLICKED' });
     expect(next).toEqual({ kind: 'resetting', picker: s.picker, lastCommittedId: null });
@@ -362,7 +421,7 @@ describe('CLEAR_CLICKED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     };
     const next = reduce(s, { type: 'CLEAR_CLICKED' });
     expect(next).toEqual({ kind: 'resetting', picker: s.picker, lastCommittedId: null });
@@ -418,12 +477,12 @@ describe('TREE_RESET_EXTERNAL', () => {
     const placing: TreeState = {
       kind: 'placing',
       picker: { variant: 'wishbone', colorKey: 'neon-lime' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     const submitting: TreeState = {
       kind: 'submitting',
       picker: { variant: 'claw', colorKey: 'neon-violet' },
-      parentId: 2, attachIndex: 1, seed: 20, lastCommittedId: null,
+      parentId: 2, attachIndex: 1, seed: 20, yawRad: 0, lastCommittedId: null,
     };
     const resetting: TreeState = {
       kind: 'resetting',
@@ -460,7 +519,7 @@ describe('UNDO_CLICKED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: 5,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: 5,
     };
     expect(reduce(s, { type: 'UNDO_CLICKED' })).toBe(s);
   });
@@ -469,7 +528,7 @@ describe('UNDO_CLICKED', () => {
     const s: TreeState = {
       kind: 'submitting',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: 5,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: 5,
     };
     expect(reduce(s, { type: 'UNDO_CLICKED' })).toBe(s);
   });
@@ -501,7 +560,7 @@ describe('UNDO_RESOLVED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     };
     expect(reduce(s, { type: 'UNDO_RESOLVED' })).toBe(s);
   });
@@ -541,7 +600,7 @@ describe('TREE_POLYP_REMOVED_EXTERNAL', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: 7,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: 7,
     };
     const next = reduce(s, { type: 'TREE_POLYP_REMOVED_EXTERNAL', id: 7 });
     expect(next).toMatchObject({ kind: 'placing', lastCommittedId: null });
@@ -569,7 +628,7 @@ describe('LAST_COMMITTED_INVALIDATED', () => {
     const s: TreeState = {
       kind: 'placing',
       picker: idlePicker,
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: 5,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: 5,
     };
     const next = reduce(s, { type: 'LAST_COMMITTED_INVALIDATED' });
     expect(next).toMatchObject({ kind: 'placing', lastCommittedId: null });
@@ -587,12 +646,12 @@ describe('reduce — no-op matrix', () => {
     placing: {
       kind: 'placing',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, blocked: false, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, blocked: false, lastCommittedId: null,
     },
     submitting: {
       kind: 'submitting',
       picker: { variant: 'forked', colorKey: 'neon-cyan' },
-      parentId: 1, attachIndex: 0, seed: 10, lastCommittedId: null,
+      parentId: 1, attachIndex: 0, seed: 10, yawRad: 0, lastCommittedId: null,
     },
     resetting: { kind: 'resetting', picker: { variant: 'forked', colorKey: 'neon-cyan' }, lastCommittedId: null },
     undoing: { kind: 'undoing', picker: { variant: 'forked', colorKey: 'neon-cyan' }, polypId: 1 },

@@ -12,6 +12,8 @@ export interface InsertRootInput {
 export interface InsertChildInput extends InsertRootInput {
   parentId: number;
   attachIndex: number;
+  /** Radians around the parent attach-point normal. 0 = canonical orientation. */
+  attachYaw?: number;
 }
 
 export interface SoftDeleteResult {
@@ -40,8 +42,8 @@ export class TreeDb {
 
     this.stmt = {
       insert: this.db.prepare(
-        `INSERT INTO tree_polyps (variant, seed, color_key, parent_id, attach_index, created_at, device_hash)
-         VALUES (@variant, @seed, @colorKey, @parentId, @attachIndex, @createdAt, @deviceHash)`,
+        `INSERT INTO tree_polyps (variant, seed, color_key, parent_id, attach_index, attach_yaw, created_at, device_hash)
+         VALUES (@variant, @seed, @colorKey, @parentId, @attachIndex, @attachYaw, @createdAt, @deviceHash)`,
       ),
       findParent: this.db.prepare(
         'SELECT id FROM tree_polyps WHERE id = ? AND deleted = 0',
@@ -88,6 +90,7 @@ export class TreeDb {
       colorKey: input.colorKey,
       parentId: null,
       attachIndex: 0,
+      attachYaw: 0,
       createdAt,
       deviceHash: input.deviceHash ?? null,
     });
@@ -108,6 +111,7 @@ export class TreeDb {
       colorKey: input.colorKey,
       parentId: input.parentId,
       attachIndex: input.attachIndex,
+      attachYaw: input.attachYaw ?? 0,
       createdAt,
       deviceHash: input.deviceHash ?? null,
     });
@@ -145,6 +149,7 @@ export class TreeDb {
       colorKey: row.color_key,
       parentId: row.parent_id,
       attachIndex: row.attach_index,
+      attachYaw: row.attach_yaw ?? 0,
       createdAt: row.created_at,
     };
   }
@@ -157,6 +162,7 @@ interface DbRow {
   color_key: string;
   parent_id: number | null;
   attach_index: number;
+  attach_yaw: number | null;
   created_at: number;
   device_hash: string | null;
   deleted: number;

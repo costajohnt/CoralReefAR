@@ -56,6 +56,26 @@ describe('TreeDb.insertChild', () => {
       variant: 'forked', seed: 2, colorKey: 'x', parentId: root.id, attachIndex: 0,
     }), /parent not found/i);
   });
+
+  test('stores and returns attachYaw (radians) when provided', () => {
+    const { tree } = makeDb();
+    const root = tree.insertRoot({ variant: 'starburst', seed: 1, colorKey: 'x' });
+    const child = tree.insertChild({
+      variant: 'forked', seed: 2, colorKey: 'x',
+      parentId: root.id, attachIndex: 1, attachYaw: 1.25,
+    });
+    assert.equal(child.attachYaw, 1.25);
+  });
+
+  test('defaults attachYaw to 0 when omitted', () => {
+    const { tree } = makeDb();
+    const root = tree.insertRoot({ variant: 'starburst', seed: 1, colorKey: 'x' });
+    const child = tree.insertChild({
+      variant: 'forked', seed: 2, colorKey: 'x',
+      parentId: root.id, attachIndex: 0,
+    });
+    assert.equal(child.attachYaw, 0);
+  });
 });
 
 describe('TreeDb.listLive', () => {

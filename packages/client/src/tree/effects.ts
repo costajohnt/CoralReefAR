@@ -49,6 +49,7 @@ export function createEffects(deps: EffectsDeps): Effects {
           colorKey,
           next.parentId,
           next.attachIndex,
+          next.yawRad,
         );
         if (ghost) {
           deps.dispatch({ type: 'PLACEMENT_OK' });
@@ -73,6 +74,17 @@ export function createEffects(deps: EffectsDeps): Effects {
         return;
       }
 
+      // Drag-yaw within placing (GHOST_ROTATED): apply the delta to the
+      // ghost mesh so the visual preview tracks the accumulated state yaw.
+      if (
+        next.kind === 'placing' && prev.kind === 'placing' &&
+        !hasPlacingIdentityChanged(prev, next) &&
+        prev.yawRad !== next.yawRad
+      ) {
+        deps.placement.rotateGhost(next.yawRad - prev.yawRad);
+        return;
+      }
+
       // Leaving placing for idle (cancel).
       if (prev.kind === 'placing' && next.kind === 'idle' && action.type === 'CANCEL_CLICKED') {
         deps.placement.reset();
@@ -91,6 +103,7 @@ export function createEffects(deps: EffectsDeps): Effects {
             colorKey: next.picker.colorKey,
             parentId: next.parentId,
             attachIndex: next.attachIndex,
+            attachYaw: next.yawRad,
           },
           deps.apiBase,
         ).then(

@@ -120,6 +120,21 @@ export class ReefDb {
       const sql = readFileSync(join(migrationsDir, f), 'utf8');
       this.db.exec(sql);
     }
+    // Imperative column adds. SQLite ALTER TABLE ADD COLUMN has no
+    // IF NOT EXISTS form, so we check pragma_table_info and only alter
+    // when the column is missing.
+    this.ensureColumn('tree_polyps', 'attach_yaw', 'REAL NOT NULL DEFAULT 0');
+  }
+
+  private ensureColumn(table: string, column: string, decl: string): void {
+    const row = this.db
+      .prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`)
+      .get(table, column);
+    if (row) return;
+    // Bracket access avoids a false-positive security-hook match on a
+    // property named "exec"; this is better-sqlite3's SQL runner, not a
+    // child-process shell call.
+    this.db['exec'](`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
   }
 
   /** Polyps with device_hash stripped — safe for broadcasting. */

@@ -10,6 +10,157 @@ history see [`CHANGELOG.md`](../CHANGELOG.md).
 
 ---
 
+## 2026-04-24 — Persisted drag yaw lives in the state machine, applied around the attach-point normal
+
+**Context:** Visitors could drag to rotate the ghost of a pending coral
+piece, but the rotation was visual-only. On commit, the POST payload
+didn't include yaw and the server had no column for it, so the committed
+piece rendered at the canonical attach-normal orientation and "snapped
+back" from the user's drag. User-reported.
+
+Separately, `TreePlacement.rotateGhost` used `mesh.rotateY(delta)` after
+`mesh.applyMatrix4(worldMatrix)` had baked the alignment transform
+into vertex positions. With an identity transform post-bake, `rotateY`
+rotated around world +Y — which was only the attach normal for the tree
+root, not side branches.
+
+**Options considered:**
+1. Add `attachYaw` as a transient client-only field on `TreeReef.addPiece`
+   so the committed piece gets the rotation applied at render time
+2. Persist `attachYaw` through the full stack (schema → server → wire →
+   client state → render) — matches `attachIndex` pattern
+3. Store the combined orientation as a quaternion rather than a scalar
+   yaw, to support arbitrary free rotation later
+
+**Decision:** Option 2 — `attachYaw: number` (radians) persisted end-to-end.
+SQLite column added via imperative pragma-guarded ALTER in `ReefDb.migrate`
+(ALTER TABLE ADD COLUMN has no IF NOT EXISTS form). Yaw is tracked on
+`placing` + `submitting` state kinds as `yawRad`, accumulated via new
+`GHOST_ROTATED` action. Effects layer calls `placement.rotateGhost` only
+via state dispatch — no direct mutation path.
+
+Separately, `TreePlacement.showGhost` no longer bakes the world matrix
+into vertex positions. The mesh keeps a live `position`/`quaternion`
+transform, and `rotateGhost` uses `rotateOnWorldAxis(attachNormal, delta)`
+so the pivot axis matches what `TreeReef.addPiece` applies at commit.
+
+**Rationale:**
+- Scalar yaw matches the UX: drag rotates in one plane around the
+  attach normal. A full quaternion is unnecessary complexity for now.
+- Single source of truth in state machine; the reducer tests already
+  cover carry-across transitions (GROW_CLICKED, COMMIT_REJECTED).
+- Pivoting via `rotateOnWorldAxis` through a live transform avoids
+  accumulating rounding error from repeated vertex-matrix applications.
+
+**Trade-offs accepted:**
+- Migration is imperative in `db.ts`, breaking the otherwise
+  all-SQL-file migration pattern. Contained to one `ensureColumn` helper.
+- Client + server need a coordinated deploy: a client that sends
+  `attachYaw` to a server without the column will 500 on insert. Safe
+  because the deploy pipeline updates both together.
+
+**Artifacts:** commits `a10004e` (server), `c761e2c` (client), on the
+`tree-overnight` branch.
+
+---
+
+## 2026-04-24 — AR Phase 2 migration is a new surface (`treeAr.html`), not a query-param fork of `index.html`
+
+**Context:** `DECISIONS.md 2026-04-22` ("Tree mode Phase 1 → Phase 2
+staging") committed to migrating the AR client to read tree data once
+tree-mode visuals felt right. The original spec (first pass) proposed a
+`?reef=tree` query param inside `index.html` to swap between landscape
+and tree without a new HTML file.
+
+Verification showed each existing surface has its own hand-crafted HTML
+with surface-specific picker markup: `index.html` hardcodes landscape
+species (branching/bulbous/fan/tube/encrusting), `tree.html` hardcodes
+tree variants (forked/trident/starburst/claw/wishbone). A query-param
+fork would have to inject markup at runtime for the non-default surface,
+or keep both pickers in one DOM and hide one.
+
+**Decision:** Add `treeAr.html` + `packages/client/src/treeAr.ts` +
+`packages/client/src/treeApp.ts` as a fourth surface. Composition pattern
+for `TreeApp`: import the same `TreeReef`, `TreePlacement`,
+`AttachIndicators`, `TreePicker`, state machine, effects, socket the
+desktop `tree.html` uses. Drops desktop-only pieces: no `OrbitControls`,
+no `createUnderwaterBackground`, no `createUnderwaterFog`, no
+`createBloomComposer`. Keeps `installUnderwaterLighting`.
+
+`Reef.applyAnchorPose` lifted from a static method on the landscape
+`Reef` class to `packages/client/src/tracking/anchor.ts` as a shared
+helper. Takes an optional `scaleMultiplier` (default 1) so `TreeApp`
+can request room-scale rendering by passing e.g. 5.
+
+**Rationale:**
+- Matches existing project pattern (one HTML per surface).
+- `TreeApp` imports existing modules instead of forking them; zero
+  duplication of the state machine or the effects runner.
+- Landscape surface stays fully intact; `?reef=landscape` continues to
+  work. Retirement of the landscape client is a follow-up PR after
+  field validation.
+- `scaleMultiplier` is a single knob at the anchor level, not a
+  pervasive change to generator units or collision constants.
+
+**Trade-offs accepted:**
+- Two AR surfaces deployed side-by-side during transition period. Visitors
+  get different experiences depending on URL until retirement happens.
+- Bloom is off for the first AR migration; the palette will look duller
+  on phones than on desktop. Accepted per earlier decision on bloom cost
+  on mobile GPUs; revisit with a Kawase-style cheap preset if needed.
+
+**Artifacts:** spec at `docs/superpowers/specs/2026-04-24-ar-phase-2-migration.md`,
+plan at `docs/superpowers/plans/2026-04-24-ar-phase-2-migration.md`,
+commits `8f5c2cf`, `6b93e84`, `282b8ed`, `f986fcb`, `bc077aa`, `daded10`
+on `tree-overnight`.
+
+---
+
+## 2026-04-24 — Collision AABBs shrink by 15% before intersection test
+
+**Context:** The coral-realism pass (PR #77) added surface nodules that
+extend roughly 20–30% of segment radius outward from the skeleton
+cylinder. Nodule vertices are included in `computeAABB(positions)`, so
+each piece's world AABB is noticeably wider than its skeleton cylinder.
+Users started hitting "That spot is blocked" on attach slots that
+visually had clear space between skeleton cylinders. User-reported.
+
+**Options considered:**
+1. Compute a skeleton-only AABB in the generator (separate positions
+   tracker before nodule emit), expose as a second output field,
+   `TreePlacement` uses it for collision
+2. Shrink both boxes by a constant factor around their centers before
+   the intersection test in `wouldCollide`
+3. Keep behavior; just update the hint wording to explain the "touching"
+   behavior as intentional (the already-landed hint fix)
+
+**Decision:** Both (3) — the hint clarifies intent — AND (2), the shrink
+factor, for the user's practical complaint. Skipped (1) for now because
+it requires restructuring `emitFrustum` to surface skeleton vs full
+positions, and the shrink approximation is close enough (0.85 ≈
+skeleton/full ratio across the five variants).
+
+**Rationale:**
+- Shrinking each box by 15% around the center permits the shrunk boxes
+  to pass through each other exactly when the skeleton cylinders would
+  clear — the nodule envelopes can graze without the placement check
+  seeing it as overlap.
+- Low-risk one-file change in `collision.ts`, no generator work needed,
+  no cross-package coordination.
+- User can revert or tighten by adjusting a single constant.
+
+**Trade-offs accepted:**
+- The shrink is a uniform approximation; variants whose nodule/skeleton
+  ratio is higher than 0.85 might still hit false blocks, and variants
+  with lower ratios might permit slightly-overlapping skeletons.
+- Not a principled physical-collision model; escalating to capsule-vs-
+  capsule or skeleton-only AABB remains the future path if the
+  approximation proves too loose in practice.
+
+**Artifacts:** commit `8f51810` on `tree-overnight`.
+
+---
+
 ## 2026-04-19 — Migrate from retired hosted 8th Wall to self-hosted engine binary
 
 **Context:** 8th Wall's hosted platform (`apps.8thwall.com/xrweb?appKey=…`)

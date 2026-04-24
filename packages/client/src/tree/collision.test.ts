@@ -13,15 +13,27 @@ describe('wouldCollide', () => {
     expect(wouldCollide(proposed, others)).toBe(false);
   });
 
-  test('returns true when the proposal overlaps any existing box', () => {
+  test('returns true when a proposal deeply overlaps an existing box', () => {
     const proposed = box(0, 0, 0, 1, 1, 1);
-    const others = [box(2, 0, 0, 3, 1, 1), box(0.5, 0.5, 0.5, 1.5, 1.5, 1.5)];
+    // Overlap is >15% per side, well past the shrink tolerance.
+    const others = [box(2, 0, 0, 3, 1, 1), box(0.3, 0.3, 0.3, 1.3, 1.3, 1.3)];
     expect(wouldCollide(proposed, others)).toBe(true);
   });
 
-  test('touching boxes at a shared face count as intersecting (Three.js behavior)', () => {
+  test('boxes touching at a shared face do NOT collide (shrink tolerance)', () => {
+    // Shrink factor intentionally permits coral-nodule grazing on the
+    // AABB surface. Two unit boxes sharing x=1 have shrunk extents
+    // [0.075, 0.925] and [1.075, 1.925] — clear of each other.
     const proposed = box(0, 0, 0, 1, 1, 1);
-    const others = [box(1, 0, 0, 2, 1, 1)];  // shares the x=1 face
+    const others = [box(1, 0, 0, 2, 1, 1)];
+    expect(wouldCollide(proposed, others)).toBe(false);
+  });
+
+  test('boxes that overlap past the shrink tolerance still collide', () => {
+    // Centers 0.8 apart on X, shrunk half-extent 0.425: shrunk boxes
+    // cover [0.075, 0.925] and [0.875, 1.725] — overlap 0.05 on X.
+    const proposed = box(0, 0, 0, 1, 1, 1);
+    const others = [box(0.8, 0, 0, 1.8, 1, 1)];
     expect(wouldCollide(proposed, others)).toBe(true);
   });
 

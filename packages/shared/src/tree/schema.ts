@@ -10,6 +10,11 @@ export const TreePolypInputSchema = z.object({
   colorKey: z.string().min(1).max(32),
   parentId: z.number().int().positive().nullable(),
   attachIndex: z.number().int().min(0).max(3),  // max 4 tips (starburst) = indices 0-3
+  // Radians around the parent attach-point normal. Optional for backwards
+  // compatibility with older clients; defaults to 0 (canonical orientation).
+  attachYaw: z.number().finite().optional().default(0),
 });
 
-export type TreePolypInput = z.infer<typeof TreePolypInputSchema>;
+// z.input — the shape clients construct before parse. attachYaw is optional
+// here (defaults to 0 post-parse on the server side).
+export type TreePolypInput = z.input<typeof TreePolypInputSchema>;

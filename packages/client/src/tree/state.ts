@@ -13,6 +13,7 @@ export type TreeState =
       parentId: number;
       attachIndex: number;
       seed: number;
+      yawRad: number;
       blocked: boolean;
       lastCommittedId: number | null;
     }
@@ -22,6 +23,7 @@ export type TreeState =
       parentId: number;
       attachIndex: number;
       seed: number;
+      yawRad: number;
       lastCommittedId: number | null;
     }
   | { kind: 'resetting'; picker: PickerSelection; lastCommittedId: number | null }
@@ -46,7 +48,8 @@ export type TreeAction =
   | { type: 'UNDO_RESOLVED' }
   | { type: 'UNDO_REJECTED'; error: string }
   | { type: 'TREE_POLYP_REMOVED_EXTERNAL'; id: number }
-  | { type: 'LAST_COMMITTED_INVALIDATED' };
+  | { type: 'LAST_COMMITTED_INVALIDATED' }
+  | { type: 'GHOST_ROTATED'; deltaRad: number };
 
 export function initialState(picker: PickerSelection): TreeState {
   return { kind: 'idle', picker, lastCommittedId: null };
@@ -76,6 +79,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
           parentId: action.parentId,
           attachIndex: action.attachIndex,
           seed: action.seed,
+          yawRad: 0,
           blocked: false,
           lastCommittedId: state.lastCommittedId,
         };
@@ -90,6 +94,10 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         seed: action.seed,
         blocked: false,
       };
+    }
+    case 'GHOST_ROTATED': {
+      if (state.kind !== 'placing') return state;
+      return { ...state, yawRad: state.yawRad + action.deltaRad };
     }
     case 'PLACEMENT_BLOCKED': {
       if (state.kind !== 'placing') return state;
@@ -111,6 +119,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         parentId: state.parentId,
         attachIndex: state.attachIndex,
         seed: state.seed,
+        yawRad: state.yawRad,
         lastCommittedId: state.lastCommittedId,
       };
     }
@@ -126,6 +135,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         parentId: state.parentId,
         attachIndex: state.attachIndex,
         seed: state.seed,
+        yawRad: state.yawRad,
         blocked: false,
         lastCommittedId: state.lastCommittedId,
       };

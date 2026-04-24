@@ -127,7 +127,7 @@ function removeCreature(type: CreatureType): boolean {
   if (idx === -1) return false;
   const [removed] = creatures.splice(idx, 1);
   if (!removed) return false;
-  scene.remove(removed.group);
+  treeReef.anchor.remove(removed.group);
   removed.group.traverse((obj) => {
     const mesh = obj as import('three').Mesh;
     if (mesh.isMesh) {
@@ -154,7 +154,7 @@ function spawnShark(): void {
     phaseRad: Math.random() * Math.PI * 2,
     direction: Math.random() < 0.5 ? 1 : -1,
   });
-  scene.add(s.group);
+  treeReef.anchor.add(s.group);
   creatures.push({ type: 'shark', instance: s, group: s.group });
 }
 function spawnClownfish(): void {
@@ -165,7 +165,7 @@ function spawnClownfish(): void {
     phaseRad: Math.random() * Math.PI * 2,
     direction: Math.random() < 0.5 ? 1 : -1,
   });
-  scene.add(c.group);
+  treeReef.anchor.add(c.group);
   creatures.push({ type: 'clownfish', instance: c, group: c.group });
 }
 function spawnJellyfish(): void {
@@ -176,7 +176,7 @@ function spawnJellyfish(): void {
     phaseRad: Math.random() * Math.PI * 2,
     direction: Math.random() < 0.5 ? 1 : -1,
   });
-  scene.add(j.group);
+  treeReef.anchor.add(j.group);
   creatures.push({ type: 'jellyfish', instance: j, group: j.group });
 }
 function spawnSeaTurtle(): void {
@@ -187,7 +187,7 @@ function spawnSeaTurtle(): void {
     phaseRad: Math.random() * Math.PI * 2,
     direction: Math.random() < 0.5 ? 1 : -1,
   });
-  scene.add(t.group);
+  treeReef.anchor.add(t.group);
   creatures.push({ type: 'seaTurtle', instance: t, group: t.group });
 }
 
@@ -330,7 +330,11 @@ const ROT_SENSITIVITY = 0.0055;
 canvas.addEventListener(
   'pointerdown',
   (ev) => {
-    if (state.kind !== 'placing') return;
+    // Drag-to-rotate only engages when a ghost is actually pending. When
+    // placing is blocked there's no ghost on-screen, so drags should fall
+    // through to OrbitControls (camera orbit) rather than being captured
+    // for a no-op GHOST_ROTATED dispatch.
+    if (state.kind !== 'placing' || state.blocked) return;
     if (config.mode !== 'screen') controls.enabled = false;
     dragState = { lastX: ev.clientX, moved: false };
     canvas.setPointerCapture(ev.pointerId);
@@ -342,7 +346,7 @@ canvas.addEventListener('pointermove', (ev) => {
   const dx = ev.clientX - dragState.lastX;
   if (!dragState.moved && Math.abs(dx) > DRAG_THRESHOLD_PX) dragState.moved = true;
   if (dragState.moved) {
-    placement.rotateGhost(dx * ROT_SENSITIVITY);
+    dispatch({ type: 'GHOST_ROTATED', deltaRad: dx * ROT_SENSITIVITY });
     dragState.lastX = ev.clientX;
   }
 });
