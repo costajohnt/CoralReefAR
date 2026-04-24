@@ -8,21 +8,38 @@ export interface AttachSlot {
 }
 
 const INDICATOR_RADIUS = 0.007;
+const HIT_PROXY_RADIUS = 0.018;
 const INDICATOR_SEGMENTS = 12;
 
 function makeIndicatorMesh(): Mesh {
-  const geom = new SphereGeometry(INDICATOR_RADIUS, INDICATOR_SEGMENTS, INDICATOR_SEGMENTS);
+  // Outer mesh is an invisible hit proxy ~2.5× the visual radius so the
+  // raycast target is comfortable to click without enlarging the rendered
+  // orb. The raycaster in tree.ts uses intersectObjects(..., false), so
+  // the proxy must be a direct child of the group — the visual is nested
+  // under it. Opacity 0 + depthWrite false keeps the proxy invisible.
+  const proxyGeom = new SphereGeometry(HIT_PROXY_RADIUS, 8, 8);
+  const proxyMat = new MeshStandardMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const proxy = new Mesh(proxyGeom, proxyMat);
+
+  const visualGeom = new SphereGeometry(INDICATOR_RADIUS, INDICATOR_SEGMENTS, INDICATOR_SEGMENTS);
   // Cool-blue tint + low emissive so the orbs read as subtle "clickable
   // hints" rather than dominant bright-white spots. Kept below the bloom
   // threshold so they don't pick up halos from the post-processing pass.
-  const mat = new MeshStandardMaterial({
-    color: 0x7aa4c4,
-    emissive: 0x2f5a7a,
-    emissiveIntensity: 0.25,
+  const visualMat = new MeshStandardMaterial({
+    color: 0x9ecae8,
+    emissive: 0x4a88b4,
+    emissiveIntensity: 0.6,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.85,
   });
-  return new Mesh(geom, mat);
+  const visual = new Mesh(visualGeom, visualMat);
+  proxy.add(visual);
+
+  return proxy;
 }
 
 export class AttachIndicators {
@@ -36,8 +53,7 @@ export class AttachIndicators {
     for (const [key, mesh] of this.bySlot) {
       if (!wantedKeys.has(key)) {
         this.group.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as MeshStandardMaterial).dispose();
+        disposeIndicator(mesh);
         this.bySlot.delete(key);
       }
     }
@@ -62,6 +78,17 @@ export class AttachIndicators {
     for (const [key, mesh] of this.bySlot) {
       const [pid, idx] = key.split('/');
       yield { parentId: Number(pid), index: Number(idx), mesh };
+    }
+  }
+}
+
+function disposeIndicator(mesh: Mesh): void {
+  mesh.geometry.dispose();
+  (mesh.material as MeshStandardMaterial).dispose();
+  for (const child of mesh.children) {
+    if (child instanceof Mesh) {
+      child.geometry.dispose();
+      (child.material as MeshStandardMaterial).dispose();
     }
   }
 }
