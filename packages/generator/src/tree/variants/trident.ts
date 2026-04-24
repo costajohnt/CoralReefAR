@@ -17,7 +17,9 @@ const SPIKE_TIP_RADIUS = 0.002;
 const SPIKE_TILT_FROM_VERTICAL = Math.PI / 6;
 const SPIKE_COUNT = 3;
 const SEGMENTS = 10;
-const NOISE_AMP = 0.12;
+const NOISE_AMP = 0.15;
+const RIDGE_AMP = 0.12;
+const LENGTH_SUBS = 4;
 
 export function generateTrident(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -36,7 +38,13 @@ export function generateTrident(input: VariantGenerateInput): VariantOutput {
     { x: 0, y: 0, z: 0 },
     { x: 0, y: trunkHeight, z: 0 },
     trunkBaseR, trunkTipR, color, SEGMENTS,
-    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 1,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   const hub = { x: 0, y: trunkHeight, z: 0 };
@@ -66,7 +74,13 @@ export function generateTrident(input: VariantGenerateInput): VariantOutput {
     emitFrustum(
       positions, normals, colors, indices,
       hub, tip, spikeBaseR, spikeTipR, color, SEGMENTS,
-      { seed: input.seed * 11 + (i + 1) * 17, noiseAmplitude: NOISE_AMP },
+      {
+        seed: input.seed * 11 + (i + 1) * 17,
+        noiseAmplitude: NOISE_AMP,
+        ridgeAmplitude: RIDGE_AMP,
+        lengthSubdivisions: LENGTH_SUBS,
+        nodulesEnabled: true,
+      },
     );
     attachPoints.push(tipAttachPoint(tip, dir));
   }

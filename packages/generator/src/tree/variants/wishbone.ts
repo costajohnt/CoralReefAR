@@ -15,7 +15,9 @@ const ARM_STEPS = 6;
 const BASE_RADIUS = 0.0065;
 const TIP_RADIUS = 0.002;
 const SEGMENTS = 10;
-const NOISE_AMP = 0.12;
+const NOISE_AMP = 0.15;
+const RIDGE_AMP = 0.12;
+const LENGTH_SUBS = 4;
 
 interface Vec3 { x: number; y: number; z: number; }
 
@@ -56,8 +58,19 @@ function emitArm(
     emitFrustum(
       positions, normals, colors, indices, prev, next, r0, r1, color, SEGMENTS,
       // Each bezier segment gets its own seed so surface bumps don't align
-      // into stripes along the curve.
-      { seed: armSeed + i * 23, noiseAmplitude: NOISE_AMP },
+      // into stripes along the curve. Nodule quality is reduced (5w×3h, max 8)
+      // because wishbone has 12 frustum sub-segments and the per-piece vertex
+      // budget (~4000) would otherwise be exceeded.
+      {
+        seed: armSeed + i * 23,
+        noiseAmplitude: NOISE_AMP,
+        ridgeAmplitude: RIDGE_AMP,
+        lengthSubdivisions: LENGTH_SUBS,
+        nodulesEnabled: true,
+        noduleWidthSegs: 5,
+        noduleHeightSegs: 3,
+        noduleMaxCount: 8,
+      },
     );
     prev = next;
   }

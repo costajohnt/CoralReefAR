@@ -15,7 +15,9 @@ const TIP_BASE_RADIUS = 0.006;
 const TIP_TIP_RADIUS = 0.002;
 const TIP_ELEVATION = Math.PI / 4;
 const SEGMENTS = 12; // highest among variants — hub is prominent, close to camera
-const NOISE_AMP = 0.14;
+const NOISE_AMP = 0.15;
+const RIDGE_AMP = 0.12;
+const LENGTH_SUBS = 4;
 
 export function generateStarburst(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -35,14 +37,28 @@ export function generateStarburst(input: VariantGenerateInput): VariantOutput {
     { x: 0, y: 0, z: 0 },
     { x: 0, y: hubTall / 2, z: 0 },
     hubR * 0.6, hubR, color, SEGMENTS,
-    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 1,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+      noduleHeightSegs: 3,
+    },
   );
   emitFrustum(
     positions, normals, colors, indices,
     { x: 0, y: hubTall / 2, z: 0 },
     { x: 0, y: hubTall, z: 0 },
     hubR, hubR * 0.6, color, SEGMENTS,
-    { seed: input.seed * 7 + 2, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 2,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+      noduleHeightSegs: 3,
+    },
   );
 
   const hub = { x: 0, y: hubTall / 2, z: 0 };
@@ -74,7 +90,14 @@ export function generateStarburst(input: VariantGenerateInput): VariantOutput {
     emitFrustum(
       positions, normals, colors, indices,
       hub, tip, tipBaseR, tipTipR, color, SEGMENTS,
-      { seed: input.seed * 11 + (i + 1) * 19, noiseAmplitude: NOISE_AMP },
+      {
+        seed: input.seed * 11 + (i + 1) * 19,
+        noiseAmplitude: NOISE_AMP,
+        ridgeAmplitude: RIDGE_AMP,
+        lengthSubdivisions: LENGTH_SUBS,
+        nodulesEnabled: true,
+        noduleHeightSegs: 3,
+      },
     );
     attachPoints.push(tipAttachPoint(tip, dir));
   }

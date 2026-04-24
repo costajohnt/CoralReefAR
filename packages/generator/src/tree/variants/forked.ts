@@ -16,7 +16,11 @@ const BRANCH_BASE_RADIUS = 0.006;
 const BRANCH_TIP_RADIUS = 0.003;
 const BRANCH_ANGLE = Math.PI / 6; // 30°
 const SEGMENTS = 10;
-const NOISE_AMP = 0.12;
+// Displacement amplitude raised so the branch swells visibly (multi-octave
+// noise is applied inside emitFrustum; the amplitude here is per-octave scale).
+const NOISE_AMP = 0.15;
+const RIDGE_AMP = 0.12; // ring-level banding for rib/pinch look
+const LENGTH_SUBS = 4; // intermediate rings for length-wise modulation
 
 export function generateForked(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -43,7 +47,13 @@ export function generateForked(input: VariantGenerateInput): VariantOutput {
     { x: 0, y: 0, z: 0 },
     { x: 0, y: trunkHeight, z: 0 },
     trunkBaseR, trunkTipR, color, SEGMENTS,
-    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 1,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   // Two branches — slightly asymmetric so the Y isn't a mirror.
@@ -66,13 +76,25 @@ export function generateForked(input: VariantGenerateInput): VariantOutput {
     positions, normals, colors, indices,
     { x: 0, y: trunkHeight, z: 0 }, tipA,
     branchBaseR, branchTipR, color, SEGMENTS,
-    { seed: input.seed * 11 + 2, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 11 + 2,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
   emitFrustum(
     positions, normals, colors, indices,
     { x: 0, y: trunkHeight, z: 0 }, tipB,
     branchBaseR, branchTipR, color, SEGMENTS,
-    { seed: input.seed * 13 + 3, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 13 + 3,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   return {

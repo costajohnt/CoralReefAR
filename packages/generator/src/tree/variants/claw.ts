@@ -19,7 +19,9 @@ const CLAW_TIP_RADIUS = 0.002;
 const BEND_ANGLE = Math.PI / 3;
 const CLAW_SPLIT_ANGLE = Math.PI / 8;
 const SEGMENTS = 10;
-const NOISE_AMP = 0.12;
+const NOISE_AMP = 0.15;
+const RIDGE_AMP = 0.12;
+const LENGTH_SUBS = 4;
 
 export function generateClaw(input: VariantGenerateInput): VariantOutput {
   const positions: number[] = [];
@@ -46,7 +48,13 @@ export function generateClaw(input: VariantGenerateInput): VariantOutput {
     jitter(rand, TRUNK_BASE_RADIUS, 0.1),
     jitter(rand, TRUNK_MID_RADIUS, 0.1),
     color, SEGMENTS,
-    { seed: input.seed * 7 + 1, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 1,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   // Segment 2: bent.
@@ -62,7 +70,13 @@ export function generateClaw(input: VariantGenerateInput): VariantOutput {
     jitter(rand, TRUNK_MID_RADIUS, 0.1),
     jitter(rand, TRUNK_TIP_RADIUS, 0.1),
     color, SEGMENTS,
-    { seed: input.seed * 7 + 2, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 7 + 2,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   // Two claw tips with asymmetric split angles.
@@ -91,7 +105,13 @@ export function generateClaw(input: VariantGenerateInput): VariantOutput {
     jitter(rand, CLAW_BASE_RADIUS, 0.1),
     jitter(rand, CLAW_TIP_RADIUS, 0.15),
     color, SEGMENTS,
-    { seed: input.seed * 11 + 3, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 11 + 3,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
   emitFrustum(
     positions, normals, colors, indices,
@@ -99,7 +119,13 @@ export function generateClaw(input: VariantGenerateInput): VariantOutput {
     jitter(rand, CLAW_BASE_RADIUS, 0.1),
     jitter(rand, CLAW_TIP_RADIUS, 0.15),
     color, SEGMENTS,
-    { seed: input.seed * 13 + 4, noiseAmplitude: NOISE_AMP },
+    {
+      seed: input.seed * 13 + 4,
+      noiseAmplitude: NOISE_AMP,
+      ridgeAmplitude: RIDGE_AMP,
+      lengthSubdivisions: LENGTH_SUBS,
+      nodulesEnabled: true,
+    },
   );
 
   return {
