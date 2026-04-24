@@ -330,7 +330,11 @@ const ROT_SENSITIVITY = 0.0055;
 canvas.addEventListener(
   'pointerdown',
   (ev) => {
-    if (state.kind !== 'placing') return;
+    // Drag-to-rotate only engages when a ghost is actually pending. When
+    // placing is blocked there's no ghost on-screen, so drags should fall
+    // through to OrbitControls (camera orbit) rather than being captured
+    // for a no-op GHOST_ROTATED dispatch.
+    if (state.kind !== 'placing' || state.blocked) return;
     if (config.mode !== 'screen') controls.enabled = false;
     dragState = { lastX: ev.clientX, moved: false };
     canvas.setPointerCapture(ev.pointerId);
