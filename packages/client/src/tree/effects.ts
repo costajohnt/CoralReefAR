@@ -4,7 +4,7 @@ import type { TreePlacement } from './placement.js';
 import type { AttachIndicators } from './indicators.js';
 import type { TreePicker } from '../ui/treePicker.js';
 import type { TreeState, TreeAction } from './state.js';
-import { fetchTree, resetTree, submitTreePolyp } from './api.js';
+import { fetchTree, resetTree, submitTreePolyp, deleteTreePolyp } from './api.js';
 
 export interface EffectsDeps {
   placement: TreePlacement;
@@ -94,7 +94,7 @@ export function createEffects(deps: EffectsDeps): Effects {
           },
           deps.apiBase,
         ).then(
-          () => deps.dispatch({ type: 'COMMIT_RESOLVED' }),
+          (polyp) => deps.dispatch({ type: 'COMMIT_RESOLVED', polypId: polyp.id }),
           (err: unknown) => {
             const msg = err instanceof Error ? err.message : String(err);
             deps.hintEl.textContent = `Grow failed: ${msg}`;
@@ -125,6 +125,31 @@ export function createEffects(deps: EffectsDeps): Effects {
         action.type === 'COMMIT_REJECTED'
       ) {
         deps.picker.setSubmitting(false);
+        return;
+      }
+
+      // Undo clicked: idle → undoing. Fire DELETE and wire resolution.
+      if (prev.kind === 'idle' && next.kind === 'undoing') {
+        deps.hintEl.textContent = 'Undoing…';
+        deleteTreePolyp(next.polypId, deps.apiBase).then(
+          () => deps.dispatch({ type: 'UNDO_RESOLVED' }),
+          (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            deps.hintEl.textContent = `Undo failed: ${msg}`;
+            deps.dispatch({ type: 'UNDO_REJECTED', error: msg });
+          },
+        );
+        return;
+      }
+
+      // Undo resolved: undoing → idle. Show success hint.
+      if (prev.kind === 'undoing' && next.kind === 'idle' && action.type === 'UNDO_RESOLVED') {
+        deps.hintEl.textContent = 'Undone. Click a glowing dot to plant again.';
+        return;
+      }
+
+      // Undo rejected: undoing → idle. Error hint already set by reject callback.
+      if (prev.kind === 'undoing' && next.kind === 'idle' && action.type === 'UNDO_REJECTED') {
         return;
       }
 

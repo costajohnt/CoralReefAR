@@ -6,7 +6,7 @@ export interface PickerSelection {
 }
 
 export type TreeState =
-  | { kind: 'idle'; picker: PickerSelection }
+  | { kind: 'idle'; picker: PickerSelection; lastCommittedId: number | null }
   | {
       kind: 'placing';
       picker: PickerSelection;
@@ -14,6 +14,7 @@ export type TreeState =
       attachIndex: number;
       seed: number;
       blocked: boolean;
+      lastCommittedId: number | null;
     }
   | {
       kind: 'submitting';
@@ -21,8 +22,10 @@ export type TreeState =
       parentId: number;
       attachIndex: number;
       seed: number;
+      lastCommittedId: number | null;
     }
-  | { kind: 'resetting'; picker: PickerSelection };
+  | { kind: 'resetting'; picker: PickerSelection; lastCommittedId: number | null }
+  | { kind: 'undoing'; picker: PickerSelection; polypId: number };
 
 export type TreeAction =
   | { type: 'VARIANT_CHOSEN'; variant: TreeVariant; seed: number }
@@ -33,15 +36,20 @@ export type TreeAction =
   | { type: 'PLACEMENT_OK' }
   | { type: 'CANCEL_CLICKED' }
   | { type: 'GROW_CLICKED' }
-  | { type: 'COMMIT_RESOLVED' }
+  | { type: 'COMMIT_RESOLVED'; polypId: number }
   | { type: 'COMMIT_REJECTED'; error: string }
   | { type: 'CLEAR_CLICKED' }
   | { type: 'RESET_RESOLVED' }
   | { type: 'RESET_REJECTED'; error: string }
-  | { type: 'TREE_RESET_EXTERNAL' };
+  | { type: 'TREE_RESET_EXTERNAL' }
+  | { type: 'UNDO_CLICKED' }
+  | { type: 'UNDO_RESOLVED' }
+  | { type: 'UNDO_REJECTED'; error: string }
+  | { type: 'TREE_POLYP_REMOVED_EXTERNAL'; id: number }
+  | { type: 'LAST_COMMITTED_INVALIDATED' };
 
 export function initialState(picker: PickerSelection): TreeState {
-  return { kind: 'idle', picker };
+  return { kind: 'idle', picker, lastCommittedId: null };
 }
 
 export function reduce(state: TreeState, action: TreeAction): TreeState {
@@ -53,6 +61,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         case 'placing':   return { ...state, picker, seed: action.seed };
         case 'submitting':return { ...state, picker, seed: action.seed };
         case 'resetting': return { ...state, picker };
+        case 'undoing':   return { ...state, picker };
       }
     }
     case 'COLOR_CHOSEN': {
@@ -68,6 +77,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
           attachIndex: action.attachIndex,
           seed: action.seed,
           blocked: false,
+          lastCommittedId: state.lastCommittedId,
         };
       }
       return state;
@@ -91,7 +101,7 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
     }
     case 'CANCEL_CLICKED': {
       if (state.kind !== 'placing') return state;
-      return { kind: 'idle', picker: state.picker };
+      return { kind: 'idle', picker: state.picker, lastCommittedId: state.lastCommittedId };
     }
     case 'GROW_CLICKED': {
       if (state.kind !== 'placing' || state.blocked) return state;
@@ -101,11 +111,12 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         parentId: state.parentId,
         attachIndex: state.attachIndex,
         seed: state.seed,
+        lastCommittedId: state.lastCommittedId,
       };
     }
     case 'COMMIT_RESOLVED': {
       if (state.kind !== 'submitting') return state;
-      return { kind: 'idle', picker: state.picker };
+      return { kind: 'idle', picker: state.picker, lastCommittedId: action.polypId };
     }
     case 'COMMIT_REJECTED': {
       if (state.kind !== 'submitting') return state;
@@ -116,19 +127,46 @@ export function reduce(state: TreeState, action: TreeAction): TreeState {
         attachIndex: state.attachIndex,
         seed: state.seed,
         blocked: false,
+        lastCommittedId: state.lastCommittedId,
       };
     }
     case 'CLEAR_CLICKED': {
-      if (state.kind === 'resetting') return state;
-      return { kind: 'resetting', picker: state.picker };
+      if (state.kind === 'resetting' || state.kind === 'undoing') return state;
+      return { kind: 'resetting', picker: state.picker, lastCommittedId: null };
     }
     case 'RESET_RESOLVED':
     case 'RESET_REJECTED': {
       if (state.kind !== 'resetting') return state;
-      return { kind: 'idle', picker: state.picker };
+      return { kind: 'idle', picker: state.picker, lastCommittedId: null };
     }
     case 'TREE_RESET_EXTERNAL':
-      return { kind: 'idle', picker: state.picker };
+      return { kind: 'idle', picker: state.picker, lastCommittedId: null };
+    case 'UNDO_CLICKED': {
+      if (state.kind !== 'idle' || state.lastCommittedId === null) return state;
+      return { kind: 'undoing', picker: state.picker, polypId: state.lastCommittedId };
+    }
+    case 'UNDO_RESOLVED': {
+      if (state.kind !== 'undoing') return state;
+      return { kind: 'idle', picker: state.picker, lastCommittedId: null };
+    }
+    case 'UNDO_REJECTED': {
+      if (state.kind !== 'undoing') return state;
+      return { kind: 'idle', picker: state.picker, lastCommittedId: state.polypId };
+    }
+    case 'TREE_POLYP_REMOVED_EXTERNAL': {
+      if (state.kind === 'undoing') return state;
+      if ('lastCommittedId' in state && state.lastCommittedId === action.id) {
+        return { ...state, lastCommittedId: null };
+      }
+      return state;
+    }
+    case 'LAST_COMMITTED_INVALIDATED': {
+      if (state.kind === 'undoing') return state;
+      if ('lastCommittedId' in state && state.lastCommittedId !== null) {
+        return { ...state, lastCommittedId: null };
+      }
+      return state;
+    }
     default:
       return state;
   }

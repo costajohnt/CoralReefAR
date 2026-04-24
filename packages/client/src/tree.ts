@@ -112,8 +112,40 @@ function addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
 // ------------------------------------------------------------------
 // Spawnable sea life — empty by default.
 // ------------------------------------------------------------------
+type CreatureType = 'shark' | 'clownfish' | 'jellyfish' | 'seaTurtle';
 interface SwimmingCreature { update: (clockSec: number) => void; }
-const creatures: SwimmingCreature[] = [];
+interface TrackedCreature {
+  type: CreatureType;
+  instance: SwimmingCreature;
+  group: import('three').Group;
+}
+const creatures: TrackedCreature[] = [];
+
+function removeCreature(type: CreatureType): boolean {
+  const idx = [...creatures].map((c, i) => ({ c, i })).reverse()
+    .find(({ c }) => c.type === type)?.i ?? -1;
+  if (idx === -1) return false;
+  const [removed] = creatures.splice(idx, 1);
+  if (!removed) return false;
+  scene.remove(removed.group);
+  removed.group.traverse((obj) => {
+    const mesh = obj as import('three').Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose();
+      if (Array.isArray(mesh.material)) {
+        for (const m of mesh.material) (m as import('three').Material).dispose();
+      } else {
+        (mesh.material as import('three').Material | undefined)?.dispose();
+      }
+    }
+  });
+  return true;
+}
+
+function countCreatures(type: CreatureType): number {
+  return creatures.filter((c) => c.type === type).length;
+}
+
 function spawnShark(): void {
   const s = new Shark({
     orbitRadius: 0.25 + Math.random() * 0.15,
@@ -123,7 +155,7 @@ function spawnShark(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(s.group);
-  creatures.push(s);
+  creatures.push({ type: 'shark', instance: s, group: s.group });
 }
 function spawnClownfish(): void {
   const c = new Clownfish({
@@ -134,7 +166,7 @@ function spawnClownfish(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(c.group);
-  creatures.push(c);
+  creatures.push({ type: 'clownfish', instance: c, group: c.group });
 }
 function spawnJellyfish(): void {
   const j = new Jellyfish({
@@ -145,7 +177,7 @@ function spawnJellyfish(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(j.group);
-  creatures.push(j);
+  creatures.push({ type: 'jellyfish', instance: j, group: j.group });
 }
 function spawnSeaTurtle(): void {
   const t = new SeaTurtle({
@@ -156,7 +188,7 @@ function spawnSeaTurtle(): void {
     direction: Math.random() < 0.5 ? 1 : -1,
   });
   scene.add(t.group);
-  creatures.push(t);
+  creatures.push({ type: 'seaTurtle', instance: t, group: t.group });
 }
 
 // ------------------------------------------------------------------
@@ -178,7 +210,10 @@ let state: TreeState = initialState(picker.get());
 function dispatch(action: TreeAction): void {
   const prev = state;
   state = reduce(state, action);
-  if (state !== prev) effects.apply(prev, state, action);
+  if (state !== prev) {
+    effects.apply(prev, state, action);
+    refreshUndoBtn();
+  }
 }
 
 // Wire picker → dispatch.
@@ -206,15 +241,83 @@ picker.onCommit(() => dispatch({ type: 'GROW_CLICKED' }));
 // Toolbar → dispatch / direct spawn
 // ------------------------------------------------------------------
 const clearBtn = document.getElementById('clearBtn') as HTMLButtonElement | null;
+const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement | null;
+const seaLifeBtn = document.getElementById('seaLifeBtn') as HTMLButtonElement | null;
+const seaLifePanel = document.getElementById('sea-life-panel') as HTMLElement | null;
+const seaLifeCloseBtn = document.getElementById('sea-life-close-btn') as HTMLButtonElement | null;
+
 const addSharkBtn = document.getElementById('addSharkBtn') as HTMLButtonElement | null;
+const removeSharkBtn = document.getElementById('removeSharkBtn') as HTMLButtonElement | null;
 const addClownfishBtn = document.getElementById('addClownfishBtn') as HTMLButtonElement | null;
+const removeClownfishBtn = document.getElementById('removeClownfishBtn') as HTMLButtonElement | null;
 const addJellyfishBtn = document.getElementById('addJellyfishBtn') as HTMLButtonElement | null;
+const removeJellyfishBtn = document.getElementById('removeJellyfishBtn') as HTMLButtonElement | null;
 const addSeaTurtleBtn = document.getElementById('addSeaTurtleBtn') as HTMLButtonElement | null;
+const removeSeaTurtleBtn = document.getElementById('removeSeaTurtleBtn') as HTMLButtonElement | null;
+
 if (clearBtn) clearBtn.addEventListener('click', () => dispatch({ type: 'CLEAR_CLICKED' }));
-if (addSharkBtn) addSharkBtn.addEventListener('click', spawnShark);
-if (addClownfishBtn) addClownfishBtn.addEventListener('click', spawnClownfish);
-if (addJellyfishBtn) addJellyfishBtn.addEventListener('click', spawnJellyfish);
-if (addSeaTurtleBtn) addSeaTurtleBtn.addEventListener('click', spawnSeaTurtle);
+if (undoBtn) undoBtn.addEventListener('click', () => dispatch({ type: 'UNDO_CLICKED' }));
+
+// Sea life panel toggle
+function setPanelOpen(open: boolean): void {
+  if (!seaLifePanel || !seaLifeBtn) return;
+  if (open) {
+    seaLifePanel.classList.add('open');
+    seaLifeBtn.setAttribute('aria-expanded', 'true');
+    seaLifeBtn.setAttribute('aria-pressed', 'true');
+  } else {
+    seaLifePanel.classList.remove('open');
+    seaLifeBtn.setAttribute('aria-expanded', 'false');
+    seaLifeBtn.removeAttribute('aria-pressed');
+  }
+}
+if (seaLifeBtn) seaLifeBtn.addEventListener('click', () => {
+  const isOpen = seaLifePanel?.classList.contains('open') ?? false;
+  setPanelOpen(!isOpen);
+});
+if (seaLifeCloseBtn) seaLifeCloseBtn.addEventListener('click', () => setPanelOpen(false));
+
+// Close panel on Escape or click-outside
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') setPanelOpen(false);
+});
+document.addEventListener('click', (ev) => {
+  if (!seaLifePanel?.classList.contains('open')) return;
+  const target = ev.target as Node;
+  if (!seaLifePanel.contains(target) && target !== seaLifeBtn && !seaLifeBtn?.contains(target)) {
+    setPanelOpen(false);
+  }
+});
+
+// Panel creature counts — call after every spawn/remove
+function refreshPanel(): void {
+  const types: CreatureType[] = ['shark', 'clownfish', 'jellyfish', 'seaTurtle'];
+  const ids: Record<CreatureType, string> = {
+    shark: 'shark', clownfish: 'clownfish', jellyfish: 'jellyfish', seaTurtle: 'seaTurtle',
+  };
+  for (const type of types) {
+    const n = countCreatures(type);
+    const countEl = document.getElementById(`count-${ids[type]}`);
+    if (countEl) countEl.textContent = String(n);
+    const removeBtn = document.getElementById(`remove${type.charAt(0).toUpperCase()}${type.slice(1)}Btn`) as HTMLButtonElement | null;
+    if (removeBtn) removeBtn.disabled = n === 0;
+  }
+}
+
+if (addSharkBtn) addSharkBtn.addEventListener('click', () => { spawnShark(); refreshPanel(); });
+if (removeSharkBtn) removeSharkBtn.addEventListener('click', () => { removeCreature('shark'); refreshPanel(); });
+if (addClownfishBtn) addClownfishBtn.addEventListener('click', () => { spawnClownfish(); refreshPanel(); });
+if (removeClownfishBtn) removeClownfishBtn.addEventListener('click', () => { removeCreature('clownfish'); refreshPanel(); });
+if (addJellyfishBtn) addJellyfishBtn.addEventListener('click', () => { spawnJellyfish(); refreshPanel(); });
+if (removeJellyfishBtn) removeJellyfishBtn.addEventListener('click', () => { removeCreature('jellyfish'); refreshPanel(); });
+if (addSeaTurtleBtn) addSeaTurtleBtn.addEventListener('click', () => { spawnSeaTurtle(); refreshPanel(); });
+if (removeSeaTurtleBtn) removeSeaTurtleBtn.addEventListener('click', () => { removeCreature('seaTurtle'); refreshPanel(); });
+
+// Undo button enabled/disabled: update after every dispatch
+function refreshUndoBtn(): void {
+  if (!undoBtn) return;
+  undoBtn.disabled = !(state.kind === 'idle' && state.lastCommittedId !== null);
+}
 
 // ------------------------------------------------------------------
 // Pointer-drag: rotate ghost in place instead of orbiting while placing.
@@ -336,9 +439,20 @@ socket.on((msg) => {
     treeReef.addPiece(msg.polyp);
     installEffectsOnNewPieces();
     attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+    // If someone built on top of our last commit, we can no longer undo it
+    // (the server enforces leaf-only deletes). Invalidate lastCommittedId.
+    if (
+      state.kind !== 'undoing' &&
+      'lastCommittedId' in state &&
+      state.lastCommittedId !== null &&
+      msg.polyp.parentId === state.lastCommittedId
+    ) {
+      dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
+    }
   } else if (msg.type === 'tree_polyp_removed') {
     treeReef.removePiece(msg.id);
     attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+    dispatch({ type: 'TREE_POLYP_REMOVED_EXTERNAL', id: msg.id });
   } else if (msg.type === 'tree_reset') {
     treeReef.clear();
     attachIndicators.refresh([]);
@@ -353,7 +467,7 @@ socket.connect();
 function loop(t: number): void {
   const tSec = t / 1000;
   swayClock.value = tSec;
-  for (const c of creatures) c.update(tSec);
+  for (const c of creatures) c.instance.update(tSec);
 
   if (config.mode === 'screen') {
     const pose = computeOrbitPose(tSec);

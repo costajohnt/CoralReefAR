@@ -4,6 +4,8 @@ import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
 
+const NUMERIC_ID_RE = /^\d+$/;
+
 export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub): void {
   app.get('/api/tree', async () => ({
     polyps: tree.listLive(),
@@ -50,5 +52,25 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(500);
       return { error: msg };
     }
+  });
+
+  app.delete('/api/tree/polyp/:id', async (req, reply) => {
+    const { id: rawId } = req.params as { id: string };
+    if (!NUMERIC_ID_RE.test(rawId)) {
+      reply.code(400);
+      return { error: 'id must be a positive integer' };
+    }
+    const id = Number(rawId);
+    const result = tree.softDelete(id);
+    if (!result.ok) {
+      if (result.reason === 'not_found') {
+        reply.code(404);
+        return { error: 'polyp not found' };
+      }
+      reply.code(409);
+      return { error: result.reason ?? 'cannot delete' };
+    }
+    hub.broadcast({ type: 'tree_polyp_removed', id } as never);
+    return { ok: true };
   });
 }

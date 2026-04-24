@@ -28,6 +28,14 @@ export async function resetTree(apiBase = ''): Promise<{ polyps: PublicTreePolyp
   return r.json() as Promise<{ polyps: PublicTreePolyp[] }>;
 }
 
+export async function deleteTreePolyp(id: number, apiBase = ''): Promise<void> {
+  const r = await fetch(`${apiBase}/api/tree/polyp/${id}`, { method: 'DELETE' });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => '');
+    throw new Error(`deleteTreePolyp ${r.status}${detail ? ` ${detail}` : ''}`);
+  }
+}
+
 /**
  * Reconnecting WebSocket with exponential backoff. Capped at 30s between
  * tries. Fires every server message to each registered handler.
