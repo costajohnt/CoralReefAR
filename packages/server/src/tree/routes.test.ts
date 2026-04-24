@@ -124,3 +124,79 @@ describe('POST /api/tree/polyp', () => {
     await close();
   });
 });
+
+describe('DELETE /api/tree/polyp/:id', () => {
+  test('soft-deletes a leaf polyp and returns ok:true', async () => {
+    const { app, close } = await makeServer();
+    const root = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+    });
+    const rootId = (JSON.parse(root.body) as { id: number }).id;
+    const res = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${rootId}` });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), { ok: true });
+
+    const list = await app.inject({ method: 'GET', url: '/api/tree' });
+    const body = JSON.parse(list.body) as { polyps: unknown[] };
+    assert.equal(body.polyps.length, 0);
+    await close();
+  });
+
+  test('returns 404 when polyp does not exist', async () => {
+    const { app, close } = await makeServer();
+    const res = await app.inject({ method: 'DELETE', url: '/api/tree/polyp/99999' });
+    assert.equal(res.statusCode, 404);
+    assert.match((JSON.parse(res.body) as { error: string }).error, /not found/i);
+    await close();
+  });
+
+  test('returns 409 when polyp has children', async () => {
+    const { app, close } = await makeServer();
+    const root = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+    });
+    const rootId = (JSON.parse(root.body) as { id: number }).id;
+    await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'forked', seed: 2, colorKey: 'x', parentId: rootId, attachIndex: 1 },
+    });
+    const res = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${rootId}` });
+    assert.equal(res.statusCode, 409);
+    await close();
+  });
+
+  test('returns 400 when id is not numeric', async () => {
+    const { app, close } = await makeServer();
+    const res = await app.inject({ method: 'DELETE', url: '/api/tree/polyp/abc' });
+    assert.equal(res.statusCode, 400);
+    await close();
+  });
+
+  test('broadcasts tree_polyp_removed via the hub on success', async () => {
+    const messages: unknown[] = [];
+    const fakeWs = {
+      readyState: 1,
+      send(data: string) { messages.push(JSON.parse(data)); },
+      on() { /* noop */ },
+    };
+    const hub = new Hub();
+    hub.add(fakeWs);
+    const reef = new ReefDb(':memory:');
+    const tree = new TreeDb(reef);
+    const app2 = Fastify({ logger: false });
+    registerTreeRoutes(app2, tree, hub);
+    await app2.ready();
+    const root = await app2.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+    });
+    const rootId = (JSON.parse(root.body) as { id: number }).id;
+    messages.length = 0; // clear the polyp_added broadcast
+    await app2.inject({ method: 'DELETE', url: `/api/tree/polyp/${rootId}` });
+    assert.equal(messages.length, 1);
+    assert.deepEqual(messages[0], { type: 'tree_polyp_removed', id: rootId });
+    await app2.close();
+  });
+});
