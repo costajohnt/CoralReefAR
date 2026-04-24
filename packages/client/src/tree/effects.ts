@@ -57,7 +57,7 @@ export function createEffects(deps: EffectsDeps): Effects {
         } else {
           deps.dispatch({ type: 'PLACEMENT_BLOCKED' });
           deps.picker.setCommittable(false);
-          deps.hintEl.textContent = 'That spot is blocked. Try another dot or reroll.';
+          deps.hintEl.textContent = 'Adding this piece here would touch another spot. Try a different piece.';
         }
         return;
       }
