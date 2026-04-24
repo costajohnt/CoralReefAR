@@ -15,4 +15,6 @@ export const TreePolypInputSchema = z.object({
   attachYaw: z.number().finite().optional().default(0),
 });
 
-export type TreePolypInput = z.infer<typeof TreePolypInputSchema>;
+// z.input — the shape clients construct before parse. attachYaw is optional
+// here (defaults to 0 post-parse on the server side).
+export type TreePolypInput = z.input<typeof TreePolypInputSchema>;

@@ -342,7 +342,7 @@ canvas.addEventListener('pointermove', (ev) => {
   const dx = ev.clientX - dragState.lastX;
   if (!dragState.moved && Math.abs(dx) > DRAG_THRESHOLD_PX) dragState.moved = true;
   if (dragState.moved) {
-    placement.rotateGhost(dx * ROT_SENSITIVITY);
+    dispatch({ type: 'GHOST_ROTATED', deltaRad: dx * ROT_SENSITIVITY });
     dragState.lastX = ev.clientX;
   }
 });

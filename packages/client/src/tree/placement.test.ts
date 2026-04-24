@@ -12,7 +12,7 @@ function makeRoot(id = 1): PublicTreePolyp {
     colorKey: 'neon-cyan',
     parentId: null,
     attachIndex: 0,
-    createdAt: Date.now(),
+    createdAt: Date.now(), attachYaw: 0,
   };
 }
 
@@ -29,7 +29,7 @@ function makeChild(
     colorKey: 'neon-magenta',
     parentId,
     attachIndex,
-    createdAt: Date.now() + id,
+    createdAt: Date.now() + id, attachYaw: 0,
   };
 }
 
