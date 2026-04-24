@@ -7,9 +7,11 @@ const canvas = document.getElementById('gl') as HTMLCanvasElement;
 const pickerRoot = document.getElementById('picker')!;
 const statusEl = document.getElementById('status')!;
 
+const app = new TreeApp({ canvas, video, pickerRoot, statusEl });
+app.wireToolbar();
+
 startBtn.addEventListener('click', async () => {
   landing.classList.add('hidden');
-  const app = new TreeApp({ canvas, video, pickerRoot, statusEl });
   try {
     await app.start();
   } catch (e) {
