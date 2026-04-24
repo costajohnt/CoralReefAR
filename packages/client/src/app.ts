@@ -11,6 +11,7 @@ import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
 import { EightWallProvider } from './tracking/eightwall.js';
+import { applyAnchorPose } from './tracking/anchor.js';
 import type { TrackingProvider } from '@reef/shared';
 
 export interface AppOptions {
@@ -86,7 +87,7 @@ export class App {
       canvasElement: this.opts.canvas,
     });
     this.tracker.onAnchorFound(({ pose }) => {
-      Reef.applyAnchorPose(this.reef.anchor, pose.elements);
+      applyAnchorPose(this.reef.anchor, pose.elements);
       this.reef.anchor.visible = true;
       this.setStatus('Tap a spot to place your polyp.');
       this.picker.show();

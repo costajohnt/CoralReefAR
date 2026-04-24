@@ -1,4 +1,4 @@
-import { Group, Object3D, Quaternion, Vector3 } from 'three';
+import { Group, Object3D, Vector3 } from 'three';
 import type { PublicPolyp, SimDelta } from '@reef/shared';
 import { generatePolyp } from '@reef/generator';
 import { polypMesh } from './meshAdapter.js';
@@ -102,16 +102,4 @@ export class Reef {
     return result;
   }
 
-  static applyAnchorPose(anchor: Group, poseMatrixElements: ArrayLike<number>): void {
-    if (poseMatrixElements.length !== 16) return;
-    const te = anchor.matrix.elements;
-    for (let i = 0; i < 16; i++) te[i] = poseMatrixElements[i] ?? 0;
-    const pos = new Vector3();
-    const quat = new Quaternion();
-    const scl = new Vector3();
-    anchor.matrix.decompose(pos, quat, scl);
-    anchor.position.copy(pos);
-    anchor.quaternion.copy(quat);
-    anchor.scale.copy(scl);
-  }
 }
