@@ -71,3 +71,31 @@ test('TreePolypInputSchema: rejects out-of-range seed', () => {
   assert.equal(TreePolypInputSchema.safeParse({ ...valid, seed: -1 }).success, false);
   assert.equal(TreePolypInputSchema.safeParse({ ...valid, seed: 2 ** 33 }).success, false);
 });
+
+test('TreePolypInputSchema: defaults attachYaw to 0 when omitted', () => {
+  const valid = {
+    variant: 'forked',
+    seed: 42,
+    colorKey: 'neon-magenta',
+    parentId: 1,
+    attachIndex: 0,
+  };
+  const parsed = TreePolypInputSchema.safeParse(valid);
+  assert.equal(parsed.success, true);
+  if (parsed.success) assert.equal(parsed.data.attachYaw, 0);
+});
+
+test('TreePolypInputSchema: accepts attachYaw value within ±2π or beyond', () => {
+  const valid = {
+    variant: 'forked',
+    seed: 42,
+    colorKey: 'neon-magenta',
+    parentId: 1,
+    attachIndex: 0,
+  };
+  assert.equal(TreePolypInputSchema.safeParse({ ...valid, attachYaw: 1.5 }).success, true);
+  assert.equal(TreePolypInputSchema.safeParse({ ...valid, attachYaw: -Math.PI }).success, true);
+  // Non-finite values rejected (NaN / Infinity would poison the rotation matrix).
+  assert.equal(TreePolypInputSchema.safeParse({ ...valid, attachYaw: NaN }).success, false);
+  assert.equal(TreePolypInputSchema.safeParse({ ...valid, attachYaw: Infinity }).success, false);
+});

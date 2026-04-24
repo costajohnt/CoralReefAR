@@ -42,6 +42,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
             colorKey: input.colorKey,
             parentId: input.parentId,
             attachIndex: input.attachIndex,
+            attachYaw: input.attachYaw,
           });
       hub.broadcast({ type: 'tree_polyp_added', polyp } as never);
       return polyp;
