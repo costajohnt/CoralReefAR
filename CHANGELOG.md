@@ -6,20 +6,114 @@ versions are SemVer.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-04-24
+
+AR Phase 2 — a new `treeAr.html` surface runs the branching-coral tree
+reef through 8th Wall SLAM tracking. All the tree-mode polish from
+v0.5.x is now reachable through the AR client.
+
 ### Added
 
-- **Tree mode (`tree.html`)** — a third client surface for a
-  fractal branching-coral web. Visitors attach small composable
-  pieces to each other's exposed tips, growing a structure over
-  time. Avatar-bioluminescent styling: bloom post-processing,
-  vivid palette (magenta / cyan / violet / lime / orange), no
-  translucency. Five variants (forked / trident / starburst / claw
-  / wishbone) with 1-4 attach slots each. Separate reef in the DB
-  (`tree_polyps` table, `/api/tree/*`, `/ws/tree`), seeded with a
-  random Starburst at install so visitors always have something to
-  branch off. Implements
-  [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
-  Phase 2 will migrate the AR client to read tree data.
+- **`treeAr.html`** — fourth client surface. `TreeApp` composes the
+  same state machine, effects runner, `TreeReef`, `TreePlacement`,
+  `TreePicker`, and socket as the desktop `tree.html`. On anchor-found
+  the entire reef hierarchy (pieces, indicators, ghost, creatures)
+  aligns to the SLAM pose. `?scale=N` URL override tunes the anchor
+  multiplier (default 5, ~2.5m reef from ~50cm pedestal units) for
+  tabletop vs room-scale deployments. `?tracker=noop` skips camera
+  init for desktop smoke testing.
+- **Persisted drag yaw.** Committed polyps retain the ghost rotation
+  the user applied at placement. `attach_yaw` column added to the
+  tree DB via pragma-guarded ALTER; plumbed through the shared
+  schema, server routes, state-machine `GHOST_ROTATED` action, and
+  `TreeReef.addPiece` (applies yaw around the parent attach-point
+  normal). `TreePlacement` no longer bakes the world matrix into
+  vertex positions, so `rotateGhost` can pivot on the correct axis
+  via `rotateOnWorldAxis`.
+- **Collision loosening.** `wouldCollide` now shrinks both AABBs to
+  85% around their center before the intersection test, compensating
+  for coral-nodule envelope inflation. User-reported "spot is
+  blocked" rejections drop dramatically without permitting true
+  skeleton overlap.
+- **Drag-gate fix.** Pointer drags fall through to `OrbitControls`
+  when `placing` is blocked — the camera can orbit again on slots
+  that rejected a piece.
+- **Shared `applyAnchorPose` helper** at
+  `packages/client/src/tracking/anchor.ts`, with a `scaleMultiplier`
+  parameter used by `TreeApp`. Lifted from the static method on
+  landscape `Reef` so both surfaces share the decomposition.
+- **Sea-life creatures (from v0.5.x window) now parent under
+  `treeReef.anchor`.** In AR they track the SLAM pose and inherit the
+  anchor scale instead of orbiting the world origin.
+
+### Changed
+
+- Placement hint when a slot is blocked now explains the cause
+  ("Adding this piece here would touch another spot. Try a different
+  piece.") rather than the generic "that spot is blocked" which read
+  as a bug.
+
+### Docs
+
+- `docs/superpowers/specs/2026-04-24-ar-phase-2-migration.md` — Phase
+  2 design rationale.
+- `docs/superpowers/plans/2026-04-24-ar-phase-2-migration.md` — 7-task
+  TDD plan executed against that spec.
+- Three new `docs/DECISIONS.md` entries covering the yaw persistence
+  approach, the new-surface Phase 2 pattern, and the collision shrink.
+
+### Deployment notes
+
+- Server migration is run on startup (`ensureColumn` in
+  `ReefDb.migrate`). Rolling back the image without rolling back the
+  DB leaves the `attach_yaw` column in place — old code ignores it,
+  no data loss. Rolling the DB back without the image loses yaw
+  values but nothing else.
+
+## [0.5.0] — 2026-04-22
+
+Tree mode — a third client surface for a fractal branching-coral web,
+plus all the overnight polish that came after the initial landing.
+Full scope includes PRs #73-#77 which were merged to main between
+2026-04-22 and 2026-04-24 before the v0.6.0 cut.
+
+### Added
+
+- **Tree mode (`tree.html`)** — third client surface. Visitors attach
+  small composable pieces to each other's exposed tips, growing a
+  structure over time. Avatar-bioluminescent styling: bloom
+  post-processing, vivid palette (magenta / cyan / violet / lime /
+  orange), no translucency. Five variants (forked / trident /
+  starburst / claw / wishbone) with 1-4 attach slots each. Separate
+  reef in the DB (`tree_polyps` table, `/api/tree/*`, `/ws/tree`),
+  seeded with a random Starburst at install so visitors always have
+  something to branch off.
+- **Coral realism pass** — surface nodules scattered along each
+  branch segment, multi-octave vertex displacement biased outward,
+  per-vertex color tint variation along the segment axis. Per-piece
+  vertex counts jumped from 60–240 to 2000–3700 (under the 4000
+  ceiling); branches now read as coral rather than smooth glowing
+  tubes.
+- **Sea-life spawners** — Shark, Clownfish, Jellyfish, Sea Turtle
+  classes with orbit-param constructors. Randomised orbits so
+  multiple creatures of the same type don't stack.
+- **Undo last branch** — new `undoing` state kind, server
+  `DELETE /api/tree/polyp/:id` route with leaf-only guard,
+  client-tracked `lastCommittedId` invalidated when another user
+  builds on top of the last-placed piece.
+- **Mobile-first sea-life panel** — collapsible `Sea life` toolbar
+  entry with per-creature counts and `−`/`+` controls. Bottom drawer
+  on narrow viewports, dropdown from the trigger on wide screens.
+  44×44px minimum touch targets.
+- **Attach-indicator hit proxy** — invisible 2.5× sphere around each
+  visible orb makes clicking the dots comfortable without growing the
+  rendered marker. Visible orbs brightened too.
+- **State machine refactor** — tree-mode placement logic split into a
+  pure reducer (`packages/client/src/tree/state.ts`) and a
+  dep-injected effect runner (`effects.ts`). 93 Vitest tests on the
+  reducer including an exhaustive 56-cell no-op matrix (4 states ×
+  14 actions). `tree.ts` drops from ~482 lines to a thin orchestrator
+  around `dispatch(action)`.
 
 ## [0.4.0] — 2026-04-22
 
