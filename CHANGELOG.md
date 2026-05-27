@@ -6,6 +6,99 @@ versions are SemVer.
 
 ## [Unreleased]
 
+### Added — Quest 3 MR surface (2026-05-25)
+
+A new client surface at `quest.html` runs the shared global reef in the
+Meta Quest Browser via WebXR `immersive-ar`. Passthrough MR, hand
+tracking only (no controllers), session-scoped spatial anchor.
+
+- **`quest.html`** — sixth client entry alongside index / preview /
+  timelapse / playground / tree / treeAr. Reuses `@reef/generator`,
+  `@reef/shared`, the existing scene / mesh adapters, and the WebSocket
+  client. No new backend endpoints.
+- **WebXR session lifecycle** — `QuestApp` owns the 7-state machine
+  (idle / xr-starting / placement / loading / interactive /
+  tracking-lost / error) and the WebGL renderer driven by
+  `XRSession.requestAnimationFrame`. Deliberately does NOT extend the
+  `Tracker` interface used by the phone-AR path — WebXR owns its own
+  reference space and render loop.
+- **Anchor placement** — right-hand pinch on the floor captures an
+  `XRAnchor` on the next frame; the shared reef materializes life-size
+  around it. Move-reef button re-enters placement (closes the WS, drops
+  the old reef, releases the anchor, all cleanly).
+- **Hand-tracking interaction** — pinch detection with hysteresis
+  (`PINCH_THRESHOLD_METERS=0.025` start, `0.04` release) prevents
+  micro-tremor flicker. Pinch-hold-twist-release places a polyp with
+  rotation: capture wrist yaw at pinch start, update preview rotation
+  on each frame from the wrist yaw delta (wrapped to (-π, π]), commit
+  on pinch release.
+- **Wrist palette** — two rows pinned to the user's left wrist: shape
+  cycle (5 species) + color picker (5 swatches), plus a Move-reef
+  button. Right-hand poke selects.
+- **In-XR instruction overlay** — canvas-textured 3D panel billboarded
+  in front of the head pose, since the 2D status div is invisible once
+  immersive starts. Text updates per state transition.
+- **`surface: "quest"` on the polyp schema** — optional transport-only
+  field selects a looser server rate-limit bucket
+  (`questRateLimitMax`, default 20/hour) for active demoing. Stripped
+  before persistence so it doesn't leak into the DB.
+- **HTTPS dev** — `vite-plugin-mkcert` gated behind
+  `VITE_ENABLE_MKCERT=1` so Quest browsers on the LAN can hit the dev
+  server. Doesn't run during tests or production builds.
+
+### Added — Quest 3 v1.1 (still on the same branch)
+
+- **Tip-node hotspots.** Each species generator exposes a `tips:
+  TipNode[]` field (up to 3 for branching, 1 for bulbous/fan/tube, 0
+  for encrusting). The Quest `HotspotLayer` mirrors the reef and
+  attaches visible glowing-sphere markers at every tip in world space.
+  Right-hand pinches that ray-hit a hotspot snap the compose preview
+  to the hotspot's world position; misses fall through to free-space.
+- **Cross-session anchor persistence behind `?persist=1`.** Opt-in via
+  URL flag. On restore success, the reef materializes in the same
+  physical spot without the user re-pinching. Storage is per-device
+  (localStorage); the spec says room geometry must remain
+  recognizable to Quest, so stale handles are caught + cleared
+  silently. Move-Reef clears the saved handle.
+- **Ambient life on Quest.** `installSway` and `installPulse` (the
+  same shaders the phone-AR path uses) are now installed on every
+  Quest reef polyp via an idempotent per-mesh symbol guard. The
+  shared clock ticks from `XRFrame.predictedDisplayTime` so the
+  motion stays in sync with Quest's reprojection.
+
+### Audit fixes (caught on second-pass review)
+
+- **Broken palette poke.** `handlePinchStart` was calling `pickHotspot`
+  against palette buttons, but palette buttons aren't tagged with
+  `hotspotId` — so the raycast always returned `null` and every pinch
+  fell through to placing a polyp. Replaced with `pickPokedButton`, a
+  distance-based picker that recognizes any palette `userData` tag
+  (right semantic for direct-touch poke anyway).
+- **Permanent "Loading…" on backend failure.** `loadReef` now lets the
+  `fetchReef` rejection bubble up; the caller distinguishes anchor
+  failure from reef-load failure and surfaces the right error message.
+- Palette face-toward target was the world Y axis at wrist height
+  (palette stared at the world origin's vertical column regardless of
+  user position); now faces the captured head pose.
+- Compose preview meshes leaked geometry + material; now disposed via
+  `disposeTree`.
+- Move-Reef during an in-progress compose left a dangling preview
+  parented to the about-to-be-deleted anchor; now disposed first.
+- `handleSessionEnd` didn't reset compose state, head-pose cache,
+  pending anchor pose, or reef contents; now fully resets.
+- Head forward direction was hardcoded to world `(0,0,-1)` after a
+  refactor; restored to actual viewer orientation.
+
+### Docs
+
+- **`docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`** —
+  design with goals, non-goals, architecture, anchor flow, state
+  machine, server changes, dev workflow, error handling, testing,
+  risks.
+- **`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`** —
+  13-task TDD plan with file paths, full code, expected commands and
+  outputs.
+
 ## [0.6.0] — 2026-04-24
 
 AR Phase 2 — a new `treeAr.html` surface runs the branching-coral tree

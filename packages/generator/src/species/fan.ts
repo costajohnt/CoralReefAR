@@ -67,6 +67,11 @@ export function generateFan(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: Math.max(maxX, 0.05),
     approxHeight: Math.max(maxY, 0.05),
+    // Fan grows upward; the natural tip is the top-center of the fan.
+    tips: [{
+      position: [0, Math.max(maxY, 0.05), 0] as const,
+      normal: [0, 1, 0] as const,
+    }],
   };
 }
 

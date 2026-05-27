@@ -43,7 +43,49 @@ Related docs:
   force-push. Hook bypass for `costajohnt/*` repos so operator actions
   flow without per-command approval.
 - **Rate limits**: off by default (tracked in [#25] — flip env vars for
-  production).
+  production). Quest sessions go through a separate `questRateLimitMax`
+  bucket (default 20/hour) selected by `surface: "quest"` on the polyp
+  payload.
+
+## Quest 3 MR surface
+
+A WebXR `immersive-ar` surface at `/quest.html`. Code-complete on the
+`quest3-mr-surface` branch (not yet merged). Awaiting on-headset
+validation before merge.
+
+What's in v1:
+- Enter MR button → `immersive-ar` session with passthrough + hand tracking
+- Pinch a spot on the floor with the right hand → XRAnchor planted, shared
+  global reef materializes at life-size
+- Left-wrist palette: 5 shape buttons, 5 color swatches, Move-reef button
+- Right-hand pinch-hold-twist-release places a polyp with rotation
+- Live WebSocket updates: polyps planted on web / other Quest sessions
+  appear in real time
+- In-XR instruction overlay (canvas-textured 3D panel)
+- Tracking-lost detection with reef holding at last good pose
+
+What's pending hardware testing (likely v1.1 polish):
+- LOD review at 10 cm proximity — phone-AR meshes were tuned for ~1m
+- Wrist palette positioning offset + pinch thresholds (tune on real hand
+  tracking; current defaults are educated guesses)
+- Visible hotspots on tip nodes — module exists (`tipNodeHotspot.ts`),
+  not yet attached to specific reef tips
+- Cross-session anchor persistence (currently session-scoped only)
+
+Specs / plans:
+- `docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`
+- `docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`
+
+Dev workflow:
+```bash
+brew install mkcert                                       # one-time
+VITE_ENABLE_MKCERT=1 pnpm --filter @reef/client dev       # HTTPS dev
+# On Quest: open https://<mac-lan-ip>:5173/quest.html in Meta Quest Browser
+```
+
+> **Blocker:** the phone-AR pedestal-marker path can't be physically
+> tested without a color printer. The Quest 3 path uses WebXR spatial
+> anchors and avoids the marker entirely.
 
 ## Deployment
 

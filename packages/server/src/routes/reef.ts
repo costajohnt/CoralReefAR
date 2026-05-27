@@ -44,7 +44,10 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     const already = db.countByDeviceSince(dh, windowStart);
-    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
+    const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
+      ? config.questRateLimitMax
+      : config.rateLimitMax;
+    if (limitMax > 0 && already >= limitMax) {
       counters.inc('rate_limited');
       const oldest = db.oldestPolypSince(dh, windowStart);
       const retryAfterMs = oldest !== null
@@ -54,8 +57,12 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
       return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
     }
 
+    // `surface` is a transport-only field for routing rate-limit buckets;
+    // strip before persisting so it never lands in the DB.
+    const { surface: _surface, ...inputFields } = parsed.data;
+    void _surface;
     const polyp: Omit<Polyp, 'id' | 'deleted'> = {
-      ...parsed.data,
+      ...inputFields,
       createdAt: Date.now(),
       deviceHash: dh,
     };

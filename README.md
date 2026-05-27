@@ -51,7 +51,16 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     tips. Avatar-bioluminescent styling (bloom post-processing, vivid
     palette). Implemented per
     [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
-- **CI**: lint (Oxlint) · typecheck · build · 313 tests across four
+  - **Quest 3** (`quest.html`) — WebXR `immersive-ar` surface for the
+    Meta Quest Browser. Passthrough MR, hand tracking only, session-scoped
+    spatial anchor. Pinch a spot on your floor to plant the reef life-size,
+    use the left-wrist palette to pick shape + color, pinch-hold-twist-release
+    to place + rotate a polyp. Same shared global reef and backend as the
+    other surfaces — polyps planted in MR appear on web in real time and
+    vice versa. Implemented per
+    [`docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`](docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md)
+    and [`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`](docs/superpowers/plans/2026-05-25-quest3-mr-surface.md).
+- **CI**: lint (Oxlint) · typecheck · build · 380+ tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout
@@ -75,6 +84,27 @@ pnpm --filter @reef/server dev          # http://localhost:8787
 pnpm --filter @reef/client dev          # http://localhost:5173
 ```
 
+### Quest 3 dev workflow
+
+WebXR requires a secure context off-localhost, and Quest can't see the Mac's
+`localhost`. Two options:
+
+```bash
+# 1. LAN dev — fast iteration, requires mkcert installed once on the Mac.
+brew install mkcert
+VITE_ENABLE_MKCERT=1 pnpm --filter @reef/client dev
+# Then on Quest: open https://<your-mac-lan-ip>:5173/quest.html in the
+# Meta Quest Browser. Trust the cert prompt once.
+
+# 2. Deploy-to-test — push the branch, open the deployed URL on Quest.
+```
+
+Without `VITE_ENABLE_MKCERT=1`, Vite serves plain HTTP and the Quest browser
+will refuse to grant WebXR permission.
+
+Full Quest developer guide: [`docs/QUEST_3_DEV.md`](docs/QUEST_3_DEV.md) —
+state machine diagram, architecture map, tunables table, debugging tips.
+
 The client proxies `/api` and `/ws` to the server in dev.
 
 For desktop testing (no camera or tracker), use `?tracker=noop` — the reef anchors a fixed distance in front of the camera.
@@ -96,11 +126,14 @@ node packages/server/dist/seed.js
 
 ## Developer pages
 
-Vite serves three entry points in addition to the main AR app:
+Vite serves additional entry points alongside the main AR app:
 
 - `/` — visitor-facing AR app (uses camera + tracker)
 - `/preview.html` — grid of all 5 species rendered non-AR with orbit cameras, for visually tuning the generator
 - `/timelapse.html` — scrub through daily snapshots (reads `/api/snapshots`)
+- `/playground.html` — AR-free interactive reef (mouse / keyboard)
+- `/tree.html` and `/treeAr.html` — fractal-branching tree mode
+- `/quest.html` — Meta Quest 3 MR surface (WebXR, hand tracking, passthrough)
 
 ## Server routes
 

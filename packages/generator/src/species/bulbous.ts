@@ -77,6 +77,12 @@ export function generateBulbous(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: radius,
     approxHeight: radius * 1.6,
+    // Single tip at the top of the bulb, pointing straight up — new growth
+    // off a brain coral logically extends from the crown.
+    tips: [{
+      position: [0, radius * 1.6, 0] as const,
+      normal: [0, 1, 0] as const,
+    }],
   };
 }
 

@@ -34,6 +34,11 @@ export function generateTube(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: Math.max(maxR, 0.05),
     approxHeight: maxH,
+    // Tube coral grows from the top opening of the tallest stalk.
+    tips: [{
+      position: [0, maxH, 0] as const,
+      normal: [0, 1, 0] as const,
+    }],
   };
 }
 
