@@ -11,6 +11,10 @@ export function generateTube(rng: RNG, baseColor: Rgb): GeneratedPolyp {
 
   let maxR = 0;
   let maxH = 0;
+  // Tip lives on the actual top opening of the tallest stalk, not at
+  // world origin. Track which stalk wins and where its top vertex
+  // (center of the opening) sits.
+  let tallestTopCenter = { x: 0, y: 0, z: 0 };
 
   for (let i = 0; i < count; i++) {
     const h = rng.range(0.04, 0.12);
@@ -22,7 +26,12 @@ export function generateTube(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     emitCylinder(positions, normals, colors, indices, cx, 0, cz, h, r, tilt, c);
     const rr = Math.hypot(cx, cz) + r;
     if (rr > maxR) maxR = rr;
-    if (h > maxH) maxH = h;
+    if (h > maxH) {
+      maxH = h;
+      // emitCylinder places the top opening's center at
+      // (cx + sin(tilt)*h, h, cz) — see line ~72.
+      tallestTopCenter = { x: cx + Math.sin(tilt) * h, y: h, z: cz };
+    }
   }
 
   return {
@@ -34,9 +43,11 @@ export function generateTube(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: Math.max(maxR, 0.05),
     approxHeight: maxH,
-    // Tube coral grows from the top opening of the tallest stalk.
+    // Tube coral grows from the top opening of the tallest stalk —
+    // anchored to that stalk's actual top center, accounting for both
+    // its (cx, cz) offset from origin and its tilt.
     tips: [{
-      position: [0, maxH, 0] as const,
+      position: [tallestTopCenter.x, tallestTopCenter.y, tallestTopCenter.z] as const,
       normal: [0, 1, 0] as const,
     }],
   };

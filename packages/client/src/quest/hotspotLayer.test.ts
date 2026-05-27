@@ -79,6 +79,11 @@ describe('HotspotLayer', () => {
     expect(decoded).toEqual({ polypId: 42, tipIdx: 2 });
   });
 
+  it('encodeHotspotId throws on out-of-range tipIdx (catches silent collisions)', () => {
+    expect(() => HotspotLayer.encodeHotspotId(1, 16)).toThrow(RangeError);
+    expect(() => HotspotLayer.encodeHotspotId(1, -1)).toThrow(RangeError);
+  });
+
   it('hotspotTransform resolves a live hotspot to a world pose', () => {
     const layer = new HotspotLayer();
     layer.addPolyp(polyp(7, 'bulbous'));

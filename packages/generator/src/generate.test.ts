@@ -125,6 +125,34 @@ test('bulbous / fan / tube each expose exactly one upward-pointing tip', () => {
   }
 });
 
+test('every tip lies inside the mesh bounding box (not floating off the polyp)', () => {
+  // Regression: bulbous/tube tips were hard-coded to (0, approxHeight, 0)
+  // which floated above the actual top of the mesh (for bulbous) or in
+  // empty space between stalks (for tube). Hotspot must visually land
+  // on the polyp, so the tip's xyz must lie within the vertex bounds.
+  // Allow 1cm tolerance for normal extension above the highest vertex.
+  const TOL = 0.01;
+  for (const species of SPECIES) {
+    const p = generatePolyp({ species, seed: 42, colorKey: 'coral-pink' });
+    if (!p.tips || p.tips.length === 0) continue;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < p.mesh.positions.length; i += 3) {
+      const x = p.mesh.positions[i]!;
+      const y = p.mesh.positions[i + 1]!;
+      const z = p.mesh.positions[i + 2]!;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    for (const tip of p.tips) {
+      const [tx, ty, tz] = tip.position;
+      assert.ok(tx >= minX - TOL && tx <= maxX + TOL, `${species} tip x=${tx} outside [${minX}, ${maxX}]`);
+      assert.ok(ty >= minY - TOL && ty <= maxY + TOL, `${species} tip y=${ty} outside [${minY}, ${maxY}]`);
+      assert.ok(tz >= minZ - TOL && tz <= maxZ + TOL, `${species} tip z=${tz} outside [${minZ}, ${maxZ}]`);
+    }
+  }
+});
+
 test('branching tip positions are deterministic for the same seed', () => {
   const a = generatePolyp({ species: 'branching', seed: 999, colorKey: 'teal' });
   const b = generatePolyp({ species: 'branching', seed: 999, colorKey: 'teal' });

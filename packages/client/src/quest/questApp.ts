@@ -86,7 +86,7 @@ export class QuestApp {
   private socket: ReefSocket | null = null;
   private selectedSpecies: Species = 'branching';
   private selectedColorKey = 'coral-pink';
-  private pendingAnchorPose: XRPose | null = null;
+  private pendingAnchorPose: { transform: XRRigidTransform } | null = null;
   private rightPinchWas = false;
   private compose: ComposeContext | null = null;
   /** Set on construction; gates whether to read / write persistent handles. */
@@ -106,6 +106,8 @@ export class QuestApp {
   private lastHeadPosition: Vector3 | null = null;
   /** Last known viewer forward vector. Used to billboard the overlay. */
   private lastHeadForward: Vector3 | null = null;
+  /** Tracked id for the 3s transient-error fade-out timer. */
+  private transientErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly ui: QuestAppUi) {
     this.palette.onShapeSelect((s) => { this.selectedSpecies = s; });
@@ -215,6 +217,13 @@ export class QuestApp {
    * without the persistence write — we're restoring, not creating.
    */
   private async adoptRestoredAnchor(anchor: XRAnchor): Promise<void> {
+    // Guard against the session ending while restorePersistentAnchor was
+    // in flight. If it did, we'd be building a zombie reef on a dead
+    // session — releasing the anchor and bailing is the safe path.
+    if (!this.session) {
+      anchor.delete();
+      return;
+    }
     this.reefAnchor = new ReefAnchor(anchor);
     this.scene.add(this.reefAnchor.object3d);
     try {
@@ -223,6 +232,12 @@ export class QuestApp {
       this.tearDownPartialReefSetup();
       this.setState('error');
       this.ui.status.textContent = `Could not load reef: ${(loadErr as Error).message}`;
+      return;
+    }
+    // The session may have ended during loadReef too; re-check before
+    // surfacing the interactive state.
+    if (!this.session) {
+      this.tearDownPartialReefSetup();
       return;
     }
     this.setState('interactive');
@@ -358,6 +373,13 @@ export class QuestApp {
       if (createAnchor) {
         void createAnchor.call(frame, pose.transform, this.referenceSpace)
           .then(async (anchor) => {
+            // Session may have ended during createAnchor. Without this
+            // check we'd build a zombie reef + open a WebSocket on a
+            // dead session.
+            if (!this.session) {
+              anchor.delete();
+              return;
+            }
             this.reefAnchor = new ReefAnchor(anchor);
             this.scene.add(this.reefAnchor.object3d);
             // If persistence is enabled, ask the anchor for a UUID and
@@ -380,6 +402,11 @@ export class QuestApp {
               this.tearDownPartialReefSetup();
               this.setState('error');
               this.ui.status.textContent = `Could not load reef: ${(loadErr as Error).message}`;
+              return;
+            }
+            // Re-check after the async loadReef.
+            if (!this.session) {
+              this.tearDownPartialReefSetup();
               return;
             }
             this.setState('interactive');
@@ -562,11 +589,7 @@ export class QuestApp {
       Math.abs(localProbe.y) > M ||
       Math.abs(localProbe.z) > M
     ) {
-      const msg = 'Pinch closer to the reef center to plant a polyp.';
-      this.ui.status.textContent = msg;
-      this.overlay.setText(msg);
-      this.overlay.show();
-      setTimeout(() => this.clearTransientError(), 3000);
+      this.showTransientError('Pinch closer to the reef center to plant a polyp.');
       return;
     }
     const seed = Math.floor(Math.random() * 0xffffffff);
@@ -628,27 +651,39 @@ export class QuestApp {
   }
 
   private handleSubmitError(err: unknown): void {
+    let msg: string;
     if (err instanceof RateLimitError) {
-      const seconds = Math.ceil(err.retryAfterMs / 1000);
-      const msg = `Slow down — wait ${seconds}s.`;
-      this.ui.status.textContent = msg;
-      this.overlay.setText(msg);
-      this.overlay.show();
-      setTimeout(() => this.clearTransientError(), 3000);
+      msg = `Slow down — wait ${Math.ceil(err.retryAfterMs / 1000)}s.`;
     } else if (err instanceof Error && err.message.includes('400')) {
       // Server validation rejection — most often a position out of the ±1m
       // pedestal-local bounds. Educate the user.
-      const msg = 'Pinch closer to the reef center to plant a polyp.';
-      this.ui.status.textContent = msg;
-      this.overlay.setText(msg);
-      this.overlay.show();
-      setTimeout(() => this.clearTransientError(), 3000);
+      msg = 'Pinch closer to the reef center to plant a polyp.';
     } else {
+      // Unknown error (500, network, etc.) — still surface visible
+      // feedback rather than silently swallowing. Log for debugging.
       console.warn('submitPolyp failed', err);
+      msg = 'Could not plant polyp — try again.';
     }
+    this.showTransientError(msg);
+  }
+
+  /**
+   * Show a 3-second transient error in both the 2D status div and the
+   * in-XR overlay. Cancels any previous transient-error timer so
+   * overlapping errors don't stack and clear each other prematurely.
+   */
+  private showTransientError(msg: string): void {
+    this.ui.status.textContent = msg;
+    this.overlay.setText(msg);
+    this.overlay.show();
+    if (this.transientErrorTimer !== null) {
+      clearTimeout(this.transientErrorTimer);
+    }
+    this.transientErrorTimer = setTimeout(() => this.clearTransientError(), 3000);
   }
 
   private clearTransientError(): void {
+    this.transientErrorTimer = null;
     this.ui.status.textContent = '';
     // Restore the overlay text to whatever the current state expects.
     this.syncOverlayToState();
@@ -752,6 +787,11 @@ export class QuestApp {
     this.rightPinchWas = false;
     this.lastHeadPosition = null;
     this.lastHeadForward = null;
+    this.pendingRestoreHandle = null;
+    if (this.transientErrorTimer !== null) {
+      clearTimeout(this.transientErrorTimer);
+      this.transientErrorTimer = null;
+    }
     this.socket?.close();
     this.socket = null;
     if (this.reef) this.reef.clear();
@@ -805,11 +845,14 @@ export class QuestApp {
         this.overlay.show();
         break;
       case 'interactive':
+      case 'idle':
+      case 'xr-starting':
         this.overlay.setText('');
         this.overlay.hide();
         break;
       default:
         this.overlay.setText('');
+        this.overlay.hide();
         break;
     }
   }

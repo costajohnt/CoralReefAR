@@ -64,13 +64,17 @@ What's in v1:
 - In-XR instruction overlay (canvas-textured 3D panel)
 - Tracking-lost detection with reef holding at last good pose
 
-What's pending hardware testing (likely v1.1 polish):
+v1.1 additions (shipped on the branch, also pending hardware verification):
+- Tip-node hotspots wired up — generator exposes 1-3 tips per species,
+  `HotspotLayer` attaches visible markers, pinch near a tip snaps the
+  compose preview to it
+- Cross-session anchor persistence behind `?persist=1` URL flag
+- Ambient life: sway + pulse shaders on every Quest reef polyp
+
+What's still pending hardware testing (tuning, not feature work):
 - LOD review at 10 cm proximity — phone-AR meshes were tuned for ~1m
 - Wrist palette positioning offset + pinch thresholds (tune on real hand
   tracking; current defaults are educated guesses)
-- Visible hotspots on tip nodes — module exists (`tipNodeHotspot.ts`),
-  not yet attached to specific reef tips
-- Cross-session anchor persistence (currently session-scoped only)
 
 Specs / plans:
 - `docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`

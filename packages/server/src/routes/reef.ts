@@ -44,6 +44,15 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     const already = db.countByDeviceSince(dh, windowStart);
+    // The `surface` tag is client-supplied — there's no cryptographic
+    // proof that a request really came from a Quest session. With the
+    // current defaults (rateLimitMax=0, questRateLimitMax=20) the gap
+    // is benign because the web bucket is unrestricted; but if a
+    // production config tightens rateLimitMax, this becomes a bypass
+    // vector. When productionalizing the write-side limit, either
+    // verify surface against a UA/header pattern, drop the looser
+    // bucket entirely, or accept the risk explicitly. Tracked in
+    // PR #87 review notes.
     const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
       ? config.questRateLimitMax
       : config.rateLimitMax;

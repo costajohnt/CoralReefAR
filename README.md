@@ -52,8 +52,9 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     palette). Implemented per
     [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
   - **Quest 3** (`quest.html`) — WebXR `immersive-ar` surface for the
-    Meta Quest Browser. Passthrough MR, hand tracking only, session-scoped
-    spatial anchor. Pinch a spot on your floor to plant the reef life-size,
+    Meta Quest Browser. Passthrough MR, hand tracking only, spatial
+    anchor (session-scoped by default, persistent via `?persist=1`).
+    Pinch a spot on your floor to plant the reef life-size,
     use the left-wrist palette to pick shape + color, pinch-hold-twist-release
     to place + rotate a polyp. Same shared global reef and backend as the
     other surfaces — polyps planted in MR appear on web in real time and

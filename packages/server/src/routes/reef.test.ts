@@ -118,6 +118,11 @@ test('POST /api/reef/polyp returns 429 with retryAfterMs when RATE_LIMIT_MAX ena
 });
 
 test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (default)', async () => {
+  // Use a CONSTANT user-agent so every request lands in the same
+  // deviceHash bucket. The earlier version of this test rotated the UA
+  // per iteration, producing distinct buckets — the test passed
+  // tautologically even with rateLimitMax=1. Keeping the UA constant
+  // actually exercises the "limit-off" code path.
   const savedMax = config.rateLimitMax;
   config.rateLimitMax = 0;
   try {
@@ -125,7 +130,7 @@ test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (de
     for (let i = 0; i < 5; i++) {
       const r = await app.inject({
         method: 'POST', url: '/api/reef/polyp',
-        headers: { 'user-agent': `test-ua-${i}` },
+        headers: { 'user-agent': 'constant-ua-for-rate-limit-test' },
         payload: { ...valid, seed: 100 + i },
       });
       assert.equal(r.statusCode, 201, `request ${i} should succeed, got ${r.statusCode}`);

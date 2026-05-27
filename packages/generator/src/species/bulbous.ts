@@ -24,6 +24,11 @@ export function generateBulbous(rng: RNG, baseColor: Rgb): GeneratedPolyp {
   const colors: number[] = [];
   const indices: number[] = [];
 
+  // Track the highest mesh vertex (and its xz position) so the tip
+  // hotspot lands on the actual surface, not the approxHeight constant
+  // — grooves + flatten reduce the real top below radius*1.6.
+  let maxYVertex = { x: 0, y: -Infinity, z: 0 };
+
   for (let y = 0; y <= heightSegments; y++) {
     const v = y / heightSegments;
     const phi = v * Math.PI;
@@ -48,10 +53,14 @@ export function generateBulbous(rng: RNG, baseColor: Rgb): GeneratedPolyp {
       const rr = r * flatten;
       const yOffset = radius * 0.1;
 
-      positions.push(nx * rr, nyAdj * rr + yOffset, nz * rr);
+      const vx = nx * rr;
+      const vy = nyAdj * rr + yOffset;
+      const vz = nz * rr;
+      positions.push(vx, vy, vz);
       normals.push(nx, nyAdj, nz);
       const c = tintColor(rng, baseColor, 0.1 + 0.1 * groove);
       colors.push(c[0], c[1], c[2]);
+      if (vy > maxYVertex.y) maxYVertex = { x: vx, y: vy, z: vz };
     }
   }
 
@@ -77,10 +86,12 @@ export function generateBulbous(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: radius,
     approxHeight: radius * 1.6,
-    // Single tip at the top of the bulb, pointing straight up — new growth
-    // off a brain coral logically extends from the crown.
+    // Single tip at the actual highest mesh vertex (not the approxHeight
+    // constant, which is the bounding-volume top and floats well above
+    // the grooved/flattened surface). Normal still points straight up —
+    // new growth off a brain coral extends from the crown.
     tips: [{
-      position: [0, radius * 1.6, 0] as const,
+      position: [maxYVertex.x, maxYVertex.y, maxYVertex.z] as const,
       normal: [0, 1, 0] as const,
     }],
   };

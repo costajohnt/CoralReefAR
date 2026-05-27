@@ -1,9 +1,17 @@
 # Quest 3 MR Surface — Design
 
-**Status:** proposed
+**Status:** accepted (shipped on branch `quest3-mr-surface`, PR #87)
 **Date:** 2026-05-25
 **Author:** John Costa
 **Related:** [vault: coralreef-ar/quest3-integration](../../../../../../Documents/notes/coralreef-ar/quest3-integration.md)
+
+**Deviations from the proposed module layout** (resolved during implementation):
+- No separate `hand/handVisualizer.ts` — debug visualization wasn't needed in v1.
+- No `scene/questScene.ts`; the existing `Reef` class from `../scene/reef.js` was reused directly. The Quest-specific layering ended up in a new `hotspotLayer.ts` instead.
+- Added `bootstrap.ts` (extracted from `quest.ts` so the WebXR-detection logic is unit-testable).
+- Added `composeRotation.test.ts` and `serverMessageHandler.ts` during the v1.1 audit pass.
+
+See the implementation plan and the squashed commit for the final tree.
 
 ## Summary
 
