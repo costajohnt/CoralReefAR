@@ -323,6 +323,98 @@ describe('QuestApp integration', () => {
     expect(() => app.cancelGestureOnHandLoss()).not.toThrow();
   });
 
+  it('adoptRestoredAnchor releases the XRAnchor and bails if session ended mid-restore', async () => {
+    // Round-10 audit guard regression: a restorePersistentAnchor promise
+    // can resolve AFTER the user ended the session. Without the
+    // `if (!this.session)` guard, we'd parent the anchor's Object3D into
+    // a scene attached to a dead session and call loadReef on it.
+    const app = new QuestApp(mockUi());
+    const internal = app as unknown as {
+      session: XRSession | null;
+      adoptRestoredAnchor: (a: XRAnchor) => Promise<void>;
+      reefAnchor: object | null;
+    };
+    internal.session = null; // simulate session-already-ended
+    const deleteSpy = vi.fn();
+    const anchor = { delete: deleteSpy } as unknown as XRAnchor;
+    await internal.adoptRestoredAnchor(anchor);
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+    expect(internal.reefAnchor).toBeNull();
+  });
+
+  it('restorePersistentAnchor rejection clears the saved handle + falls back to placement', async () => {
+    // Round-10 audit: a stale handle (room rearranged, anchor expired)
+    // must drop the localStorage entry and surface a recoverable message.
+    // Before the fix, the next session would retry the dead handle.
+    window.history.pushState({}, '', '?persist=1');
+    window.localStorage.setItem('reef.questAnchorHandle', 'stale-uuid');
+    try {
+      const xr = navigator.xr as XRSystem & { requestSession: ReturnType<typeof vi.fn> };
+      const restoreReject = vi.fn().mockRejectedValue(new Error('handle expired'));
+      xr.requestSession.mockResolvedValue({
+        addEventListener: vi.fn(),
+        requestReferenceSpace: vi.fn().mockResolvedValue({}),
+        restorePersistentAnchor: restoreReject,
+        inputSources: [],
+      } as unknown as XRSession);
+      const ui = mockUi();
+      const app = new QuestApp(ui);
+      await app.start();
+      // onXRFrame returns early when renderer/referenceSpace are null
+      // (happy-dom has no WebGL2 so the renderer is gated off in start()).
+      // Stub them just enough to let the restore-handle branch fire.
+      const internal = app as unknown as {
+        renderer: { render: () => void } | null;
+        onXRFrame: (f: XRFrame) => void;
+      };
+      internal.renderer = { render: vi.fn() };
+      const frameStub = {
+        predictedDisplayTime: 0,
+        getViewerPose: () => null,
+      } as unknown as XRFrame;
+      internal.onXRFrame(frameStub);
+      // restorePersistentAnchor was called and rejected; let the catch run.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(restoreReject).toHaveBeenCalledTimes(1);
+      expect(window.localStorage.getItem('reef.questAnchorHandle')).toBeNull();
+      expect(app.state).toBe('placement');
+      expect(ui.status.textContent).toMatch(/Could not restore reef/);
+    } finally {
+      window.localStorage.removeItem('reef.questAnchorHandle');
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  it('transient errors fired within 3s do not clear each other prematurely', () => {
+    // Round-10 audit fix: showTransientError tracks the timer ID and
+    // cancels it before scheduling a new one, so the second message
+    // sticks for its full 3s instead of being wiped by the first
+    // timer firing.
+    vi.useFakeTimers();
+    try {
+      const ui = mockUi();
+      const app = new QuestApp(ui);
+      app._setStateForTest('interactive');
+      const submit = (app as unknown as { handleSubmitError: (e: unknown) => void })
+        .handleSubmitError.bind(app);
+      submit(new RateLimitError(5_000));
+      expect(ui.status.textContent).toMatch(/Slow down/);
+      // Second error 1s later — second timer should replace the first.
+      vi.advanceTimersByTime(1_000);
+      submit(new Error('submitPolyp 400'));
+      expect(ui.status.textContent).toMatch(/closer to the reef center/);
+      // 2.5s after the second error — first timer (already cancelled)
+      // would have fired by now. Second message must still be visible.
+      vi.advanceTimersByTime(2_500);
+      expect(ui.status.textContent).toMatch(/closer to the reef center/);
+      // Past the second timer's 3s window — now cleared.
+      vi.advanceTimersByTime(600);
+      expect(ui.status.textContent).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('placement.onAnchor handler does NOT accumulate across re-entries (Bug C)', async () => {
     // Drive two start() cycles via a session-end transition between them
     // and confirm a single simulated pinch only sets pendingAnchorPose

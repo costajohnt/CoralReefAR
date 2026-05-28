@@ -53,10 +53,10 @@ export function generateBranching(rng: RNG, baseColor: Rgb): GeneratedPolyp {
   const SIDES = 5;
   let maxY = 0;
   let maxRadial = 0;
-  // Track every segment endpoint that ends a leaf branch (no further F
-  // emitted in this stack frame). The 3 highest become the tip nodes —
-  // visually those read as the "growing tips" where a new branch would
-  // naturally attach.
+  // Collect every F segment endpoint, then prune below to a small number
+  // of well-separated tips. The L-system doesn't tell us which segments
+  // end a branch cheaply, so we gather all of them and let the spatial
+  // dedup pass pick the visually distinct ones.
   const candidateTips: { x: number; y: number; z: number; dx: number; dy: number; dz: number }[] = [];
 
   for (const c of s) {

@@ -51,8 +51,7 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     // production config tightens rateLimitMax, this becomes a bypass
     // vector. When productionalizing the write-side limit, either
     // verify surface against a UA/header pattern, drop the looser
-    // bucket entirely, or accept the risk explicitly. Tracked in
-    // PR #87 review notes.
+    // bucket entirely, or accept the risk explicitly.
     const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
       ? config.questRateLimitMax
       : config.rateLimitMax;

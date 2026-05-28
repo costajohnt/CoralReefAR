@@ -12,7 +12,7 @@ A new client surface at `quest.html` runs the shared global reef in the
 Meta Quest Browser via WebXR `immersive-ar`. Passthrough MR, hand
 tracking only (no controllers), session-scoped spatial anchor.
 
-- **`quest.html`** — sixth client entry alongside index / preview /
+- **`quest.html`** — seventh client entry alongside index / preview /
   timelapse / playground / tree / treeAr. Reuses `@reef/generator`,
   `@reef/shared`, the existing scene / mesh adapters, and the WebSocket
   client. No new backend endpoints.

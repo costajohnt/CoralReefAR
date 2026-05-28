@@ -1,9 +1,9 @@
 /**
  * A snapshot of the pose captured at pinch time. We can't keep the raw
- * XRPose — its lifetime is bounded to the originating XRFrame per the
- * WebXR spec, and using its transform on a later frame is technically
- * undefined behaviour. Snapshotting the rigid transform up-front keeps
- * us spec-clean.
+ * XRPose, whose lifetime is bounded to its originating XRFrame per the
+ * WebXR spec; using its transform on a later frame is undefined behaviour.
+ * The `transform` here is reconstructed from primitive position and
+ * orientation values, so it stays valid across frames.
  */
 export interface CapturedPose {
   transform: XRRigidTransform;
@@ -37,10 +37,30 @@ export class PlacementMode {
   handleSelectStart(source: XRInputSource, pose: XRPose): void {
     if (source.handedness !== 'right') return;
     if (this._anchorPose !== null) return;
-    // Snapshot the pose's rigid transform into our own object so the
-    // raw XRPose can be released; XRPose may be invalidated outside
-    // its originating frame.
-    const captured: CapturedPose = { transform: pose.transform };
+    // Snapshot the pose's rigid transform by reconstructing a fresh
+    // XRRigidTransform from its primitive position / orientation values.
+    // Holding pose.transform directly (a same-identity reference) would
+    // still be at the runtime's mercy for cross-frame validity. Building
+    // a new transform from primitive numbers makes the snapshot
+    // genuinely frame-independent. The constructor is unavailable in the
+    // test environment (happy-dom); fall through to the raw transform
+    // there since tests don't drive createAnchor.
+    const t = pose.transform;
+    let captured: CapturedPose;
+    if (
+      typeof XRRigidTransform !== 'undefined' &&
+      t.position !== undefined &&
+      t.orientation !== undefined
+    ) {
+      captured = {
+        transform: new XRRigidTransform(
+          { x: t.position.x, y: t.position.y, z: t.position.z, w: 1 },
+          { x: t.orientation.x, y: t.orientation.y, z: t.orientation.z, w: t.orientation.w },
+        ),
+      };
+    } else {
+      captured = { transform: t };
+    }
     this._anchorPose = captured;
     for (const h of this.handlers) h(captured);
   }

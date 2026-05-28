@@ -13,7 +13,9 @@ const moveButtonMaterial = new MeshBasicMaterial({ color: 0xf0a8a8 });
 /**
  * Two-row UI palette pinned to the user's left wrist. Top row cycles
  * shape (5 species), bottom row picks color (5 palette swatches). The
- * right hand pokes buttons via direct-touch raycast (see Task 12 wiring).
+ * right hand selects via direct-touch distance check (see
+ * `pickPokedButton` in `hand/handInteraction.ts`); not a raycast — poke
+ * is a touch gesture, not a far-pointer interaction.
  *
  * Buttons are flat Three.js planes; their `userData.shapeIndex` /
  * `userData.colorIndex` is read by `poke()` to detect which one was hit.

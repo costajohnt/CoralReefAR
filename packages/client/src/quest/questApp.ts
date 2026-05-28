@@ -391,8 +391,12 @@ export class QuestApp {
                 try {
                   const handle = await persistAPI.requestPersistentHandle();
                   saveAnchorHandle(handle);
-                } catch {
-                  // ignore — persistence is opt-in convenience
+                } catch (persistErr) {
+                  // Persistence is opt-in convenience, so failure here
+                  // doesn't break the in-session reef; surface it via
+                  // console so remote-debug devs can diagnose a "never
+                  // restores on next session" report.
+                  console.warn('requestPersistentHandle failed', persistErr);
                 }
               }
             }

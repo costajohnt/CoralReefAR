@@ -61,7 +61,7 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     vice versa. Implemented per
     [`docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`](docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md)
     and [`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`](docs/superpowers/plans/2026-05-25-quest3-mr-surface.md).
-- **CI**: lint (Oxlint) · typecheck · build · 380+ tests across four
+- **CI**: lint (Oxlint) · typecheck · build · 600+ tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout
