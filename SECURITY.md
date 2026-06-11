@@ -16,8 +16,13 @@ and any coordinated disclosure.
 
 Relevant threats for this project:
 
-- **Unauthenticated writes**: all POST/DELETE paths should require the
-  right capability. Admin routes are bearer-token gated.
+- **Unauthenticated writes**: reef admin routes are unconditionally
+  bearer-token gated. Destructive tree routes (`POST /api/tree/reset`,
+  `DELETE /api/tree/polyp/:id`) are gated behind the same admin token
+  whenever `ADMIN_TOKEN` is configured; with no token set (the
+  single-installation default) they stay open so the in-app Clear/Undo
+  buttons work. Polyp creation is open by design and bounded by the rate
+  limits below.
 - **Rate-limit bypass**: one polyp per device per hour is the public
   contract; deviceHash + per-IP token bucket enforce it.
 - **Resource exhaustion**: WebSocket frames have a 64 KB payload cap;

@@ -1,30 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { config } from '../config.js';
 import type { ReefDb } from '../db.js';
 import type { Hub } from '../hub.js';
-
-function requireAdmin(token: string | undefined): boolean {
-  if (!token || !config.adminToken) return false;
-  // Hash both to fixed-size 32-byte digests before timingSafeEqual so the
-  // comparison runs in constant time regardless of the submitted token's
-  // length. Raw-buffer compare leaks length through an early-return branch.
-  const a = createHash('sha256').update(token).digest();
-  const b = createHash('sha256').update(config.adminToken).digest();
-  return timingSafeEqual(a, b);
-}
-
-// Check admin bearer token. Returns true on success; on failure writes a
-// 401 response and returns false — callers should return immediately.
-function checkAdminAuth(req: FastifyRequest, reply: FastifyReply): boolean {
-  const auth = req.headers['authorization'];
-  const token = auth?.toString().replace(/^Bearer\s+/i, '');
-  if (!requireAdmin(token)) {
-    void reply.status(401).send({ error: 'unauthorized' });
-    return false;
-  }
-  return true;
-}
+import { checkAdminAuth } from '../auth.js';
 
 // Parse admin auth + :id path param. Returns the id on success, or null after
 // writing a 401/400 response — callers should return immediately when null.
