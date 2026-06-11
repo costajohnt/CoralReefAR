@@ -1,7 +1,46 @@
 import { describe, expect, test } from 'vitest';
-import { initialState, reduce, type TreeAction, type TreeState } from './state.js';
+import {
+  addedPolypsInvalidateUndo,
+  initialState,
+  reduce,
+  type TreeAction,
+  type TreeState,
+} from './state.js';
 
 const idlePicker = { variant: 'forked', colorKey: 'neon-cyan' } as const;
+
+describe('addedPolypsInvalidateUndo', () => {
+  const idleWithCommit: TreeState = { kind: 'idle', picker: idlePicker, lastCommittedId: 42 };
+
+  test('true when a loaded polyp is a child of the last committed piece', () => {
+    expect(addedPolypsInvalidateUndo(idleWithCommit, [{ parentId: 42 }])).toBe(true);
+  });
+
+  test('true when any one of several added polyps is a child', () => {
+    const added = [{ parentId: 1 }, { parentId: 42 }, { parentId: 7 }];
+    expect(addedPolypsInvalidateUndo(idleWithCommit, added)).toBe(true);
+  });
+
+  test('false when no added polyp builds on the last committed piece', () => {
+    expect(addedPolypsInvalidateUndo(idleWithCommit, [{ parentId: 7 }, { parentId: null }])).toBe(
+      false,
+    );
+  });
+
+  test('false when there is no last committed piece', () => {
+    const idle: TreeState = { kind: 'idle', picker: idlePicker, lastCommittedId: null };
+    expect(addedPolypsInvalidateUndo(idle, [{ parentId: 42 }])).toBe(false);
+  });
+
+  test('false while undoing (no lastCommittedId to invalidate)', () => {
+    const undoing: TreeState = { kind: 'undoing', picker: idlePicker, polypId: 42 };
+    expect(addedPolypsInvalidateUndo(undoing, [{ parentId: 42 }])).toBe(false);
+  });
+
+  test('false for an empty added list', () => {
+    expect(addedPolypsInvalidateUndo(idleWithCommit, [])).toBe(false);
+  });
+});
 
 describe('initialState', () => {
   test('returns idle with the provided picker selection', () => {

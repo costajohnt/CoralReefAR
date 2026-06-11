@@ -12,7 +12,13 @@ import { Jellyfish } from './tree/jellyfish.js';
 import { SeaTurtle } from './tree/seaTurtle.js';
 import { installSway } from './scene/currentSway.js';
 import { installTreePulse } from './tree/pulse.js';
-import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
+import {
+  addedPolypsInvalidateUndo,
+  initialState,
+  reduce,
+  type TreeAction,
+  type TreeState,
+} from './tree/state.js';
 import { createEffects } from './tree/effects.js';
 import { applyAnchorPose } from './tracking/anchor.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
@@ -323,12 +329,7 @@ export class TreeApp {
         this.treeReef.addPiece(msg.polyp);
         this.installEffectsOnNewPieces();
         this.attachIndicators.refresh(this.treeReef.getAvailableAttachPoints());
-        if (
-          this.state.kind !== 'undoing' &&
-          'lastCommittedId' in this.state &&
-          this.state.lastCommittedId !== null &&
-          msg.polyp.parentId === this.state.lastCommittedId
-        ) {
+        if (addedPolypsInvalidateUndo(this.state, [msg.polyp])) {
           this.dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
         }
       } else if (msg.type === 'tree_polyp_removed') {
@@ -359,6 +360,10 @@ export class TreeApp {
     for (const polyp of sorted) this.treeReef.addPiece(polyp);
     this.installEffectsOnNewPieces();
     this.attachIndicators.refresh(this.treeReef.getAvailableAttachPoints());
+    // A child loaded over HTTP (not just over WS) also invalidates our undo.
+    if (addedPolypsInvalidateUndo(this.state, sorted)) {
+      this.dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
+    }
   }
 
   private installEffectsOnNewPieces(): void {
