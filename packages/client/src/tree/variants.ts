@@ -6,7 +6,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three';
-import { paletteByKey, type AttachPoint, type TreeVariant } from '@reef/shared';
+import { paletteByKeyOrDefault, type AttachPoint, type TreeVariant } from '@reef/shared';
 import { generateTreeVariant } from '@reef/generator';
 import { polypMesh } from '../scene/meshAdapter.js';
 import { applyTreeMaterial } from './material.js';
@@ -31,7 +31,7 @@ export function generateTreeVariantMesh(input: {
   const { mesh: meshData, attachPoints, boundingBox: bb } = generateTreeVariant(input);
 
   const mesh = polypMesh(meshData);
-  const hex = paletteByKey(input.colorKey).hex;
+  const hex = paletteByKeyOrDefault(input.colorKey).hex;
   applyTreeMaterial(mesh, hex);
 
   // Joint sphere at local (0,0,0). When the piece is placed at a parent's

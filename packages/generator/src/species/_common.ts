@@ -1,4 +1,4 @@
-import { hexToRgb, paletteByKey } from '@reef/shared';
+import { hexToRgb, paletteByKeyOrDefault } from '@reef/shared';
 import type { RNG } from '../rng.js';
 
 export type Rgb = [number, number, number];
@@ -6,9 +6,11 @@ export type Rgb = [number, number, number];
 /**
  * Resolve a palette key to a normalised [r, g, b] triple in [0, 1]^3.
  * Used by tree-mode variant generators that receive a colorKey string.
+ * Falls back to the default palette colour on an unknown key (warning once)
+ * so a single malformed row can't throw and brick the whole reef render.
  */
 export function colorVec3(colorKey: string): Rgb {
-  return hexToRgb(paletteByKey(colorKey).hex);
+  return hexToRgb(paletteByKeyOrDefault(colorKey).hex);
 }
 
 export function tintColor(rng: RNG, base: Rgb, jitter = 0.12): Rgb {

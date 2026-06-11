@@ -30,6 +30,25 @@ export function paletteByKey(key: string): PaletteEntry {
   return entry;
 }
 
+const warnedMissingKeys = new Set<string>();
+
+/**
+ * Like `paletteByKey` but never throws: an unknown key resolves to the first
+ * palette entry and warns once per key. Use on the rendering path so a single
+ * malformed `colorKey` already persisted in the database can't brick the whole
+ * scene. The write path validates `colorKey` against the palette via zod, so
+ * fresh submissions can't reach here with a bad key.
+ */
+export function paletteByKeyOrDefault(key: string): PaletteEntry {
+  const entry = byKey.get(key);
+  if (entry) return entry;
+  if (!warnedMissingKeys.has(key)) {
+    warnedMissingKeys.add(key);
+    console.warn(`Unknown palette key "${key}", falling back to "${REEF_PALETTE[0]!.key}"`);
+  }
+  return REEF_PALETTE[0]!;
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
   const n = parseInt(h, 16);
