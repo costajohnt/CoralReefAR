@@ -33,6 +33,8 @@ export class TreeDb {
     softDelete: Database.Statement;
     hasAny: Database.Statement;
     softDeleteAll: Database.Statement;
+    countByDevice: Database.Statement;
+    oldestByDevice: Database.Statement;
   };
 
   // ReefDb owns the underlying sqlite handle. Share it so migrations run once
@@ -69,7 +71,26 @@ export class TreeDb {
       softDeleteAll: this.db.prepare(
         'UPDATE tree_polyps SET deleted = 1 WHERE deleted = 0',
       ),
+      // Mirrors ReefDb's per-device counting (live rows only) so the tree
+      // write path can rate-limit by device hash the same way the reef does.
+      // Counting deleted=0 only means an undo-then-replant can stay under the
+      // cap; that's intentional parity with reef (a coarse abuse throttle, not
+      // an accounting control). Tighten both together if it ever matters.
+      countByDevice: this.db.prepare(
+        'SELECT COUNT(*) AS n FROM tree_polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
+      ),
+      oldestByDevice: this.db.prepare(
+        'SELECT MIN(created_at) AS t FROM tree_polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
+      ),
     };
+  }
+
+  countByDeviceSince(deviceHash: string, sinceMs: number): number {
+    return (this.stmt.countByDevice.get(deviceHash, sinceMs) as { n: number }).n;
+  }
+
+  oldestByDeviceSince(deviceHash: string, sinceMs: number): number | null {
+    return (this.stmt.oldestByDevice.get(deviceHash, sinceMs) as { t: number | null }).t;
   }
 
   /**
