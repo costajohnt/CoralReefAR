@@ -24,9 +24,14 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
         return reply.status(429).send({ error: 'rate_limited' });
       }
     }
+    // Bound the sim payload to the retention window so this response can't grow
+    // without limit as decorations accumulate. 0 = retention disabled → all.
+    const sim = config.simRetentionMs > 0
+      ? db.listSimSince(Date.now() - config.simRetentionMs)
+      : db.listSim();
     const state: ReefState = {
       polyps: db.listPublicPolyps(),
-      sim: db.listSim(),
+      sim,
       serverTime: Date.now(),
     };
     return state;

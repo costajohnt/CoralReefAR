@@ -15,6 +15,8 @@ export class SimWorker {
     private readonly db: ReefDb,
     private readonly hub: Hub,
     private readonly intervalMs: number,
+    // Sim deltas older than this are pruned each tick. 0 disables pruning.
+    private readonly retentionMs = 0,
   ) {}
 
   start(): void {
@@ -60,6 +62,12 @@ export class SimWorker {
         for (const u of updates) this.db.insertSim(u);
       });
       this.hub.broadcast({ type: 'sim_update', updates });
+    }
+
+    // Prune aged deltas every tick (even when nothing grew) so sim_state stays
+    // bounded by the retention window rather than growing forever.
+    if (this.retentionMs > 0) {
+      this.db.pruneSimBefore(now - this.retentionMs);
     }
     return updates;
   }

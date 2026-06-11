@@ -13,10 +13,26 @@ export const config = {
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),
   simIntervalMs: Number(process.env.SIM_INTERVAL_MS ?? 3_600_000),
   snapshotIntervalMs: Number(process.env.SNAPSHOT_INTERVAL_MS ?? 86_400_000),
+  // Sim deltas (barnacle/algae/weather decorations) older than this are pruned
+  // after each tick, and GET /api/reef only returns deltas inside this window,
+  // so sim_state and the reef payload stay bounded instead of growing forever.
+  // The reef shows a rolling window of decorations (an aging-reef look); set
+  // higher to keep them longer, or 0 to disable pruning and keep everything.
+  simRetentionMs: Number(process.env.SIM_RETENTION_MS ?? 30 * 86_400_000),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   // Absolute path to the built Vite client bundle. When set, the server
   // serves the static files and SPA index fallbacks. Leave unset in dev so
   // the Vite dev server keeps handling the frontend.
   clientDistDir: process.env.CLIENT_DIST_DIR,
 };
+
+// Fail loud on a malformed SIM_RETENTION_MS rather than silently coercing to
+// NaN, which would disable pruning and quietly re-introduce the unbounded
+// sim_state growth this knob exists to prevent.
+if (!Number.isFinite(config.simRetentionMs) || config.simRetentionMs < 0) {
+  throw new Error(
+    `SIM_RETENTION_MS must be a non-negative number of milliseconds (0 disables pruning), ` +
+      `got ${JSON.stringify(process.env.SIM_RETENTION_MS)}`,
+  );
+}
 
