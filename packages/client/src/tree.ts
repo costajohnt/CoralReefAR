@@ -28,7 +28,13 @@ import { Shark } from './tree/shark.js';
 import { Clownfish } from './tree/clownfish.js';
 import { Jellyfish } from './tree/jellyfish.js';
 import { SeaTurtle } from './tree/seaTurtle.js';
-import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
+import {
+  addedPolypsInvalidateUndo,
+  initialState,
+  reduce,
+  type TreeAction,
+  type TreeState,
+} from './tree/state.js';
 import { createEffects } from './tree/effects.js';
 import { installDragRotate } from './tree/dragRotate.js';
 
@@ -108,6 +114,10 @@ function addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
   for (const polyp of sorted) treeReef.addPiece(polyp);
   installEffectsOnNewPieces();
   attachIndicators.refresh(treeReef.getAvailableAttachPoints());
+  // A child loaded over HTTP (not just over WS) also invalidates our undo.
+  if (addedPolypsInvalidateUndo(state, sorted)) {
+    dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
+  }
 }
 
 // ------------------------------------------------------------------
@@ -427,12 +437,7 @@ socket.on((msg) => {
     attachIndicators.refresh(treeReef.getAvailableAttachPoints());
     // If someone built on top of our last commit, we can no longer undo it
     // (the server enforces leaf-only deletes). Invalidate lastCommittedId.
-    if (
-      state.kind !== 'undoing' &&
-      'lastCommittedId' in state &&
-      state.lastCommittedId !== null &&
-      msg.polyp.parentId === state.lastCommittedId
-    ) {
+    if (addedPolypsInvalidateUndo(state, [msg.polyp])) {
       dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
     }
   } else if (msg.type === 'tree_polyp_removed') {
