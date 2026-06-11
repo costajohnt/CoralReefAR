@@ -212,6 +212,66 @@ describe('DELETE /api/tree/polyp/:id', () => {
   });
 });
 
+describe('tree write rate limit', () => {
+  test('planting is unlimited when RATE_LIMIT_MAX is 0 (default)', async () => {
+    const prevMax = config.rateLimitMax;
+    config.rateLimitMax = 0;
+    const { app, close } = await makeServer();
+    try {
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      // Many children from the same device all succeed with the limit off.
+      for (let i = 0; i < 3; i++) {
+        const child = await app.inject({
+          method: 'POST', url: '/api/tree/polyp',
+          payload: { variant: 'forked', seed: i, colorKey: 'neon-cyan', parentId: rootId, attachIndex: i },
+        });
+        assert.equal(child.statusCode, 200);
+      }
+    } finally {
+      await close();
+      config.rateLimitMax = prevMax;
+    }
+  });
+
+  test('returns 429 with Retry-After once a device exceeds RATE_LIMIT_MAX', async () => {
+    const prevMax = config.rateLimitMax;
+    config.rateLimitMax = 2;
+    const { app, close } = await makeServer();
+    try {
+      // Root counts as the device's first piece.
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      assert.equal(root.statusCode, 200);
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      // Second piece still under the limit.
+      const second = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
+      });
+      assert.equal(second.statusCode, 200);
+      // Third trips the limit.
+      const third = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'claw', seed: 3, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 1 },
+      });
+      assert.equal(third.statusCode, 429);
+      const body = JSON.parse(third.body) as { error: string; retryAfterMs: number };
+      assert.equal(body.error, 'rate_limited');
+      assert.ok(body.retryAfterMs > 0);
+      assert.ok(third.headers['retry-after'] !== undefined);
+    } finally {
+      await close();
+      config.rateLimitMax = prevMax;
+    }
+  });
+});
+
 describe('tree mutation auth gate', () => {
   test('reset is open when no admin token is configured', async () => {
     const prev = config.adminToken;

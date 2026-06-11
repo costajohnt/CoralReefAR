@@ -4,6 +4,9 @@ import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
 import { enforceAdminIfConfigured } from '../auth.js';
+import { deviceHash } from '../deviceHash.js';
+import { config } from '../config.js';
+import { counters } from '../metrics-registry.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
 
@@ -36,10 +39,29 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(400);
       return { error: 'invalid payload', issues: parsed.error.issues };
     }
+
+    // Per-device write limit, mirroring the reef route. Off by default
+    // (RATE_LIMIT_MAX=0); counts this device's live tree pieces in the window.
+    const ua = req.headers['user-agent'] ?? 'unknown';
+    const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
+    const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
+    const windowStart = Date.now() - config.rateLimitWindowMs;
+    if (config.rateLimitMax > 0 && tree.countByDeviceSince(dh, windowStart) >= config.rateLimitMax) {
+      counters.inc('rate_limited');
+      const oldest = tree.oldestByDeviceSince(dh, windowStart);
+      const retryAfterMs = oldest !== null
+        ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
+        : config.rateLimitWindowMs;
+      reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
+      reply.code(429);
+      return { error: 'rate_limited', retryAfterMs };
+    }
+
     const input = parsed.data;
+    let polyp;
     try {
-      const polyp = input.parentId === null
-        ? tree.insertRoot({ variant: input.variant, seed: input.seed, colorKey: input.colorKey })
+      polyp = input.parentId === null
+        ? tree.insertRoot({ variant: input.variant, seed: input.seed, colorKey: input.colorKey, deviceHash: dh })
         : tree.insertChild({
             variant: input.variant,
             seed: input.seed,
@@ -47,9 +69,8 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
             parentId: input.parentId,
             attachIndex: input.attachIndex,
             attachYaw: input.attachYaw,
+            deviceHash: dh,
           });
-      hub.broadcast({ type: 'tree_polyp_added', polyp } as never);
-      return polyp;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/parent not found/i.test(msg)) { reply.code(404); return { error: msg }; }
@@ -57,6 +78,15 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(500);
       return { error: msg };
     }
+    // Best-effort notification: a broadcast failure must not turn a
+    // successfully persisted polyp into a 500 the client would retry — a retry
+    // would re-insert and inflate the device's rate-limit count. Mirrors reef.
+    try {
+      hub.broadcast({ type: 'tree_polyp_added', polyp } as never);
+    } catch (err) {
+      req.log.warn({ err, polypId: polyp.id }, 'tree hub broadcast failed after insert');
+    }
+    return polyp;
   });
 
   app.delete('/api/tree/polyp/:id', async (req, reply) => {
