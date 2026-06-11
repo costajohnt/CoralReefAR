@@ -3,6 +3,7 @@ import { TreePolypInputSchema } from '@reef/shared';
 import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
+import { enforceAdminIfConfigured } from '../auth.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
 
@@ -15,7 +16,10 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
   // Reset: soft-delete every live polyp, then seed a fresh Starburst root so
   // the tree never boots into a "no attach point" state. Clients re-fetch
   // after the call (see packages/client/src/tree/api.ts).
-  app.post('/api/tree/reset', async () => {
+  // Destructive (wipes the whole shared tree): gated behind the admin token
+  // whenever one is configured, so a public deploy can't be wiped by anyone.
+  app.post('/api/tree/reset', async (req, reply) => {
+    if (!enforceAdminIfConfigured(req, reply)) return reply;
     tree.deleteAll();
     seedRootIfEmpty(tree);
     const polyps = tree.listLive();
@@ -56,6 +60,10 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
   });
 
   app.delete('/api/tree/polyp/:id', async (req, reply) => {
+    // Deleting a leaf is also gated once an admin token is configured: in a
+    // public deploy, removing shared pieces is an operator action, not a
+    // visitor one. Without a token (single-install / testing) Undo stays open.
+    if (!enforceAdminIfConfigured(req, reply)) return reply;
     const { id: rawId } = req.params as { id: string };
     if (!NUMERIC_ID_RE.test(rawId)) {
       reply.code(400);

@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
+import { config } from '../config.js';
 import { TreeDb } from './db.js';
 import { registerTreeRoutes } from './routes.js';
 
@@ -208,5 +209,76 @@ describe('DELETE /api/tree/polyp/:id', () => {
     assert.equal(messages.length, 1);
     assert.deepEqual(messages[0], { type: 'tree_polyp_removed', id: rootId });
     await app2.close();
+  });
+});
+
+describe('tree mutation auth gate', () => {
+  test('reset is open when no admin token is configured', async () => {
+    const prev = config.adminToken;
+    config.adminToken = '';
+    const { app, close } = await makeServer();
+    try {
+      const res = await app.inject({ method: 'POST', url: '/api/tree/reset' });
+      assert.equal(res.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
+  });
+
+  test('reset requires the admin token once one is configured', async () => {
+    const prev = config.adminToken;
+    config.adminToken = 'tree-secret';
+    const { app, close } = await makeServer();
+    try {
+      const unauth = await app.inject({ method: 'POST', url: '/api/tree/reset' });
+      assert.equal(unauth.statusCode, 401);
+      const wrong = await app.inject({
+        method: 'POST', url: '/api/tree/reset',
+        headers: { authorization: 'Bearer nope' },
+      });
+      assert.equal(wrong.statusCode, 401);
+      const ok = await app.inject({
+        method: 'POST', url: '/api/tree/reset',
+        headers: { authorization: 'Bearer tree-secret' },
+      });
+      assert.equal(ok.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
+  });
+
+  test('delete is gated, but planting stays open, once an admin token is set', async () => {
+    const prev = config.adminToken;
+    config.adminToken = 'tree-secret';
+    const { app, close } = await makeServer();
+    try {
+      // Planting is NOT gated even with a token configured.
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      assert.equal(root.statusCode, 200);
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      const child = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
+      });
+      assert.equal(child.statusCode, 200);
+      const childId = (JSON.parse(child.body) as { id: number }).id;
+
+      // Deleting requires the token.
+      const unauth = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${childId}` });
+      assert.equal(unauth.statusCode, 401);
+      const ok = await app.inject({
+        method: 'DELETE', url: `/api/tree/polyp/${childId}`,
+        headers: { authorization: 'Bearer tree-secret' },
+      });
+      assert.equal(ok.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
   });
 });
