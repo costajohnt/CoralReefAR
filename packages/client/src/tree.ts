@@ -30,6 +30,7 @@ import { Jellyfish } from './tree/jellyfish.js';
 import { SeaTurtle } from './tree/seaTurtle.js';
 import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
 import { createEffects } from './tree/effects.js';
+import { installDragRotate } from './tree/dragRotate.js';
 
 // ------------------------------------------------------------------
 // Config + canvas
@@ -322,40 +323,21 @@ function refreshUndoBtn(): void {
 // ------------------------------------------------------------------
 // Pointer-drag: rotate ghost in place instead of orbiting while placing.
 // ------------------------------------------------------------------
-let dragState: { lastX: number; moved: boolean } | null = null;
 let suppressNextClick = false;
-const DRAG_THRESHOLD_PX = 3;
-const ROT_SENSITIVITY = 0.0055;
 
-canvas.addEventListener(
-  'pointerdown',
-  (ev) => {
-    // Drag-to-rotate only engages when a ghost is actually pending. When
-    // placing is blocked there's no ghost on-screen, so drags should fall
-    // through to OrbitControls (camera orbit) rather than being captured
-    // for a no-op GHOST_ROTATED dispatch.
-    if (state.kind !== 'placing' || state.blocked) return;
-    if (config.mode !== 'screen') controls.enabled = false;
-    dragState = { lastX: ev.clientX, moved: false };
-    canvas.setPointerCapture(ev.pointerId);
+// Drag-to-rotate only engages when a ghost is actually pending. When placing is
+// blocked there's no ghost on-screen, so drags fall through to OrbitControls
+// (camera orbit) rather than being captured for a no-op GHOST_ROTATED dispatch.
+installDragRotate(canvas, {
+  canRotate: () => state.kind === 'placing' && !state.blocked,
+  keepControlsEnabled: config.mode === 'screen',
+  setControlsEnabled: (enabled) => {
+    controls.enabled = enabled;
   },
-  { capture: true },
-);
-canvas.addEventListener('pointermove', (ev) => {
-  if (!dragState) return;
-  const dx = ev.clientX - dragState.lastX;
-  if (!dragState.moved && Math.abs(dx) > DRAG_THRESHOLD_PX) dragState.moved = true;
-  if (dragState.moved) {
-    dispatch({ type: 'GHOST_ROTATED', deltaRad: dx * ROT_SENSITIVITY });
-    dragState.lastX = ev.clientX;
-  }
-});
-canvas.addEventListener('pointerup', (ev) => {
-  if (!dragState) return;
-  if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId);
-  suppressNextClick = dragState.moved;
-  dragState = null;
-  if (config.mode !== 'screen') controls.enabled = true;
+  onRotate: (deltaRad) => dispatch({ type: 'GHOST_ROTATED', deltaRad }),
+  onDragEnd: (moved) => {
+    suppressNextClick = moved;
+  },
 });
 
 // ------------------------------------------------------------------
