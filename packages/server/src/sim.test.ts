@@ -59,6 +59,62 @@ test('sim: sim_update deltas persist via transaction', () => {
   }
 });
 
+const DAY = 86_400_000;
+
+test('db: pruneSimBefore deletes only deltas older than the cutoff', () => {
+  const db = freshDb();
+  const now = Date.now();
+  // sim_state.polyp_id is a FK, so reference real polyps.
+  const oldP = db.insertPolyp(polypAgedDays(0));
+  const newP = db.insertPolyp(polypAgedDays(0));
+  db.insertSim({ polypId: oldP.id, kind: 'barnacle', params: {}, createdAt: now - 40 * DAY });
+  db.insertSim({ polypId: newP.id, kind: 'algae', params: {}, createdAt: now - 5 * DAY });
+  const removed = db.pruneSimBefore(now - 30 * DAY);
+  assert.equal(removed, 1);
+  const left = db.listSim();
+  assert.equal(left.length, 1);
+  assert.equal(left[0]!.polypId, newP.id);
+});
+
+test('db: listSimSince returns only deltas inside the window', () => {
+  const db = freshDb();
+  const now = Date.now();
+  const oldP = db.insertPolyp(polypAgedDays(0));
+  const newP = db.insertPolyp(polypAgedDays(0));
+  db.insertSim({ polypId: oldP.id, kind: 'barnacle', params: {}, createdAt: now - 40 * DAY });
+  db.insertSim({ polypId: newP.id, kind: 'algae', params: {}, createdAt: now - 2 * DAY });
+  const recent = db.listSimSince(now - 30 * DAY);
+  assert.equal(recent.length, 1);
+  assert.equal(recent[0]!.polypId, newP.id);
+  // listSim still returns everything (used by the snapshot path).
+  assert.equal(db.listSim().length, 2);
+});
+
+test('sim: tick prunes deltas older than the retention window', () => {
+  const db = freshDb();
+  const now = Date.now();
+  const oldP = db.insertPolyp(polypAgedDays(0));
+  const newP = db.insertPolyp(polypAgedDays(0));
+  // Old + recent deltas; the polyps are <30d so tick adds nothing new.
+  db.insertSim({ polypId: oldP.id, kind: 'barnacle', params: {}, createdAt: now - 40 * DAY });
+  db.insertSim({ polypId: newP.id, kind: 'algae', params: {}, createdAt: now - 1 * DAY });
+  const sim = new SimWorker(db, new Hub(), 3600_000, 30 * DAY);
+  sim.tick();
+  const left = db.listSim();
+  assert.equal(left.length, 1);
+  assert.equal(left[0]!.polypId, newP.id);
+});
+
+test('sim: retentionMs=0 prunes nothing (pruning disabled)', () => {
+  const db = freshDb();
+  const now = Date.now();
+  const p = db.insertPolyp(polypAgedDays(0));
+  db.insertSim({ polypId: p.id, kind: 'barnacle', params: {}, createdAt: now - 400 * DAY });
+  const sim = new SimWorker(db, new Hub(), 3600_000, 0);
+  sim.tick();
+  assert.equal(db.listSim().length, 1);
+});
+
 test('snapshot: take() writes JSON snapshot of current state', () => {
   const db = freshDb();
   db.insertPolyp(polypAgedDays(1));

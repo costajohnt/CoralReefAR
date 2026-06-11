@@ -131,7 +131,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
 async function main(): Promise<void> {
   const { app, db, hub, treeHub } = await makeServer();
 
-  const sim = new SimWorker(db, hub, config.simIntervalMs);
+  const sim = new SimWorker(db, hub, config.simIntervalMs, config.simRetentionMs);
   sim.start();
   const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs);
   snapshots.start();

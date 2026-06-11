@@ -45,6 +45,8 @@ export class ReefDb {
     countByDevice: Database.Statement;
     oldestByDevice: Database.Statement;
     listSim: Database.Statement;
+    listSimSince: Database.Statement;
+    pruneSim: Database.Statement;
     insertSim: Database.Statement;
     insertSnapshot: Database.Statement;
     listSnapshots: Database.Statement;
@@ -99,6 +101,10 @@ export class ReefDb {
         'SELECT MIN(created_at) as t FROM polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
       ),
       listSim: this.db.prepare('SELECT * FROM sim_state ORDER BY created_at ASC'),
+      listSimSince: this.db.prepare(
+        'SELECT * FROM sim_state WHERE created_at >= ? ORDER BY created_at ASC',
+      ),
+      pruneSim: this.db.prepare('DELETE FROM sim_state WHERE created_at < ?'),
       insertSim: this.db.prepare(
         'INSERT INTO sim_state (polyp_id, kind, params, created_at) VALUES (?, ?, ?, ?)',
       ),
@@ -198,16 +204,31 @@ export class ReefDb {
     return row.t;
   }
 
-  listSim(): SimDelta[] {
-    const rows = this.stmt.listSim.all() as Array<{
-      polyp_id: number; kind: string; params: string; created_at: number;
-    }>;
+  private mapSimRows(
+    rows: Array<{ polyp_id: number; kind: string; params: string; created_at: number }>,
+  ): SimDelta[] {
     return rows.map((r) => ({
       polypId: r.polyp_id,
       kind: r.kind as SimKind,
       params: JSON.parse(r.params) as Record<string, number | string>,
       createdAt: r.created_at,
     }));
+  }
+
+  listSim(): SimDelta[] {
+    return this.mapSimRows(this.stmt.listSim.all() as Parameters<typeof this.mapSimRows>[0]);
+  }
+
+  /** Sim deltas created at or after `sinceMs`. Used to bound the GET payload. */
+  listSimSince(sinceMs: number): SimDelta[] {
+    return this.mapSimRows(
+      this.stmt.listSimSince.all(sinceMs) as Parameters<typeof this.mapSimRows>[0],
+    );
+  }
+
+  /** Delete sim deltas older than `cutoffMs`. Returns the number removed. */
+  pruneSimBefore(cutoffMs: number): number {
+    return this.stmt.pruneSim.run(cutoffMs).changes;
   }
 
   insertSim(delta: SimDelta): void {
