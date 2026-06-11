@@ -79,6 +79,9 @@ export class SnapshotWorker {
   constructor(
     private readonly db: ReefDb,
     private readonly intervalMs: number,
+    // Keep at most this many recent snapshots; older ones are pruned after each
+    // new one. 0 disables pruning (keep all).
+    private readonly retentionCount = 0,
   ) {}
 
   start(): void {
@@ -94,6 +97,10 @@ export class SnapshotWorker {
     const polyps = this.db.listPublicPolyps();
     const sim = this.db.listSim();
     const stateJson = JSON.stringify({ polyps, sim });
-    return this.db.insertSnapshot(polyps.length, stateJson);
+    const id = this.db.insertSnapshot(polyps.length, stateJson);
+    if (this.retentionCount > 0) {
+      this.db.pruneOldSnapshots(this.retentionCount);
+    }
+    return id;
   }
 }

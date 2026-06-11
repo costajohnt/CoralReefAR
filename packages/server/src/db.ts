@@ -51,6 +51,7 @@ export class ReefDb {
     insertSnapshot: Database.Statement;
     listSnapshots: Database.Statement;
     getSnapshot: Database.Statement;
+    pruneSnapshots: Database.Statement;
   };
 
   constructor(path: string) {
@@ -116,6 +117,13 @@ export class ReefDb {
       ),
       getSnapshot: this.db.prepare(
         'SELECT id, taken_at as takenAt, polyp_count as polypCount, state_json as stateJson FROM snapshots WHERE id = ?',
+      ),
+      // Keep the `?` most recent snapshots (by taken_at, id as tiebreak),
+      // delete the rest.
+      pruneSnapshots: this.db.prepare(
+        `DELETE FROM snapshots WHERE id NOT IN (
+           SELECT id FROM snapshots ORDER BY taken_at DESC, id DESC LIMIT ?
+         )`,
       ),
     };
   }
@@ -272,6 +280,11 @@ export class ReefDb {
 
   getSnapshot(id: number): { id: number; takenAt: number; polypCount: number; stateJson: string } | undefined {
     return this.stmt.getSnapshot.get(id) as { id: number; takenAt: number; polypCount: number; stateJson: string } | undefined;
+  }
+
+  /** Keep the `keep` most recent snapshots, delete older ones. Returns removed count. */
+  pruneOldSnapshots(keep: number): number {
+    return this.stmt.pruneSnapshots.run(Math.floor(keep)).changes;
   }
 }
 

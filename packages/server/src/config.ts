@@ -19,6 +19,10 @@ export const config = {
   // The reef shows a rolling window of decorations (an aging-reef look); set
   // higher to keep them longer, or 0 to disable pruning and keep everything.
   simRetentionMs: Number(process.env.SIM_RETENTION_MS ?? 30 * 86_400_000),
+  // Keep at most this many of the most recent snapshots; older ones are pruned
+  // after each new snapshot so the snapshots table (full-state JSON blobs)
+  // doesn't grow forever. 0 = keep all (pruning disabled).
+  snapshotRetentionCount: Number(process.env.SNAPSHOT_RETENTION_COUNT ?? 90),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   // Absolute path to the built Vite client bundle. When set, the server
   // serves the static files and SPA index fallbacks. Leave unset in dev so
@@ -33,6 +37,13 @@ if (!Number.isFinite(config.simRetentionMs) || config.simRetentionMs < 0) {
   throw new Error(
     `SIM_RETENTION_MS must be a non-negative number of milliseconds (0 disables pruning), ` +
       `got ${JSON.stringify(process.env.SIM_RETENTION_MS)}`,
+  );
+}
+
+if (!Number.isInteger(config.snapshotRetentionCount) || config.snapshotRetentionCount < 0) {
+  throw new Error(
+    `SNAPSHOT_RETENTION_COUNT must be a non-negative integer (0 keeps all), ` +
+      `got ${JSON.stringify(process.env.SNAPSHOT_RETENTION_COUNT)}`,
   );
 }
 
