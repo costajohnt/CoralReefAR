@@ -54,7 +54,6 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const hub = new Hub(config.wsMaxClients);
   const treeDb = new TreeDb(db);
   const treeHub = new Hub(config.wsMaxClients);
-  seedRootIfEmpty(treeDb);
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
@@ -81,6 +80,16 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   registerAdminRoutes(app, db, hub);
   registerStatsRoutes(app, db);
   registerMetricsRoutes(app, db, hub);
+  // Seed the first-boot root before the tree routes start serving. Log the
+  // chosen seed/colorKey so a random root (TREE_ROOT_SEED unset) is still
+  // reproducible after the fact.
+  const rootSeed = seedRootIfEmpty(treeDb, { seed: config.treeRootSeed });
+  if (rootSeed.seeded) {
+    app.log.info(
+      { seed: rootSeed.seed, colorKey: rootSeed.colorKey, fixed: config.treeRootSeed !== undefined },
+      'seeded first-boot tree root',
+    );
+  }
   registerTreeRoutes(app, treeDb, treeHub);
 
   // Optional static hosting: serves the built Vite bundle out of the same

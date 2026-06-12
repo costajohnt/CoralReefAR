@@ -38,6 +38,14 @@ export const config = {
   // separately). 0 = unlimited. Bounds a connection flood from exhausting
   // memory / file descriptors before the heartbeat reaps idle sockets.
   wsMaxClients: Number(process.env.WS_MAX_CLIENTS ?? 1000),
+  // Fixed seed for the first-boot Starburst root. Unset (or blank) = random per
+  // fresh volume (the chosen seed is logged, so the root is reproducible after
+  // the fact). Set an integer in [0, 2^32) to make the root identical across
+  // boots — handy for golden-style testing or a branded default reef.
+  treeRootSeed:
+    (process.env.TREE_ROOT_SEED ?? '').trim() === ''
+      ? undefined
+      : Number(process.env.TREE_ROOT_SEED),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   // Absolute path to the built Vite client bundle. When set, the server
   // serves the static files and SPA index fallbacks. Leave unset in dev so
@@ -73,6 +81,23 @@ if (!Number.isInteger(config.wsMaxClients) || config.wsMaxClients < 0) {
   throw new Error(
     `WS_MAX_CLIENTS must be a non-negative integer (0 = unlimited), ` +
       `got ${JSON.stringify(process.env.WS_MAX_CLIENTS)}`,
+  );
+}
+
+// Fail loud on a malformed TREE_ROOT_SEED rather than seeding with NaN or an
+// out-of-range value. mulberry32 does `(seed | 0) >>> 0`, so an integer outside
+// [0, 2^32) is silently truncated to a different effective seed — which would
+// break the "the logged seed reproduces the root" invariant this knob exists
+// for. Bound it to the same domain the random path uses (0..0xffffffff).
+if (
+  config.treeRootSeed !== undefined &&
+  (!Number.isInteger(config.treeRootSeed) ||
+    config.treeRootSeed < 0 ||
+    config.treeRootSeed > 0xffffffff)
+) {
+  throw new Error(
+    `TREE_ROOT_SEED must be an integer in [0, 4294967295] when set (unset = random root), ` +
+      `got ${JSON.stringify(process.env.TREE_ROOT_SEED)}`,
   );
 }
 
