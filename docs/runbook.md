@@ -52,5 +52,6 @@ point, not a measured one.
   attacker with a VPN and a second device bypasses the per-device write limit.
   Acceptable for a gallery/installation; for public-internet scale, add a
   CAPTCHA or proof-of-work in front of writes.
-- The rotating salt changes each window, so a device straddling a window
-  boundary can briefly exceed the limit by one. Bounded and accepted.
+- The per-window salt is reconstructible (HMAC of a per-process secret), and
+  the limiter counts a device under both the current and previous window's
+  hash, so crossing a window boundary no longer resets the count.

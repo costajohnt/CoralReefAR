@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import type { ReefDb } from '../db.js';
 import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
-import { deviceHash } from '../deviceHash.js';
+import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
 import { perIpRateLimit, ttlCache } from '../security.js';
 import { counters } from '../metrics-registry.js';
 
@@ -53,10 +53,16 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
-    const already = db.countByDeviceSince(dh, windowStart);
+    // Count under the current AND previous window's hash so crossing a window
+    // boundary can't reset the count (see deviceHashesForCounting).
+    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
+    const already = countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0);
     if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
       counters.inc('rate_limited');
-      const oldest = db.oldestPolypSince(dh, windowStart);
+      const oldests = countHashes
+        .map((h) => db.oldestPolypSince(h, windowStart))
+        .filter((t): t is number => t !== null);
+      const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
         : config.rateLimitWindowMs;
