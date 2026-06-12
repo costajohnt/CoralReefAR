@@ -23,6 +23,15 @@ test('smoke: full app boots with the real plugin load order', async () => {
   const body = JSON.parse(healthz.body) as { ok: boolean; time: number };
   assert.equal(body.ok, true);
   assert.equal(typeof body.time, 'number');
+
+  // Global CSP blocks inline scripts (no 'unsafe-inline' on script-src). The
+  // directive-bounded check ([^;]* stops at the next directive) is order-
+  // independent — it won't false-pass on style-src's unsafe-inline.
+  const csp = healthz.headers['content-security-policy'] as string;
+  assert.match(csp, /script-src 'self'/);
+  assert.ok(!/script-src[^;]*'unsafe-inline'/.test(csp), 'script-src must not allow unsafe-inline');
+  // style-src intentionally keeps 'unsafe-inline' for now.
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/);
 });
 
 test('smoke: DB migrations ran (API/reef serves an empty-state payload)', async () => {

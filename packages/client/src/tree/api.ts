@@ -1,4 +1,9 @@
-import type { PublicTreePolyp, TreePolypInput, TreeServerMessage } from '@reef/shared';
+import {
+  dispatchTreeMessage,
+  type PublicTreePolyp,
+  type TreePolypInput,
+  type TreeServerMessage,
+} from '@reef/shared';
 
 export async function fetchTree(apiBase = ''): Promise<{ polyps: PublicTreePolyp[]; serverTime: number }> {
   const r = await fetch(`${apiBase}/api/tree`);
@@ -57,20 +62,13 @@ export class TreeSocket {
     this.ws = new WebSocket(this.url);
     this.ws.addEventListener('open', () => { this.retries = 0; });
     this.ws.addEventListener('message', (ev) => {
-      let msg: TreeServerMessage;
-      try {
-        msg = JSON.parse(ev.data as string) as TreeServerMessage;
-      } catch (err) {
-        console.warn('ws/tree: malformed frame', err);
-        return;
-      }
-      for (const cb of this.listeners) {
-        try {
-          cb(msg);
-        } catch (err) {
-          console.error('ws/tree: handler threw on', (msg as { type?: string }).type, err);
-        }
-      }
+      dispatchTreeMessage(ev.data as string, this.listeners, {
+        onParseError: (err) => console.warn('ws/tree: malformed frame', err),
+        onInvalidMessage: (err, raw) =>
+          console.error('ws/tree: rejected frame (protocol skew?)', raw, err),
+        onHandlerError: (err, msg) =>
+          console.error('ws/tree: handler threw on', msg.type, err),
+      });
     });
     this.ws.addEventListener('close', () => this.scheduleReconnect());
     this.ws.addEventListener('error', () => this.ws?.close());

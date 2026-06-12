@@ -50,17 +50,24 @@ export class TreePicker {
     this.emit();
   }
 
+  private committable = false;
+
   setCommittable(ok: boolean): void {
+    this.committable = ok;
     this.growBtn.disabled = !ok;
     this.rerollBtn.disabled = !ok;
     this.cancelBtn.disabled = !ok;
   }
 
   setSubmitting(inFlight: boolean): void {
-    this.growBtn.disabled = inFlight || this.growBtn.disabled;
+    // While a commit is in flight every control is disabled. When it settles,
+    // restore them to the committable state rather than leaving them stuck
+    // disabled (a rejected commit unwinds via setSubmitting(false) alone).
+    const disabled = inFlight || !this.committable;
+    this.growBtn.disabled = disabled;
     this.growBtn.textContent = inFlight ? 'Growing…' : 'Grow it';
-    this.rerollBtn.disabled = inFlight;
-    this.cancelBtn.disabled = inFlight;
+    this.rerollBtn.disabled = disabled;
+    this.cancelBtn.disabled = disabled;
   }
 
   onCommit(cb: () => void): void { this.growBtn.addEventListener('click', cb); }

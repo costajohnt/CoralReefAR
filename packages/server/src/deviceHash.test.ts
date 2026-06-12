@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, test } from 'node:test';
-import { deviceHash } from './deviceHash.js';
+import { deviceHash, deviceHashesForCounting } from './deviceHash.js';
 
 describe('deviceHash', () => {
   let realNow: () => number;
@@ -52,5 +52,34 @@ describe('deviceHash', () => {
     const out = deviceHash('UA', 'IP', 1000);
     assert.equal(out.length, 64);
     assert.match(out, /^[0-9a-f]{64}$/);
+  });
+
+  test('counting hashes: first entry equals the current store hash', () => {
+    Date.now = () => 6_000_500;
+    const windowMs = 1000;
+    const stored = deviceHash('UA', 'IP', windowMs);
+    const [current] = deviceHashesForCounting('UA', 'IP', windowMs);
+    assert.equal(current, stored);
+  });
+
+  test('counting hashes: current and previous entries differ', () => {
+    Date.now = () => 7_000_500;
+    const [current, previous] = deviceHashesForCounting('UA', 'IP', 1000);
+    assert.notEqual(current, previous);
+  });
+
+  test('boundary fix: a polyp stored last window is still attributed this window', () => {
+    const windowMs = 1000;
+    // Store under bucket 8000's hash.
+    Date.now = () => 8_000_500;
+    const storedLastWindow = deviceHash('UA', 'IP', windowMs);
+    // One window later (bucket 8001): the counting set must include the prior
+    // hash, so the device can't shed its earlier polyp by crossing the boundary.
+    Date.now = () => 8_001_500;
+    const counting = deviceHashesForCounting('UA', 'IP', windowMs);
+    assert.ok(
+      counting.includes(storedLastWindow),
+      'previous-window hash must be in the counting set',
+    );
   });
 });

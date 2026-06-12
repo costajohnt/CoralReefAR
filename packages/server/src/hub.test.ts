@@ -37,6 +37,51 @@ function fakeSocket(readyState = 1): FakeWebSocket {
   return sock;
 }
 
+test('hub: caps concurrent clients and refuses over the limit', () => {
+  const hub = new Hub(2);
+  const a = fakeSocket();
+  const b = fakeSocket();
+  const c = fakeSocket();
+  assert.equal(hub.add(a), true);
+  assert.equal(hub.add(b), true);
+  // Third connection over the cap is refused and closed.
+  assert.equal(hub.add(c), false);
+  assert.equal(hub.size(), 2);
+  assert.equal(c.readyState, 3); // close() set it to CLOSED
+  // The refused socket gets no broadcasts.
+  hub.broadcast({ type: 'polyp_removed', id: 1 });
+  assert.equal(c.sent.length, 0);
+  assert.equal(a.sent.length, 1);
+});
+
+test('hub: a refused socket whose close() throws still gets terminated', () => {
+  const hub = new Hub(1);
+  hub.add(fakeSocket());
+  const bad = fakeSocket();
+  bad.close = () => { throw new Error('close failed'); };
+  assert.equal(hub.add(bad), false);
+  // Fallback teardown ran so the refused socket can't linger as an orphan FD.
+  assert.equal(bad.terminated, true);
+});
+
+test('hub: a freed slot can be reused after a client disconnects', () => {
+  const hub = new Hub(1);
+  const a = fakeSocket();
+  const b = fakeSocket();
+  assert.equal(hub.add(a), true);
+  assert.equal(hub.add(b), false);
+  a.close(); // a disconnects, freeing the slot
+  assert.equal(hub.size(), 0);
+  assert.equal(hub.add(b), true);
+  assert.equal(hub.size(), 1);
+});
+
+test('hub: default (no cap) admits many clients', () => {
+  const hub = new Hub();
+  for (let i = 0; i < 50; i++) assert.equal(hub.add(fakeSocket()), true);
+  assert.equal(hub.size(), 50);
+});
+
 test('hub: broadcast reaches all open clients', () => {
   const hub = new Hub();
   const a = fakeSocket();

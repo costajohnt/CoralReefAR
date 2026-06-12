@@ -51,11 +51,14 @@ export default defineConfig(async () => {
           quest: resolve(import.meta.dirname, 'quest.html'),
         },
         output: {
-          // Pull Three.js into its own vendor chunk so all three HTML entries
-          // share it, and so dynamic-import fragments don't each carry a copy.
-          manualChunks: {
-            three: ['three'],
-          },
+          // Pull Three.js into its own vendor chunk so every HTML entry shares
+          // it and dynamic-import fragments don't each carry a copy. Vite 8
+          // bundles with Rolldown, whose `manualChunks` only takes the function
+          // form; the Rollup-classic `{ three: ['three'] }` object throws
+          // "manualChunks is not a function". The function is equivalent: route
+          // anything under three's package into the `three` chunk.
+          manualChunks: (id: string): string | undefined =>
+            id.includes('/node_modules/three/') ? 'three' : undefined,
         },
       },
     },

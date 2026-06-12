@@ -1,4 +1,4 @@
-import { hexToRgb, paletteByKey, type Species } from '@reef/shared';
+import { hexToRgb, paletteByKeyOrDefault, type Species } from '@reef/shared';
 import { RNG } from './rng.js';
 import type { MeshData } from './meshdata.js';
 import { generateBranching } from './species/branching.js';
@@ -43,6 +43,9 @@ const BUILDERS: Record<Species, Builder> = {
 
 export function generatePolyp(opts: GenerateOptions): GeneratedPolyp {
   const rng = new RNG(opts.seed);
-  const color = hexToRgb(paletteByKey(opts.colorKey).hex);
+  // Tolerant resolve: an unknown colorKey (only reachable from a stale row
+  // predating the schema enum) renders with the fallback colour instead of
+  // throwing and blanking the whole reef. The write path validates via zod.
+  const color = hexToRgb(paletteByKeyOrDefault(opts.colorKey).hex);
   return BUILDERS[opts.species]!(rng, color);
 }

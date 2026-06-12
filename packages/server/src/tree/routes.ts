@@ -3,6 +3,10 @@ import { TreePolypInputSchema } from '@reef/shared';
 import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
+import { enforceAdminIfConfigured } from '../auth.js';
+import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
+import { config } from '../config.js';
+import { counters } from '../metrics-registry.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
 
@@ -15,13 +19,16 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
   // Reset: soft-delete every live polyp, then seed a fresh Starburst root so
   // the tree never boots into a "no attach point" state. Clients re-fetch
   // after the call (see packages/client/src/tree/api.ts).
-  app.post('/api/tree/reset', async () => {
+  // Destructive (wipes the whole shared tree): gated behind the admin token
+  // whenever one is configured, so a public deploy can't be wiped by anyone.
+  app.post('/api/tree/reset', async (req, reply) => {
+    if (!enforceAdminIfConfigured(req, reply)) return reply;
     tree.deleteAll();
     seedRootIfEmpty(tree);
     const polyps = tree.listLive();
-    hub.broadcast({ type: 'tree_reset' } as never);
+    hub.broadcast({ type: 'tree_reset' });
     if (polyps[0]) {
-      hub.broadcast({ type: 'tree_polyp_added', polyp: polyps[0] } as never);
+      hub.broadcast({ type: 'tree_polyp_added', polyp: polyps[0] });
     }
     return { polyps };
   });
@@ -32,10 +39,36 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(400);
       return { error: 'invalid payload', issues: parsed.error.issues };
     }
+
+    // Per-device write limit, mirroring the reef route. Off by default
+    // (RATE_LIMIT_MAX=0); counts this device's live tree pieces in the window.
+    const ua = req.headers['user-agent'] ?? 'unknown';
+    const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
+    const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
+    const windowStart = Date.now() - config.rateLimitWindowMs;
+    // Count under the current AND previous window's hash so crossing a window
+    // boundary can't reset the count (see deviceHashesForCounting).
+    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
+    const already = countHashes.reduce((n, h) => n + tree.countByDeviceSince(h, windowStart), 0);
+    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
+      counters.inc('rate_limited');
+      const oldests = countHashes
+        .map((h) => tree.oldestByDeviceSince(h, windowStart))
+        .filter((t): t is number => t !== null);
+      const oldest = oldests.length ? Math.min(...oldests) : null;
+      const retryAfterMs = oldest !== null
+        ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
+        : config.rateLimitWindowMs;
+      reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
+      reply.code(429);
+      return { error: 'rate_limited', retryAfterMs };
+    }
+
     const input = parsed.data;
+    let polyp;
     try {
-      const polyp = input.parentId === null
-        ? tree.insertRoot({ variant: input.variant, seed: input.seed, colorKey: input.colorKey })
+      polyp = input.parentId === null
+        ? tree.insertRoot({ variant: input.variant, seed: input.seed, colorKey: input.colorKey, deviceHash: dh })
         : tree.insertChild({
             variant: input.variant,
             seed: input.seed,
@@ -43,9 +76,8 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
             parentId: input.parentId,
             attachIndex: input.attachIndex,
             attachYaw: input.attachYaw,
+            deviceHash: dh,
           });
-      hub.broadcast({ type: 'tree_polyp_added', polyp } as never);
-      return polyp;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (/parent not found/i.test(msg)) { reply.code(404); return { error: msg }; }
@@ -53,9 +85,22 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(500);
       return { error: msg };
     }
+    // Best-effort notification: a broadcast failure must not turn a
+    // successfully persisted polyp into a 500 the client would retry — a retry
+    // would re-insert and inflate the device's rate-limit count. Mirrors reef.
+    try {
+      hub.broadcast({ type: 'tree_polyp_added', polyp });
+    } catch (err) {
+      req.log.warn({ err, polypId: polyp.id }, 'tree hub broadcast failed after insert');
+    }
+    return polyp;
   });
 
   app.delete('/api/tree/polyp/:id', async (req, reply) => {
+    // Deleting a leaf is also gated once an admin token is configured: in a
+    // public deploy, removing shared pieces is an operator action, not a
+    // visitor one. Without a token (single-install / testing) Undo stays open.
+    if (!enforceAdminIfConfigured(req, reply)) return reply;
     const { id: rawId } = req.params as { id: string };
     if (!NUMERIC_ID_RE.test(rawId)) {
       reply.code(400);
@@ -71,7 +116,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(409);
       return { error: result.reason ?? 'cannot delete' };
     }
-    hub.broadcast({ type: 'tree_polyp_removed', id } as never);
+    hub.broadcast({ type: 'tree_polyp_removed', id });
     return { ok: true };
   });
 }

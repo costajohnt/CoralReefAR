@@ -30,8 +30,8 @@ Related docs:
   rationale and `docs/superpowers/plans/2026-04-24-ar-phase-2-migration.md`
   for task breakdown.
 - **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
-  @fastify/cors 9 (pinned — issue #54 tracks Fastify 5 migration) ·
-  node:25-alpine · happy-dom 19 · Oxlint.
+  Fastify 5 + @fastify/cors 11 (the Fastify 5 migration shipped in
+  v0.3.0) · node:22-alpine · happy-dom 20 · Oxlint.
 - **Live production**: **<https://reef.home.local/>** (LAN) — v0.2.0
   image on LXC 300 behind Nginx Proxy Manager with self-signed TLS.
   See _Managing the deployed LXC_ below.

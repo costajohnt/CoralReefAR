@@ -117,6 +117,34 @@ test('POST /api/reef/polyp returns 429 with retryAfterMs when RATE_LIMIT_MAX ena
   }
 });
 
+test('POST /api/reef/polyp: crossing a window boundary does not reset the count', async () => {
+  // Regression for the salt-rotation double-dip: a device that plants in one
+  // window must still be counted in the next, so it can't replant by waiting
+  // for the boundary.
+  const savedMax = config.rateLimitMax;
+  const savedWindow = config.rateLimitWindowMs;
+  const realNow = Date.now;
+  config.rateLimitMax = 1;
+  config.rateLimitWindowMs = 1000;
+  try {
+    const { app } = buildApp();
+    // Plant in bucket 10000.
+    Date.now = () => 10_000_400;
+    const first = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    assert.equal(first.statusCode, 201);
+    // One window later (bucket 10001): the salt rotated, but the device's prior
+    // polyp is still within the sliding window and must still count → 429.
+    Date.now = () => 10_001_400;
+    const second = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    assert.equal(second.statusCode, 429);
+    await app.close();
+  } finally {
+    Date.now = realNow;
+    config.rateLimitMax = savedMax;
+    config.rateLimitWindowMs = savedWindow;
+  }
+});
+
 test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (default)', async () => {
   // Use a CONSTANT user-agent so every request lands in the same
   // deviceHash bucket. The earlier version of this test rotated the UA

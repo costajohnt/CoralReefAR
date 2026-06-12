@@ -2,13 +2,14 @@ import {
   AmbientLight, Color, DirectionalLight, Group, HemisphereLight, Mesh,
   PerspectiveCamera, Scene, WebGLRenderer,
 } from 'three';
-import type { PublicPolyp } from '@reef/shared';
 import { generatePolyp } from '@reef/generator';
 import { polypMesh } from './scene/meshAdapter.js';
 import { disposeTree } from './scene/dispose.js';
-
-interface SnapshotMeta { id: number; takenAt: number; polypCount: number }
-interface SnapshotBody { polyps: PublicPolyp[] }
+import {
+  createTimelapsePlayer,
+  type SnapshotBody,
+  type SnapshotMeta,
+} from './timelapse/player.js';
 
 const canvas = document.getElementById('gl') as HTMLCanvasElement;
 const metaEl = document.getElementById('meta')!;
@@ -71,7 +72,7 @@ function applySnapshot(body: SnapshotBody): void {
   }
 }
 
-async function load(): Promise<SnapshotMeta[]> {
+async function loadList(): Promise<SnapshotMeta[]> {
   const r = await fetch('/api/snapshots');
   if (!r.ok) throw new Error(`snapshots ${r.status}`);
   return r.json() as Promise<SnapshotMeta[]>;
@@ -84,74 +85,13 @@ async function loadSnapshot(id: number): Promise<SnapshotBody> {
   return JSON.parse(wrapper.stateJson) as SnapshotBody;
 }
 
-function fmt(ms: number): string {
-  return new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
-}
+// The scrub + autoplay state machine lives in ./timelapse/player.ts (tested in
+// isolation); this entry just supplies the WebGL render + fetch dependencies.
+const player = createTimelapsePlayer(
+  { metaEl, scrubEl, timeEl, playBtn },
+  { loadList, loadSnapshot, applySnapshot },
+);
 
-let snapshots: SnapshotMeta[] = [];
-let playing = false;
-let scrubToken = 0;
-
-scrubEl.addEventListener('input', async () => {
-  const token = ++scrubToken;
-  const idx = Number(scrubEl.value);
-  const snap = snapshots[idx];
-  if (!snap) return;
-  timeEl.textContent = fmt(snap.takenAt);
-  try {
-    const body = await loadSnapshot(snap.id);
-    // Rapid scrubbing stacks fetches; discard responses that arrive out of
-    // order so we only apply the most recently requested snapshot.
-    if (token !== scrubToken) return;
-    applySnapshot(body);
-  } catch (e) {
-    if (token !== scrubToken) return;
-    console.error('Failed to load snapshot', e);
-    metaEl.textContent = 'Failed to load that snapshot; try another.';
-  }
-});
-
-playBtn.addEventListener('click', () => {
-  playing = !playing;
-  playBtn.textContent = playing ? 'Pause' : 'Play';
-  if (playing) tick();
-});
-
-async function tick(): Promise<void> {
-  while (playing) {
-    // playBtn is only disabled after the initial load resolves; a fast tap
-    // could enter tick() before snapshots arrive. Bail instead of dividing
-    // by zero and cycling NaN through the scrub handler.
-    if (snapshots.length === 0) {
-      playing = false;
-      playBtn.textContent = 'Play';
-      return;
-    }
-    const cur = Number(scrubEl.value);
-    const next = (cur + 1) % snapshots.length;
-    scrubEl.value = String(next);
-    scrubEl.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 400));
-  }
-}
-
-(async () => {
-  resize();
-  requestAnimationFrame(render);
-  try {
-    snapshots = await load();
-  } catch (e) {
-    metaEl.textContent = 'Failed to load snapshots.';
-    console.error(e);
-    return;
-  }
-  if (snapshots.length === 0) {
-    metaEl.textContent = 'No snapshots yet. The server writes one per day.';
-    playBtn.disabled = true;
-    return;
-  }
-  metaEl.textContent = `${snapshots.length} snapshot${snapshots.length === 1 ? '' : 's'}`;
-  scrubEl.max = String(snapshots.length - 1);
-  scrubEl.value = String(snapshots.length - 1);
-  scrubEl.dispatchEvent(new Event('input'));
-})().catch(console.error);
+resize();
+requestAnimationFrame(render);
+player.init().catch(console.error);

@@ -98,17 +98,31 @@ function addQuad(
   thickness: number,
   color: Rgb,
 ): void {
-  const base = positions.length / 3;
   const t = thickness;
   const verts: [number, number, number][] = [
     [x1, y1, z1 - t], [x2, y2, z2 - t],
     [x2, y2, z2 + t], [x1, y1, z1 + t],
   ];
+
+  // Front face: +Z normal, original winding.
+  const front = positions.length / 3;
   for (const v of verts) {
     positions.push(v[0], v[1], v[2]);
     normals.push(0, 0, 1);
     colors.push(color[0], color[1], color[2]);
   }
-  indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  indices.push(front, front + 1, front + 2, front, front + 2, front + 3);
+
+  // Back face: reversed winding on its OWN vertices with a -Z normal. The quad
+  // used to be double-sided off a single 4-vertex set with [0,0,1] everywhere,
+  // so the back face (which fans render unculled, being translucent) was lit as
+  // if it faced the camera. Duplicating the verts lets the back carry the
+  // opposite normal so its lighting is correct.
+  const backWind = positions.length / 3;
+  for (const v of verts) {
+    positions.push(v[0], v[1], v[2]);
+    normals.push(0, 0, -1);
+    colors.push(color[0], color[1], color[2]);
+  }
+  indices.push(backWind, backWind + 2, backWind + 1, backWind, backWind + 3, backWind + 2);
 }

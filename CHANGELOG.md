@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) loosely;
-versions are SemVer.
+versions are SemVer. The canonical version is the **git tag** (`vX.Y.Z`); the
+`version` field in each `package.json` is unused (all packages are private and
+never published) and stays at `0.1.0` on purpose. See CONTRIBUTING for why.
 
 ## [Unreleased]
 
@@ -98,6 +100,15 @@ tracking only (no controllers), session-scoped spatial anchor.
 - **`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`** —
   13-task TDD plan with file paths, full code, expected commands and
   outputs.
+
+## [0.6.1] — 2026-04-24
+
+### Fixed
+
+- **`treeAr.html` missing from the production build.** The AR tree surface
+  shipped in 0.6.0 but was never registered as a Vite build entry, so it was
+  absent from `dist/`. Added it to the client's Vite build inputs
+  (`packages/client/vite.config.ts`).
 
 ## [0.6.0] — 2026-04-24
 

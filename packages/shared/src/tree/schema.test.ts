@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { TreePolypInputSchema, TreeVariantSchema } from './schema.js';
+import {
+  MAX_TREE_ATTACH_INDEX,
+  TREE_VARIANT_ATTACH_COUNTS,
+  TreePolypInputSchema,
+  TreeVariantSchema,
+} from './schema.js';
+import { REEF_PALETTE } from '../palette.js';
 
 test('TreeVariantSchema: accepts the five variants', () => {
   for (const v of ['forked', 'trident', 'starburst', 'claw', 'wishbone']) {
@@ -34,6 +40,34 @@ test('TreePolypInputSchema: allows parentId=null for root pieces', () => {
   };
   const root = { ...valid, parentId: null };
   assert.equal(TreePolypInputSchema.safeParse(root).success, true);
+});
+
+test('TreePolypInputSchema: accepts every real palette colorKey', () => {
+  const base = { variant: 'forked', seed: 42, parentId: 1, attachIndex: 0 };
+  for (const entry of REEF_PALETTE) {
+    assert.equal(
+      TreePolypInputSchema.safeParse({ ...base, colorKey: entry.key }).success,
+      true,
+      `palette key ${entry.key} should be accepted`,
+    );
+  }
+});
+
+test('TreePolypInputSchema: rejects a colorKey not in the palette', () => {
+  const base = { variant: 'forked', seed: 42, parentId: 1, attachIndex: 0 };
+  assert.equal(TreePolypInputSchema.safeParse({ ...base, colorKey: 'not-a-color' }).success, false);
+  assert.equal(TreePolypInputSchema.safeParse({ ...base, colorKey: '' }).success, false);
+  // The pre-fix schema accepted any string up to 32 chars; this is the poison key.
+  assert.equal(
+    TreePolypInputSchema.safeParse({ ...base, colorKey: 'a'.repeat(20) }).success,
+    false,
+  );
+});
+
+test('MAX_TREE_ATTACH_INDEX is derived from the attach-count map', () => {
+  assert.equal(MAX_TREE_ATTACH_INDEX, Math.max(...Object.values(TREE_VARIANT_ATTACH_COUNTS)) - 1);
+  // starburst has the most tips (4), so indices run 0..3.
+  assert.equal(MAX_TREE_ATTACH_INDEX, 3);
 });
 
 test('TreePolypInputSchema: rejects negative or non-integer attachIndex', () => {

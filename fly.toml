@@ -24,8 +24,14 @@ primary_region = "iad"
   DB_PATH = "/data/reef.db"
   NODE_ENV = "production"
   CLIENT_DIST_DIR = "/app/packages/client/dist"
-  RATE_LIMIT_WINDOW_MS = "3600000"
-  RATE_LIMIT_MAX = "1"
+  # Production protections — all default OFF in code so local/dev testing isn't
+  # throttled; turned ON here for real-visitor traffic. See docs/runbook.md.
+  RATE_LIMIT_WINDOW_MS = "3600000"   # 1 hour sliding window for the write limit
+  RATE_LIMIT_MAX = "1"               # polyps per device per window
+  READ_RATE_LIMIT_PER_MIN = "60"     # reads per IP per minute on /api/reef + /api/stats
+  READ_CACHE_TTL_MS = "1000"         # coalesce read scans within 1s
+  # WS_MAX_CLIENTS (default 1000/hub), SIM_RETENTION_MS (30d), and
+  # SNAPSHOT_RETENTION_COUNT (90) already default to safe production values.
 
 [[mounts]]
   source = "reef_data"
