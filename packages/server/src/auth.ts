@@ -2,14 +2,18 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 
-export function requireAdmin(token: string | undefined): boolean {
-  if (!token || !config.adminToken) return false;
+function tokenMatches(token: string | undefined, expected: string): boolean {
+  if (!token || !expected) return false;
   // Hash both to fixed-size 32-byte digests before timingSafeEqual so the
   // comparison runs in constant time regardless of the submitted token's
   // length. Raw-buffer compare leaks length through an early-return branch.
   const a = createHash('sha256').update(token).digest();
-  const b = createHash('sha256').update(config.adminToken).digest();
+  const b = createHash('sha256').update(expected).digest();
   return timingSafeEqual(a, b);
+}
+
+export function requireAdmin(token: string | undefined): boolean {
+  return tokenMatches(token, config.adminToken);
 }
 
 function bearerToken(req: FastifyRequest): string | undefined {
@@ -41,6 +45,24 @@ export function checkAdminAuth(req: FastifyRequest, reply: FastifyReply): boolea
  * Returns true to proceed; on failure writes 401 and returns false.
  */
 export function enforceAdminIfConfigured(req: FastifyRequest, reply: FastifyReply): boolean {
-  if (!config.adminToken) return true;
-  return checkAdminAuth(req, reply);
+  return enforceBearerIfConfigured(req, reply, config.adminToken);
+}
+
+/**
+ * Generic conditional bearer gate: open when `expected` is empty, otherwise
+ * requires `Authorization: Bearer <expected>` (timing-safe). On failure writes
+ * 401 and returns false. Used for /metrics (METRICS_TOKEN) and as the basis for
+ * the admin gate above.
+ */
+export function enforceBearerIfConfigured(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  expected: string,
+): boolean {
+  if (!expected) return true;
+  if (!tokenMatches(bearerToken(req), expected)) {
+    void reply.status(401).send({ error: 'unauthorized' });
+    return false;
+  }
+  return true;
 }
