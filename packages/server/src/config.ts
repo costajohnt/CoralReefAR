@@ -32,6 +32,10 @@ export const config = {
   // after each new snapshot so the snapshots table (full-state JSON blobs)
   // doesn't grow forever. 0 = keep all (pruning disabled).
   snapshotRetentionCount: Number(process.env.SNAPSHOT_RETENTION_COUNT ?? 90),
+  // Max concurrent WebSocket connections per hub (reef and tree count
+  // separately). 0 = unlimited. Bounds a connection flood from exhausting
+  // memory / file descriptors before the heartbeat reaps idle sockets.
+  wsMaxClients: Number(process.env.WS_MAX_CLIENTS ?? 1000),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   // Absolute path to the built Vite client bundle. When set, the server
   // serves the static files and SPA index fallbacks. Leave unset in dev so
@@ -60,6 +64,13 @@ if (!Number.isFinite(config.readCacheTtlMs) || config.readCacheTtlMs < 0) {
   throw new Error(
     `READ_CACHE_TTL_MS must be a non-negative number of milliseconds (0 disables), ` +
       `got ${JSON.stringify(process.env.READ_CACHE_TTL_MS)}`,
+  );
+}
+
+if (!Number.isInteger(config.wsMaxClients) || config.wsMaxClients < 0) {
+  throw new Error(
+    `WS_MAX_CLIENTS must be a non-negative integer (0 = unlimited), ` +
+      `got ${JSON.stringify(process.env.WS_MAX_CLIENTS)}`,
   );
 }
 
