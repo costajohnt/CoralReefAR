@@ -26,9 +26,9 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
     tree.deleteAll();
     seedRootIfEmpty(tree);
     const polyps = tree.listLive();
-    hub.broadcast({ type: 'tree_reset' } as never);
+    hub.broadcast({ type: 'tree_reset' });
     if (polyps[0]) {
-      hub.broadcast({ type: 'tree_polyp_added', polyp: polyps[0] } as never);
+      hub.broadcast({ type: 'tree_polyp_added', polyp: polyps[0] });
     }
     return { polyps };
   });
@@ -89,7 +89,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
     // successfully persisted polyp into a 500 the client would retry — a retry
     // would re-insert and inflate the device's rate-limit count. Mirrors reef.
     try {
-      hub.broadcast({ type: 'tree_polyp_added', polyp } as never);
+      hub.broadcast({ type: 'tree_polyp_added', polyp });
     } catch (err) {
       req.log.warn({ err, polypId: polyp.id }, 'tree hub broadcast failed after insert');
     }
@@ -116,7 +116,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       reply.code(409);
       return { error: result.reason ?? 'cannot delete' };
     }
-    hub.broadcast({ type: 'tree_polyp_removed', id } as never);
+    hub.broadcast({ type: 'tree_polyp_removed', id });
     return { ok: true };
   });
 }

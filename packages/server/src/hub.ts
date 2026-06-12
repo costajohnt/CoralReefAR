@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@reef/shared';
+import type { ServerMessage, TreeServerMessage } from '@reef/shared';
 
 // ws library readyState values — see https://developer.mozilla.org/docs/Web/API/WebSocket/readyState
 const WS_OPEN = 1;
@@ -60,7 +60,7 @@ export class Hub {
     return true;
   }
 
-  broadcast(msg: ServerMessage): void {
+  broadcast(msg: ServerMessage | TreeServerMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.clients.keys()) {
       if (ws.readyState !== WS_OPEN) continue;

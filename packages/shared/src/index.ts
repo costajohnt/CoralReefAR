@@ -4,6 +4,7 @@ export * from './tracking.js';
 export * from './palette.js';
 export * from './ws.js';
 export * from './ws-dispatch.js';
+export * from './ws-schema.js';
 export * from './gestures.js';
 export * from './tree/types.js';
 export * from './tree/schema.js';
