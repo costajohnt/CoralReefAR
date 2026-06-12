@@ -15,6 +15,7 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
 import { installSecurityHeaders } from './security.js';
+import { resolveCorsOrigin } from './cors.js';
 import { TreeDb } from './tree/db.js';
 import { registerTreeRoutes } from './tree/routes.js';
 import { seedRootIfEmpty } from './tree/seed.js';
@@ -59,9 +60,13 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   // default lets unauthenticated callers make Zod walk a megabyte before
   // rejecting.
   const app = Fastify({ logger: useLogger, trustProxy: true, bodyLimit: 8192 });
-  const corsOrigin: boolean | string[] =
-    corsOriginsList.length === 1 && corsOriginsList[0] === '*' ? true : corsOriginsList;
+  const corsOrigin = resolveCorsOrigin(corsOriginsList);
   await app.register(cors, { origin: corsOrigin });
+  if (corsOrigin === true) {
+    app.log.warn(
+      'CORS is wide open (CORS_ORIGINS=*). Set explicit origins before exposing the server publicly.',
+    );
+  }
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   installSecurityHeaders(app);
 
