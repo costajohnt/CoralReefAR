@@ -21,7 +21,7 @@ container environment for a self-hosted deploy):
 | `SNAPSHOT_RETENTION_COUNT` | `90` (default) | Keep the N most recent daily snapshots. `0` = keep all. |
 | `ADMIN_TOKEN` | secret | Gates the reef admin routes and (when set) the destructive tree reset/delete. |
 | `METRICS_TOKEN` | secret (optional) | When set, `GET /metrics` requires `Authorization: Bearer <token>`. |
-| `CORS_ORIGINS` | the deployed origin | Comma-separated allowlist. |
+| `CORS_ORIGINS` | the deployed origin | Comma-separated allowlist. **Required in production**: with `NODE_ENV=production` the server refuses to start if this is `*` or unset (fail-closed). `*` stays the convenient default in dev/test. |
 
 Set the secrets out of band: `fly secrets set ADMIN_TOKEN=... METRICS_TOKEN=... CORS_ORIGINS=...`.
 

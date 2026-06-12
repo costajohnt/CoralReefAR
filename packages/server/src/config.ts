@@ -1,3 +1,5 @@
+import { assertProductionCorsSafe } from './cors.js';
+
 export const config = {
   port: Number(process.env.PORT ?? 8787),
   host: process.env.HOST ?? '0.0.0.0',
@@ -73,4 +75,8 @@ if (!Number.isInteger(config.wsMaxClients) || config.wsMaxClients < 0) {
       `got ${JSON.stringify(process.env.WS_MAX_CLIENTS)}`,
   );
 }
+
+// Fail closed on CORS in production: refuse to start if origins are wide-open
+// or unset. Testing keeps the convenient `*` default.
+assertProductionCorsSafe(config.corsOrigins, process.env.NODE_ENV);
 
