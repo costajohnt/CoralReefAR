@@ -4,7 +4,7 @@ import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
 import { enforceAdminIfConfigured } from '../auth.js';
-import { deviceHash } from '../deviceHash.js';
+import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
 import { config } from '../config.js';
 import { counters } from '../metrics-registry.js';
 
@@ -46,9 +46,16 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
     const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
     const windowStart = Date.now() - config.rateLimitWindowMs;
-    if (config.rateLimitMax > 0 && tree.countByDeviceSince(dh, windowStart) >= config.rateLimitMax) {
+    // Count under the current AND previous window's hash so crossing a window
+    // boundary can't reset the count (see deviceHashesForCounting).
+    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
+    const already = countHashes.reduce((n, h) => n + tree.countByDeviceSince(h, windowStart), 0);
+    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
       counters.inc('rate_limited');
-      const oldest = tree.oldestByDeviceSince(dh, windowStart);
+      const oldests = countHashes
+        .map((h) => tree.oldestByDeviceSince(h, windowStart))
+        .filter((t): t is number => t !== null);
+      const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
         : config.rateLimitWindowMs;
