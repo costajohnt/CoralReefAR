@@ -45,15 +45,31 @@ function emitCylinder(
   const sides = 10;
   const base = positions.length / 3;
   const tx = Math.sin(tilt) * height;
+  // The cylinder is sheared so its axis runs from (cx,cy,cz) to
+  // (cx+tx, cy+height, cz). The side surface is ruled along that axis, so the
+  // true outward normal at angle theta is perpendicular to BOTH the ring
+  // tangent (-sin, 0, cos) and the axis (tx, height, 0):
+  //   n = normalize(cos t, -sin(tilt) * cos t, sin t)
+  // which is exactly the old radial normal (cos t, 0, sin t) tilted by the
+  // shear. dot(n, axis) = 0, so it's correctly perpendicular to the tilted
+  // axis; the old [x/r, 0, z/r] ignored the tilt and was off by ~tilt rad.
+  const sinTilt = Math.sin(tilt);
   for (let i = 0; i < sides; i++) {
     const theta = (i / sides) * Math.PI * 2;
-    const x = Math.cos(theta) * radius;
-    const z = Math.sin(theta) * radius;
+    const ct = Math.cos(theta);
+    const st = Math.sin(theta);
+    const x = ct * radius;
+    const z = st * radius;
+    const nx = ct;
+    const ny = -sinTilt * ct;
+    const nz = st;
+    const nlen = Math.hypot(nx, ny, nz) || 1;
+    const unx = nx / nlen, uny = ny / nlen, unz = nz / nlen;
     positions.push(cx + x, cy, cz + z);
-    normals.push(x / radius, 0, z / radius);
+    normals.push(unx, uny, unz);
     colors.push(color[0], color[1], color[2]);
     positions.push(cx + x + tx, cy + height, cz + z);
-    normals.push(x / radius, 0, z / radius);
+    normals.push(unx, uny, unz);
     colors.push(color[0], color[1], color[2]);
   }
   for (let i = 0; i < sides; i++) {
