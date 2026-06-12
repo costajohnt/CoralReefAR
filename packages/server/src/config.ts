@@ -14,6 +14,9 @@ export const config = {
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
   // tracked in the repo issue list.
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 0),
+  // Looser bucket for Quest sessions where users plant many polyps quickly.
+  // 0 = falls through to rateLimitMax.
+  questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 20),
   // 0 = disabled. Default off; set READ_RATE_LIMIT_PER_MIN=60 (or similar)
   // to re-enable the per-IP read-side token bucket on /api/reef and /api/stats.
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),

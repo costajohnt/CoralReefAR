@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coral Reef AR — Quest 3</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; padding: 0; height: 100%; background: #07151c; color: #e8f4fa; font: 16px/1.5 system-ui, sans-serif; }
+      #app { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1rem; text-align: center; padding: 1.5rem; }
+      #app h1 { margin: 0; font-size: 1.6rem; font-weight: 500; letter-spacing: 0.04em; }
+      #app p { max-width: 36rem; margin: 0; color: #a8c4d2; }
+      #enter-mr {
+        appearance: none; border: 1px solid #5dd8c9; background: transparent; color: #5dd8c9;
+        padding: 0.9rem 1.6rem; border-radius: 0.5rem; font-size: 1rem; cursor: pointer;
+      }
+      #enter-mr[disabled] { opacity: 0.4; cursor: not-allowed; }
+      #status { color: #f0a8a8; min-height: 1.5em; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h1>Coral Reef AR</h1>
+      <p>Open this URL in the Meta Quest Browser. Press Enter MR and pinch a spot on your floor to plant the reef.</p>
+      <button id="enter-mr" disabled>Checking WebXR…</button>
+      <div id="status"></div>
+    </div>
+    <script type="module" src="/src/quest/quest.ts"></script>
+  </body>
+</html>

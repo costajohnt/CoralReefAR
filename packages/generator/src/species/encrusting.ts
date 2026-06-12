@@ -68,5 +68,8 @@ export function generateEncrusting(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: radius,
     approxHeight: maxBump,
+    // Encrusting coral grows along the substrate; new branches don't
+    // extend from it. Empty tips array → no hotspots, can't be grown from.
+    tips: [],
   };
 }

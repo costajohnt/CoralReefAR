@@ -7,7 +7,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
     "noEmit": true,
-    "types": ["vite/client"]
+    "types": ["vite/client", "webxr"]
   },
   "include": ["src/**/*"]
 }
