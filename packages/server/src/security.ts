@@ -62,3 +62,25 @@ export function perIpRateLimit(opts: { tokensPerInterval: number; intervalMs: nu
     return { ok: false, retryAfterMs };
   };
 }
+
+/**
+ * Wrap an expensive read so repeated calls within `ttlMs` share one result.
+ * Coalesces a burst of identical reads (e.g. many clients loading /api/reef at
+ * once) into a single DB scan per window. Bounded staleness only — there is no
+ * invalidation, so keep `ttlMs` small. Single-threaded event loop, so no lock
+ * needed: a value computed mid-window is simply reused until it expires.
+ *
+ * The same object reference is returned to every caller within the window, so
+ * callers MUST treat the result as read-only — mutating it corrupts the cached
+ * value for every subsequent request until the TTL expires.
+ */
+export function ttlCache<T>(produce: () => T, ttlMs: number): () => T {
+  let cached: { value: T; at: number } | null = null;
+  return () => {
+    const now = Date.now();
+    if (cached && now - cached.at < ttlMs) return cached.value;
+    const value = produce();
+    cached = { value, at: now };
+    return value;
+  };
+}

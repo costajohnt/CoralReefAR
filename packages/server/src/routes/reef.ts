@@ -5,7 +5,7 @@ import type { ReefDb } from '../db.js';
 import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
 import { deviceHash } from '../deviceHash.js';
-import { perIpRateLimit } from '../security.js';
+import { perIpRateLimit, ttlCache } from '../security.js';
 import { counters } from '../metrics-registry.js';
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
@@ -14,6 +14,19 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
   const readLimit = config.readRateLimitPerMin > 0
     ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
     : null;
+
+  // The polyps + sim scans are the expensive part of GET /api/reef. Cache them
+  // for READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
+  // payload is bounded to the retention window (0 = retention disabled → all).
+  const buildSnapshot = (): Pick<ReefState, 'polyps' | 'sim'> => ({
+    polyps: db.listPublicPolyps(),
+    sim: config.simRetentionMs > 0
+      ? db.listSimSince(Date.now() - config.simRetentionMs)
+      : db.listSim(),
+  });
+  const readSnapshot = config.readCacheTtlMs > 0
+    ? ttlCache(buildSnapshot, config.readCacheTtlMs)
+    : buildSnapshot;
 
   app.get('/api/reef', async (req, reply) => {
     if (readLimit) {
@@ -24,16 +37,8 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
         return reply.status(429).send({ error: 'rate_limited' });
       }
     }
-    // Bound the sim payload to the retention window so this response can't grow
-    // without limit as decorations accumulate. 0 = retention disabled → all.
-    const sim = config.simRetentionMs > 0
-      ? db.listSimSince(Date.now() - config.simRetentionMs)
-      : db.listSim();
-    const state: ReefState = {
-      polyps: db.listPublicPolyps(),
-      sim,
-      serverTime: Date.now(),
-    };
+    // serverTime is always fresh even when the scans are served from cache.
+    const state: ReefState = { ...readSnapshot(), serverTime: Date.now() };
     return state;
   });
 
