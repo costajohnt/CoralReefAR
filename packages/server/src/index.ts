@@ -133,7 +133,7 @@ async function main(): Promise<void> {
 
   const sim = new SimWorker(db, hub, config.simIntervalMs, config.simRetentionMs);
   sim.start();
-  const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs);
+  const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs, config.snapshotRetentionCount);
   snapshots.start();
   hub.startHeartbeat();
   treeHub.startHeartbeat();

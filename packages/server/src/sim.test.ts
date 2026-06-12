@@ -125,3 +125,31 @@ test('snapshot: take() writes JSON snapshot of current state', () => {
   const parsed = JSON.parse(snap!.stateJson) as { polyps: unknown[] };
   assert.equal(parsed.polyps.length, 1);
 });
+
+test('db: pruneOldSnapshots keeps the N most recent', () => {
+  const db = freshDb();
+  db.insertPolyp(polypAgedDays(1));
+  const ids: number[] = [];
+  for (let i = 0; i < 5; i++) ids.push(db.insertSnapshot(1, JSON.stringify({ n: i })));
+  const removed = db.pruneOldSnapshots(2);
+  assert.equal(removed, 3);
+  const left = db.listSnapshots().map((s) => s.id).sort((a, b) => a - b);
+  // The two highest ids (most recent) survive.
+  assert.deepEqual(left, ids.slice(-2));
+});
+
+test('snapshot: take() prunes to retentionCount across repeated runs', () => {
+  const db = freshDb();
+  db.insertPolyp(polypAgedDays(1));
+  const w = new SnapshotWorker(db, 86_400_000, 3);
+  for (let i = 0; i < 6; i++) w.take();
+  assert.equal(db.listSnapshots().length, 3);
+});
+
+test('snapshot: retentionCount=0 keeps every snapshot', () => {
+  const db = freshDb();
+  db.insertPolyp(polypAgedDays(1));
+  const w = new SnapshotWorker(db, 86_400_000, 0);
+  for (let i = 0; i < 4; i++) w.take();
+  assert.equal(db.listSnapshots().length, 4);
+});
