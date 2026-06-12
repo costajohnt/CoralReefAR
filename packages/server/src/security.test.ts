@@ -1,6 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { perIpRateLimit, ttlCache } from './security.js';
+import { perIpRateLimit, ttlCache, cspWithScriptNonce } from './security.js';
+
+test('cspWithScriptNonce: script-src allows the nonce, not unsafe-inline', () => {
+  const csp = cspWithScriptNonce('abc123');
+  assert.match(csp, /script-src 'self' 'nonce-abc123'/);
+  assert.ok(!/script-src[^;]*'unsafe-inline'/.test(csp), 'no unsafe-inline on script-src');
+  // style-src still permits inline for now.
+  assert.match(csp, /style-src 'self' 'unsafe-inline'/);
+});
 
 test('ttlCache: reuses the cached value within the TTL (one production)', () => {
   let calls = 0;

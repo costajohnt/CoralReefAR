@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { randomBytes } from 'node:crypto';
 import type { ReefDb } from '../db.js';
 import type { Hub } from '../hub.js';
 import { checkAdminAuth } from '../auth.js';
+import { cspWithScriptNonce } from '../security.js';
 
 // Parse admin auth + :id path param. Returns the id on success, or null after
 // writing a 401/400 response — callers should return immediately when null.
@@ -59,12 +61,18 @@ export function registerAdminRoutes(app: FastifyInstance, db: ReefDb, hub: Hub):
   // for a token in memory and uses it only as a Bearer header on API calls.
   // No gating on GET /admin — the delete endpoint is the actual auth boundary.
   app.get('/admin', async (_req, reply) => {
+    // The global CSP blocks inline scripts (no 'unsafe-inline'); this page's
+    // one inline script is allowed via a per-response nonce instead. Setting
+    // the CSP header here pre-empts the global security-headers hook, which
+    // only fills headers that aren't already set.
+    const nonce = randomBytes(16).toString('base64');
+    reply.header('Content-Security-Policy', cspWithScriptNonce(nonce));
     reply.type('text/html');
-    return adminHtml();
+    return adminHtml(nonce);
   });
 }
 
-function adminHtml(): string {
+function adminHtml(nonce: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"/><title>Reef Admin</title>
 <style>
 body{font:14px system-ui;padding:1.5rem;background:#111;color:#eee}
@@ -84,7 +92,7 @@ h2{font-size:1rem;margin:1.5rem 0 0.5rem;color:#bcd}
 <table id=liveTable></table>
 <h2>Deleted <span class=count id=delCount></span></h2>
 <table id=delTable></table>
-<script>
+<script nonce="${nonce}">
 const $ = (id) => document.getElementById(id);
 function rowOf(p, actionText, actionClass, onAction) {
   const tr = document.createElement('tr');
