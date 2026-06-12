@@ -17,15 +17,15 @@
     "@fastify/websocket": "^11.2.0",
     "@reef/generator": "workspace:*",
     "@reef/shared": "workspace:*",
-    "better-sqlite3": "^12.9.0",
+    "better-sqlite3": "^12.10.0",
     "fastify": "^5.8.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.10",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.9.3",
     "@types/ws": "^8.5.10",
-    "tsx": "^4.15.0",
-    "ws": "^8.18.0"
+    "tsx": "^4.22.4",
+    "ws": "^8.21.0"
   }
 }
