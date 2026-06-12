@@ -19,8 +19,8 @@ const EXPECTED: Record<Species, {
 }> = {
   branching:  { vertexCount: 2560, triangleCount: 2560, sha256: '2864cad3ae042d0d83678606a47318c1d8b09b6da09ec21d586d5388388fbab7' },
   bulbous:    { vertexCount:  551, triangleCount: 1008, sha256: '1f9fced98e063ca3cbf574ed55a0beb5d506246b96910b5d3fd946b91088462a' },
-  fan:        { vertexCount:  324, triangleCount:  324, sha256: '925d9133a6e01eda453f75b07467a5a4769aef08c58a5048a4eefa416a9b43a3' },
-  tube:       { vertexCount:  168, triangleCount:  240, sha256: '899c22f91f5d70ea333a8821575da1c2578781bff2f26195bc42ccf4b845b788' },
+  fan:        { vertexCount:  648, triangleCount:  324, sha256: '66f98c627ab62e817c592ea4b64a1cf55b44bde7c37261a53d347c940854a4ae' },
+  tube:       { vertexCount:  168, triangleCount:  240, sha256: '3eaeaed9d2081df23ebcf15cbc70e0f55fd9dafd3b2de406aeb7e84709ae4e4c' },
   encrusting: { vertexCount:  121, triangleCount:  220, sha256: '367c65f2120dcf610a65ce6e58391d03ae8c052863a2f364650f571694e98b27' },
 };
 
@@ -69,6 +69,42 @@ for (const species of SPECIES) {
     }
   });
 }
+
+// Orientation invariants — the unit-length check above passes a normal that is
+// unit length but points the wrong way. These catch the two orientation bugs
+// fixed in #99: the fan back face was lit as if it faced front, and tube side
+// normals ignored the cylinder's tilt.
+
+test('orientation: fan back faces carry the negated (-Z) normal of the front faces', () => {
+  const { mesh } = generatePolyp({ species: 'fan', seed: FIXED_SEED, colorKey: FIXED_COLOR });
+  let front = 0;
+  let back = 0;
+  for (let v = 0; v < mesh.normals.length / 3; v++) {
+    const nz = mesh.normals[v * 3 + 2]!;
+    if (nz > 0.5) front++;
+    else if (nz < -0.5) back++;
+  }
+  assert.ok(front > 0, 'expected +Z front-face normals');
+  // Every front quad has a matching reversed-winding back quad with -Z normals.
+  assert.equal(back, front, 'each front face must have a matching -Z back face');
+});
+
+test('orientation: tilted tube side normals account for the tilt (non-zero Y)', () => {
+  const { mesh } = generatePolyp({ species: 'tube', seed: FIXED_SEED, colorKey: FIXED_COLOR });
+  let tiltedSide = false;
+  for (let v = 0; v < mesh.normals.length / 3; v++) {
+    const nx = mesh.normals[v * 3]!;
+    const ny = mesh.normals[v * 3 + 1]!;
+    const nz = mesh.normals[v * 3 + 2]!;
+    // A side-wall normal (radial component present, so not the (0,1,0) cap).
+    // The old code forced ny = 0 on every side; a tilted cylinder must not.
+    if (Math.hypot(nx, nz) > 0.01 && Math.abs(ny) > 0.01) {
+      tiltedSide = true;
+      break;
+    }
+  }
+  assert.ok(tiltedSide, 'a tilted cylinder must produce side normals with a Y component');
+});
 
 // Bootstrap: compute hashes the first time, print them so they can be pasted
 // into EXPECTED. After that the test asserts they stay stable.
