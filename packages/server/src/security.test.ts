@@ -1,6 +1,23 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { perIpRateLimit } from './security.js';
+import { perIpRateLimit, ttlCache } from './security.js';
+
+test('ttlCache: reuses the cached value within the TTL (one production)', () => {
+  let calls = 0;
+  const cached = ttlCache(() => ++calls, 10_000);
+  assert.equal(cached(), 1);
+  assert.equal(cached(), 1);
+  assert.equal(cached(), 1);
+  assert.equal(calls, 1);
+});
+
+test('ttlCache: a zero TTL recomputes every call', () => {
+  let calls = 0;
+  const cached = ttlCache(() => ++calls, 0);
+  assert.equal(cached(), 1);
+  assert.equal(cached(), 2);
+  assert.equal(calls, 2);
+});
 
 test('perIpRateLimit admits tokens up to budget', () => {
   const limit = perIpRateLimit({ tokensPerInterval: 3, intervalMs: 10_000 });

@@ -13,8 +13,13 @@ export const config = {
   // tracked in the repo issue list.
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 0),
   // 0 = disabled. Default off; set READ_RATE_LIMIT_PER_MIN=60 (or similar)
-  // to re-enable the per-IP read-side token bucket.
+  // to re-enable the per-IP read-side token bucket on /api/reef and /api/stats.
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),
+  // Short-TTL read cache (ms) for /api/reef and /api/stats so a burst of reads
+  // coalesces into one DB scan. 0 = disabled (default, matching the testing
+  // posture). Set e.g. 1000 in production. Staleness is bounded by this value;
+  // WS keeps connected clients live regardless.
+  readCacheTtlMs: Number(process.env.READ_CACHE_TTL_MS ?? 0),
   simIntervalMs: Number(process.env.SIM_INTERVAL_MS ?? 3_600_000),
   snapshotIntervalMs: Number(process.env.SNAPSHOT_INTERVAL_MS ?? 86_400_000),
   // Sim deltas (barnacle/algae/weather decorations) older than this are pruned
@@ -48,6 +53,13 @@ if (!Number.isInteger(config.snapshotRetentionCount) || config.snapshotRetention
   throw new Error(
     `SNAPSHOT_RETENTION_COUNT must be a non-negative integer (0 keeps all), ` +
       `got ${JSON.stringify(process.env.SNAPSHOT_RETENTION_COUNT)}`,
+  );
+}
+
+if (!Number.isFinite(config.readCacheTtlMs) || config.readCacheTtlMs < 0) {
+  throw new Error(
+    `READ_CACHE_TTL_MS must be a non-negative number of milliseconds (0 disables), ` +
+      `got ${JSON.stringify(process.env.READ_CACHE_TTL_MS)}`,
   );
 }
 

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ReefDb } from '../db.js';
 import { registerStatsRoutes } from './stats.js';
+import { config } from '../config.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-stats-'));
@@ -59,4 +60,38 @@ test('stats: counts unique devices and species breakdown', async () => {
   assert.equal(j.bySpecies.bulbous, 2);
   assert.equal(j.bySpecies.fan, 1);
   await app.close();
+});
+
+test('stats: per-IP read rate limit returns 429 once exceeded', async () => {
+  // The limiter is created at route-registration time, so set config first.
+  const prev = config.readRateLimitPerMin;
+  config.readRateLimitPerMin = 1;
+  const { app } = buildApp();
+  try {
+    assert.equal((await app.inject({ method: 'GET', url: '/api/stats' })).statusCode, 200);
+    const second = await app.inject({ method: 'GET', url: '/api/stats' });
+    assert.equal(second.statusCode, 429);
+    assert.ok(second.headers['retry-after'] !== undefined);
+  } finally {
+    await app.close();
+    config.readRateLimitPerMin = prev;
+  }
+});
+
+test('stats: read cache serves a snapshot for the TTL window', async () => {
+  // Large TTL so the second read is guaranteed cached.
+  const prev = config.readCacheTtlMs;
+  config.readCacheTtlMs = 60_000;
+  const { app, db } = buildApp();
+  try {
+    const first = (await app.inject({ method: 'GET', url: '/api/stats' })).json() as { total: number };
+    assert.equal(first.total, 0);
+    // Insert after the cache was filled; the cached response must not reflect it.
+    db.insertPolyp(base());
+    const second = (await app.inject({ method: 'GET', url: '/api/stats' })).json() as { total: number };
+    assert.equal(second.total, 0);
+  } finally {
+    await app.close();
+    config.readCacheTtlMs = prev;
+  }
 });
