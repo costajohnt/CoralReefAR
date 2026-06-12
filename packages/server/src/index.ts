@@ -50,9 +50,9 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const useLogger = opts.logger ?? true;
 
   const db = new ReefDb(dbPath);
-  const hub = new Hub();
+  const hub = new Hub(config.wsMaxClients);
   const treeDb = new TreeDb(db);
-  const treeHub = new Hub();
+  const treeHub = new Hub(config.wsMaxClients);
   seedRootIfEmpty(treeDb);
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
@@ -101,7 +101,8 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
       ping?(): void;
       terminate?(): void;
     };
-    hub.add(ws);
+    // add() closes the socket and returns false when the hub is at capacity.
+    if (!hub.add(ws)) return;
     ws.send(JSON.stringify({
       type: 'hello',
       polypCount: db.listPublicPolyps().length,
@@ -117,7 +118,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
       ping?(): void;
       terminate?(): void;
     };
-    treeHub.add(ws);
+    if (!treeHub.add(ws)) return;
     ws.send(JSON.stringify({
       type: 'tree_hello',
       polypCount: treeDb.listLive().length,
