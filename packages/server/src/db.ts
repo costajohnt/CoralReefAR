@@ -34,6 +34,7 @@ export class ReefDb {
   readonly db: Database.Database;
   private readonly stmt: {
     listPolyps: Database.Statement;
+    countLivePolyps: Database.Statement;
     statsOverview: Database.Statement;
     statsRecent: Database.Statement;
     statsBySpecies: Database.Statement;
@@ -65,6 +66,7 @@ export class ReefDb {
       listPolyps: this.db.prepare(
         'SELECT * FROM polyps WHERE deleted = 0 ORDER BY created_at ASC',
       ),
+      countLivePolyps: this.db.prepare('SELECT COUNT(*) AS n FROM polyps WHERE deleted = 0'),
       statsOverview: this.db.prepare(
         `SELECT COUNT(*) AS total,
                 COUNT(DISTINCT device_hash) AS uniqueDevices,
@@ -187,6 +189,14 @@ export class ReefDb {
   /** Polyps with device_hash stripped — safe for broadcasting. */
   listPublicPolyps(): PublicPolyp[] {
     return (this.stmt.listPolyps.all() as PolypRow[]).map(rowToPublicPolyp);
+  }
+
+  /**
+   * Count of live polyps via a single aggregate — no row materialization. Used
+   * by /metrics so a scrape doesn't hydrate and strip every row each time.
+   */
+  countLivePolyps(): number {
+    return (this.stmt.countLivePolyps.get() as { n: number }).n;
   }
 
   insertPolyp(p: Omit<Polyp, 'id' | 'deleted'>): Polyp {

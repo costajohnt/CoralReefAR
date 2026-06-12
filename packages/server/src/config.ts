@@ -3,6 +3,10 @@ export const config = {
   host: process.env.HOST ?? '0.0.0.0',
   dbPath: process.env.DB_PATH ?? './data/reef.db',
   adminToken: process.env.ADMIN_TOKEN ?? '',
+  // When set, GET /metrics requires `Authorization: Bearer <METRICS_TOKEN>`
+  // (Prometheus-style scrape auth). Unset = open, for a network-isolated
+  // scrape target.
+  metricsToken: process.env.METRICS_TOKEN ?? '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 3_600_000),
   // 0 = disabled. Default off while the project is in testing; before
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
