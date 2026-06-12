@@ -166,20 +166,23 @@ describe('createTimelapsePlayer — playback', () => {
       loadList: async () => [meta(10), meta(20), meta(30)],
       loadSnapshot: async (id) => body(id),
       applySnapshot: vi.fn(),
-      frameDelayMs: 1,
+      // Long frame delay so the loop sets the first frame synchronously and
+      // then suspends on the timer for the rest of the test — no real-timer
+      // race, and the pending timer never re-dispatches before dispose().
+      frameDelayMs: 100_000,
     });
     await player.init(); // value = '2'
     const d = dom();
 
+    // click() runs onPlay → tick(), which advances the scrub synchronously
+    // (value set before the first await), so no waiting is needed.
     d.playBtn.click();
     expect(d.playBtn.textContent).toBe('Pause');
-    // One frame: 2 → (2+1)%3 = 0.
-    await new Promise((r) => setTimeout(r, 5));
-    expect(Number(d.scrubEl.value)).not.toBe(2);
+    expect(d.scrubEl.value).toBe('0'); // 2 → (2+1)%3 = 0
 
     d.playBtn.click();
     expect(d.playBtn.textContent).toBe('Play');
-    player.dispose();
+    player.dispose(); // disposed → the suspended loop exits at its next check, no dispatch
   });
 
   test('dispose() removes the listeners — a later scrub is a no-op', async () => {
