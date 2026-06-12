@@ -10,6 +10,54 @@ function freshDb(): ReefDb {
   return new ReefDb(join(dir, 'reef.db'));
 }
 
+function appliedMigrations(db: ReefDb): string[] {
+  return (db.db.prepare('SELECT filename FROM schema_migrations ORDER BY filename').all() as Array<{
+    filename: string;
+  }>).map((r) => r.filename);
+}
+
+test('migrations: each .sql file is recorded in schema_migrations exactly once', () => {
+  const db = freshDb();
+  const applied = appliedMigrations(db);
+  assert.ok(applied.includes('001_init.sql'));
+  assert.ok(applied.includes('003_tree_polyps.sql'));
+  // No duplicates.
+  assert.equal(new Set(applied).size, applied.length);
+});
+
+test('migrations: re-opening the same db file does not re-run or duplicate', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'reef-migrate-'));
+  const path = join(dir, 'reef.db');
+  const db1 = new ReefDb(path);
+  db1.insertPolyp(basePolyp());
+  const firstApplied = appliedMigrations(db1);
+  db1.db.close();
+
+  // Re-open the same file: migrate() runs again but must skip recorded files
+  // and must not error or wipe data.
+  const db2 = new ReefDb(path);
+  assert.deepEqual(appliedMigrations(db2), firstApplied);
+  assert.equal(db2.listPublicPolyps().length, 1);
+});
+
+test('migrations: back-fills an existing db that has tables but no tracking row', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'reef-backfill-'));
+  const path = join(dir, 'reef.db');
+  // Simulate a DB created by the OLD code: tables + data exist, but there is
+  // no schema_migrations table.
+  const db1 = new ReefDb(path);
+  db1.insertPolyp(basePolyp());
+  const expected = appliedMigrations(db1);
+  db1.db.exec('DROP TABLE schema_migrations');
+  db1.db.close();
+
+  // New code re-opening must recreate the tracking table, re-run the (no-op,
+  // IF NOT EXISTS) files, record them, and leave existing data intact.
+  const db2 = new ReefDb(path);
+  assert.deepEqual(appliedMigrations(db2), expected);
+  assert.equal(db2.listPublicPolyps().length, 1);
+});
+
 const basePolyp = () => ({
   species: 'branching' as const,
   seed: 1,

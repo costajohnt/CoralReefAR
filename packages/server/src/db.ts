@@ -129,14 +129,47 @@ export class ReefDb {
   }
 
   private migrate(): void {
+    // Track which .sql files have run so each applies exactly once. Without
+    // this, every file re-exec'd on every boot — fine only because they all use
+    // CREATE ... IF NOT EXISTS. Any future migration that ALTERs or backfills
+    // data would re-run on every restart. The tracking table fixes that: a
+    // recorded file is skipped. Existing DBs (tables already present, but no
+    // schema_migrations row) back-fill cleanly on first run because the
+    // IF NOT EXISTS statements are no-ops and then get recorded.
+    this.db.exec(
+      `CREATE TABLE IF NOT EXISTS schema_migrations (
+         filename   TEXT PRIMARY KEY,
+         applied_at INTEGER NOT NULL
+       )`,
+    );
+    const applied = new Set(
+      (this.db.prepare('SELECT filename FROM schema_migrations').all() as Array<{ filename: string }>)
+        .map((r) => r.filename),
+    );
+    const record = this.db.prepare(
+      'INSERT OR IGNORE INTO schema_migrations (filename, applied_at) VALUES (?, ?)',
+    );
+
+    // Apply each file and record it atomically: exec + the bookkeeping row
+    // commit or roll back together, so a statement that throws mid-file can't
+    // leave the schema partially applied while the file is marked done (or
+    // vice versa). Migration files therefore must not contain their own
+    // BEGIN/COMMIT; current files are CREATE TABLE/INDEX, all transaction-safe.
+    const applyOne = this.db.transaction((f: string, sql: string) => {
+      this.db.exec(sql);
+      record.run(f, Date.now());
+    });
+
     const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
     for (const f of files) {
-      const sql = readFileSync(join(migrationsDir, f), 'utf8');
-      this.db.exec(sql);
+      if (applied.has(f)) continue;
+      applyOne(f, readFileSync(join(migrationsDir, f), 'utf8'));
     }
-    // Imperative column adds. SQLite ALTER TABLE ADD COLUMN has no
-    // IF NOT EXISTS form, so we check pragma_table_info and only alter
-    // when the column is missing.
+
+    // attach_yaw was added imperatively before the tracking table existed, and
+    // ALTER TABLE ADD COLUMN has no IF NOT EXISTS form. Keep the pragma-guarded
+    // add for DBs that predate it. New schema changes should be .sql migration
+    // files now that they run exactly once.
     this.ensureColumn('tree_polyps', 'attach_yaw', 'REAL NOT NULL DEFAULT 0');
   }
 
