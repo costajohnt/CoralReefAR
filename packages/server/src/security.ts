@@ -1,12 +1,34 @@
 import type { FastifyInstance } from 'fastify';
 
+// script-src is 'self' with NO 'unsafe-inline' — inline scripts are blocked
+// globally. The only server-rendered page with an inline script (the admin
+// panel) sets its own per-response CSP with a nonce. style-src keeps
+// 'unsafe-inline' for now (runtime-set styles); tightening it is a follow-up.
+function buildCsp(scriptNonce?: string): string {
+  const scriptSrc = scriptNonce ? `script-src 'self' 'nonce-${scriptNonce}'` : "script-src 'self'";
+  return [
+    "default-src 'self'",
+    "img-src 'self' blob: data:",
+    "connect-src 'self' ws: wss:",
+    "media-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    scriptSrc,
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+  ].join('; ');
+}
+
+/** CSP that allows one inline script tagged with `nonce`. Used by /admin. */
+export function cspWithScriptNonce(nonce: string): string {
+  return buildCsp(nonce);
+}
+
 const HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
   'Cross-Origin-Opener-Policy': 'same-origin',
-  'Content-Security-Policy':
-    "default-src 'self'; img-src 'self' blob: data:; connect-src 'self' ws: wss:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+  'Content-Security-Policy': buildCsp(),
 };
 
 export function installSecurityHeaders(app: FastifyInstance): void {

@@ -225,3 +225,19 @@ test('admin: GET /admin returns HTML without auth', async () => {
   assert.match(r.payload, /<title>Reef Admin<\/title>/);
   await app.close();
 });
+
+test('admin: GET /admin sets a nonce CSP and tags its inline script with it', async () => {
+  const { app } = buildApp();
+  const r = await app.inject({ method: 'GET', url: '/admin' });
+  const csp = r.headers['content-security-policy'] as string;
+  const captured = /script-src 'self' 'nonce-([^']+)'/.exec(csp)?.[1];
+  assert.ok(captured, `CSP should carry a script nonce, got: ${csp}`);
+  assert.ok(
+    !/script-src[^;]*'unsafe-inline'/.test(csp),
+    'admin CSP must not allow unsafe-inline scripts',
+  );
+  // The inline <script> carries the same nonce so it runs under the CSP.
+  const nonce = captured.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(r.payload, new RegExp(`<script nonce="${nonce}">`));
+  await app.close();
+});
