@@ -67,10 +67,11 @@ describe('ReefSocket', () => {
     s.on(h2);
     s.connect();
 
-    FakeWs.created[0]!.fire('message', { data: JSON.stringify({ type: 'hello', polypCount: 3 }) });
+    const hello = { type: 'hello', polypCount: 3, serverTime: 1 };
+    FakeWs.created[0]!.fire('message', { data: JSON.stringify(hello) });
 
-    expect(h1).toHaveBeenCalledWith({ type: 'hello', polypCount: 3 });
-    expect(h2).toHaveBeenCalledWith({ type: 'hello', polypCount: 3 });
+    expect(h1).toHaveBeenCalledWith(hello);
+    expect(h2).toHaveBeenCalledWith(hello);
   });
 
   test('close event schedules a reconnect with exponential backoff', () => {

@@ -174,7 +174,7 @@ describe('TreeSocket', () => {
     s.on(cb2);
     s.connect();
 
-    const msg = { type: 'tree_polyp_added', polyp: { id: 1, variant: 'forked', seed: 0, colorKey: 'x', parentId: null, attachIndex: 0, createdAt: 0 } };
+    const msg = { type: 'tree_polyp_added', polyp: { id: 1, variant: 'forked', seed: 0, colorKey: 'x', parentId: null, attachIndex: 0, attachYaw: 0, createdAt: 0 } };
     FakeWs.created[0]!.fire('message', { data: JSON.stringify(msg) });
 
     expect(cb1).toHaveBeenCalledWith(msg);
