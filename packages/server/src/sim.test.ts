@@ -35,15 +35,43 @@ test('sim: tick produces no updates on fresh polyps (all <30 days)', () => {
   }
 });
 
-test('sim: tick eventually produces barnacles for aged polyps', () => {
+test('sim: with rng below every threshold, each eligible polyp grows exactly its applicable decorations', () => {
+  // Inject a deterministic RNG that always rolls below all three thresholds
+  // (0.02 / 0.01 / 0.005), so the tick outcome is exact instead of "passes
+  // with very high probability". 75-day polyps clear the >30 and >60 gates but
+  // not >90 → barnacle + algae each, no weather. (75 stays clear of the 60-day
+  // boundary, which `>` would make timing-sensitive.)
   const db = freshDb();
-  for (let i = 0; i < 200; i++) db.insertPolyp(polypAgedDays(60));
-  const sim = new SimWorker(db, new Hub(), 3600_000);
-  // At 2% chance per polyp per tick over 200 polyps, expected ~4/tick. Over
-  // 20 ticks, P(zero updates) ≈ (1-0.02)^(200*20) = effectively 0.
+  for (let i = 0; i < 100; i++) db.insertPolyp(polypAgedDays(75));
+  const sim = new SimWorker(db, new Hub(), 3600_000, 0, () => 0);
+  const updates = sim.tick();
+
+  const counts = { barnacle: 0, algae: 0, weather: 0 };
+  for (const u of updates) counts[u.kind] += 1;
+  assert.equal(counts.barnacle, 100);
+  assert.equal(counts.algae, 100);
+  assert.equal(counts.weather, 0);
+});
+
+test('sim: 90+ day polyps with a sub-threshold rng grow all three decoration kinds', () => {
+  const db = freshDb();
+  for (let i = 0; i < 10; i++) db.insertPolyp(polypAgedDays(120));
+  const sim = new SimWorker(db, new Hub(), 3600_000, 0, () => 0);
+  const counts = { barnacle: 0, algae: 0, weather: 0 };
+  for (const u of sim.tick()) counts[u.kind] += 1;
+  assert.equal(counts.barnacle, 10);
+  assert.equal(counts.algae, 10);
+  assert.equal(counts.weather, 10);
+});
+
+test('sim: with rng above every threshold, no decorations grow', () => {
+  // 0.5 is >= all three thresholds, so nothing fires regardless of age.
+  const db = freshDb();
+  for (let i = 0; i < 200; i++) db.insertPolyp(polypAgedDays(120));
+  const sim = new SimWorker(db, new Hub(), 3600_000, 0, () => 0.5);
   let total = 0;
   for (let i = 0; i < 20; i++) total += sim.tick().length;
-  assert.ok(total > 0, `expected updates, got ${total}`);
+  assert.equal(total, 0);
 });
 
 test('sim: sim_update deltas persist via transaction', () => {
