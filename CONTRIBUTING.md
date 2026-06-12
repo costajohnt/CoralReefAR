@@ -106,6 +106,22 @@ git push origin v0.2.0
 Operators who pin to a version get reproducibility; the rest follow
 `:latest`.
 
+### Versioning: the git tag is the source of truth
+
+There is exactly one authoritative version: the **git tag** (`vX.Y.Z`).
+`release.yml` derives the published image tags straight from it
+(`docker/metadata-action` with `type=semver`), so nothing else needs to be
+edited to cut a release.
+
+The `version` field in every `package.json` is **not** the release version. All
+packages are `private` and never published to a registry, so that field has no
+consumer; it stays at `0.1.0` deliberately. Do not bump it per release, and
+don't treat a mismatch between it and the latest tag as a bug.
+
+When tagging a release, the only doc to update is `CHANGELOG.md`: move the
+`[Unreleased]` notes under a new `[X.Y.Z]` heading dated the same day as the
+tag.
+
 After a release, you can verify the published image end-to-end by
 running the `Docker smoke` workflow (Actions → Docker smoke → Run
 workflow). It pulls `:latest`, waits for `/healthz`, and exercises
