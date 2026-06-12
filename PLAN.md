@@ -2,6 +2,8 @@
 
 A collaborative AR installation where visitors tap an NFC tag, open a web-based AR view of a living, procedurally-generated coral reef anchored to a physical pedestal, and add their own polyp. The reef persists and grows forever, simulates subtle biological activity between visitors, and runs entirely on self-hosted infrastructure.
 
+> **Status:** this is the original design plan. A few details were superseded during implementation and are annotated inline below (the `TrackingProvider` interface gained `name`/`start`/`stop` and DOM-free types; tree mode shipped as its own AR surface rather than migrating the reef AR client; TensorFlow.js was never adopted). The implemented interfaces under `packages/*/src` are the source of truth.
+
 ## What changed from v1
 
 - **Tracking:** 8th Wall open source (free, SLAM-based) instead of MindAR. Real world tracking, not just flat-image targets.
@@ -12,7 +14,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **Multiple surfaces:** the installation has three entry points sharing one backend:
   - **AR** (phone tapped to pedestal) — SLAM-tracked reef anchor.
   - **Playground** (`playground.html`) — orbit-camera non-AR view for a wall-mounted display next to the AR pedestal.
-  - **Branching web (tree mode)** (`tree.html`) — a different reef where visitors attach small composable pieces to each other's exposed tips, growing a fractal coral structure. Avatar-bioluminescent styling (bloom, vivid palette). Separate DB table (`tree_polyps`), separate WebSocket namespace (`/ws/tree`). Phase 2 will migrate the AR client to read tree data so the pedestal AR shows the same growing fractal the wall screen shows. See [`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md).
+  - **Branching web (tree mode)** (`tree.html`) — a different reef where visitors attach small composable pieces to each other's exposed tips, growing a fractal coral structure. Avatar-bioluminescent styling (bloom, vivid palette). Separate DB table (`tree_polyps`), separate WebSocket namespace (`/ws/tree`). See [`docs/superpowers/plans/2026-04-22-tree-mode.md`](./docs/superpowers/plans/2026-04-22-tree-mode.md). _(Shipped: rather than migrating the reef AR client to read tree data, tree mode got its own AR surface — `treeAr.html`, added in v0.6.0 — alongside the desktop `tree.html`.)_
 
 ## Goals
 
@@ -31,7 +33,7 @@ A collaborative AR installation where visitors tap an NFC tag, open a web-based 
 - **8th Wall open source XR engine** (free binary, self-hosted) for SLAM + image target tracking
 - **Custom `TrackingProvider` interface** wrapping the engine, with `NoopProvider` as the desktop/dev fallback
 - **Plain DOM + CSS** for UI (picker, confirm button, status overlays)
-- **TensorFlow.js** (optional, v2) for any on-device content checks
+- **TensorFlow.js** (was floated as optional, v2, for on-device content checks — never adopted; not a dependency)
 
 ### Backend (`packages/server`)
 
@@ -90,13 +92,22 @@ We use an image target as the origin anchor, but SLAM extends tracking beyond th
 
 ### Tracking provider abstraction
 
+The interface as implemented (`packages/shared/src/tracking.ts`). It evolved
+from the original sketch: types are structural and DOM-free so `@reef/shared`
+stays importable from the server, frames carry a timestamp, providers expose a
+`name`, and `start`/`stop` bracket the camera/SLAM lifecycle separately from
+one-time `init`.
+
 ```ts
 // packages/shared/src/tracking.ts
 export interface TrackingProvider {
-  init(opts: { markerImage: Blob; videoElement: HTMLVideoElement }): Promise<void>;
-  onAnchorFound(cb: (anchor: { pose: Matrix4; id: string }) => void): void;
+  readonly name: 'eightwall' | 'noop';
+  init(opts: TrackingInitOptions): Promise<void>; // { markerImage: string; videoElement: VideoLike; canvasElement?: CanvasLike }
+  onAnchorFound(cb: (ev: AnchorEvent) => void): void; // AnchorEvent = { id: string; pose: Mat4Like }
   onAnchorLost(cb: (id: string) => void): void;
-  onFrame(cb: (cameraPose: Matrix4) => void): void;
+  onFrame(cb: (cameraPose: Mat4Like, t: number) => void): void;
+  start(): Promise<void>;
+  stop(): Promise<void>;
   destroy(): Promise<void>;
 }
 ```

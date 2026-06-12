@@ -3,7 +3,7 @@
 ## Reporting
 
 If you find a vulnerability, please **do not open a public issue**. Email
-the maintainer at `jcosta@execonline.com` with:
+the maintainer at `costajohnt@gmail.com` with:
 
 - A description of the issue
 - Reproduction steps or a proof-of-concept
@@ -23,8 +23,12 @@ Relevant threats for this project:
   single-installation default) they stay open so the in-app Clear/Undo
   buttons work. Polyp creation is open by design and bounded by the rate
   limits below.
-- **Rate-limit bypass**: one polyp per device per hour is the public
-  contract; deviceHash + per-IP token bucket enforce it.
+- **Rate-limit bypass**: the write rate limit is **off by default**
+  (`RATE_LIMIT_MAX=0`) while the project is in single-installation
+  testing. When an operator sets `RATE_LIMIT_MAX` (e.g. 1), the
+  deviceHash + per-IP token bucket enforce one polyp per device per the
+  configured window. Read-side limiting is likewise opt-in via
+  `READ_RATE_LIMIT_PER_MIN`.
 - **Resource exhaustion**: WebSocket frames have a 64 KB payload cap;
   the server soft-hearbeats and evicts silent clients.
 - **Cross-site leaks**: CORS pins the origin via `CORS_ORIGINS`; no
