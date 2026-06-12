@@ -30,7 +30,12 @@ CLOUDFLARE_TUNNEL_TOKEN=<paste from Cloudflare Zero Trust UI>
 CORS_ORIGINS=https://reef.example.com
 ```
 
-The `ADMIN_TOKEN` gates `DELETE /api/admin/polyp/:id` and nothing else.
+The `ADMIN_TOKEN` gates the admin moderation routes: `DELETE
+/api/admin/polyp/:id`, `GET /api/admin/deleted` (the soft-deleted list),
+and `POST /api/admin/polyp/:id/restore`. When `ADMIN_TOKEN` is set it
+also gates the destructive tree routes (`POST /api/tree/reset`,
+`DELETE /api/tree/polyp/:id`); with no token set those stay open so the
+in-app Clear/Undo buttons work.
 Pick something you can paste into the admin UI once when moderating and
 forget. `CLOUDFLARE_TUNNEL_TOKEN` comes from the Cloudflare Zero Trust
 dashboard (see step 4).
