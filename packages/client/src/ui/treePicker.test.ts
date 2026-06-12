@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach } from 'vitest';
-import { TreePicker } from './treePicker.js';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { REEF_PALETTE } from '@reef/shared';
+import { TREE_VARIANTS, TreePicker } from './treePicker.js';
 
 function makeButton(id: string, text: string, disabled = false): HTMLButtonElement {
   const b = document.createElement('button');
@@ -78,5 +79,107 @@ describe('TreePicker submit/commit button state', () => {
     expect(grow.disabled).toBe(true);
     p.setSubmitting(false);
     expect(grow.textContent).toBe('Grow it');
+  });
+});
+
+// Full variant/color/listener surface, mounted with all five variants + the
+// #colors container the picker renders swatches into.
+function mountFullPicker(): HTMLElement {
+  document.body.replaceChildren();
+  const root = document.createElement('div');
+  root.id = 'picker';
+  root.innerHTML = `
+    <div role="group" aria-label="Variant">
+      ${TREE_VARIANTS.map((v) => `<button type="button" data-variant="${v}">${v}</button>`).join('')}
+    </div>
+    <div id="colors"></div>
+    <button type="button" id="rerollBtn">Reroll</button>
+    <button type="button" id="cancelBtn">Cancel</button>
+    <button type="button" id="growBtn">Grow it</button>
+  `;
+  document.body.appendChild(root);
+  return root;
+}
+
+const variantBtn = (root: HTMLElement, v: string) =>
+  root.querySelector<HTMLButtonElement>(`[data-variant="${v}"]`)!;
+
+describe('TreePicker variant + color selection', () => {
+  let root: HTMLElement;
+  beforeEach(() => {
+    root = mountFullPicker();
+  });
+
+  test('defaults to forked + first palette color, with one swatch per palette entry', () => {
+    const picker = new TreePicker(root);
+    expect(picker.get()).toEqual({ variant: 'forked', colorKey: REEF_PALETTE[0]!.key });
+    expect(root.querySelectorAll('.swatch')).toHaveLength(REEF_PALETTE.length);
+    expect(variantBtn(root, 'forked').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('clicking a variant button updates state + highlight and notifies listeners', () => {
+    const picker = new TreePicker(root);
+    const seen: string[] = [];
+    picker.onChange((s) => seen.push(s.variant));
+
+    variantBtn(root, 'starburst').click();
+
+    expect(picker.get().variant).toBe('starburst');
+    expect(variantBtn(root, 'starburst').getAttribute('aria-pressed')).toBe('true');
+    expect(variantBtn(root, 'forked').getAttribute('aria-pressed')).toBe('false');
+    expect(seen).toEqual(['starburst']);
+  });
+
+  test('clicking a color swatch updates the colorKey and notifies listeners', () => {
+    const picker = new TreePicker(root);
+    const listener = vi.fn();
+    picker.onChange(listener);
+
+    const target = REEF_PALETTE[2]!.key;
+    root.querySelector<HTMLButtonElement>(`.swatch[data-color="${target}"]`)!.click();
+
+    expect(picker.get().colorKey).toBe(target);
+    expect(listener).toHaveBeenCalledWith({ variant: 'forked', colorKey: target });
+  });
+
+  test('setVariant ignores unknown and no-op variants, emits on a real change', () => {
+    const picker = new TreePicker(root);
+    const listener = vi.fn();
+    picker.onChange(listener);
+
+    picker.setVariant('forked'); // already the default → no emit
+    picker.setVariant('not-a-variant' as never); // unknown → ignored
+    expect(listener).not.toHaveBeenCalled();
+
+    picker.setVariant('claw');
+    expect(picker.get().variant).toBe('claw');
+    expect(variantBtn(root, 'claw').getAttribute('aria-pressed')).toBe('true');
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  test('onCommit/onReroll/onCancel wire their respective buttons', () => {
+    const picker = new TreePicker(root);
+    const onCommit = vi.fn();
+    const onReroll = vi.fn();
+    const onCancel = vi.fn();
+    picker.onCommit(onCommit);
+    picker.onReroll(onReroll);
+    picker.onCancel(onCancel);
+
+    root.querySelector<HTMLButtonElement>('#growBtn')!.click();
+    root.querySelector<HTMLButtonElement>('#rerollBtn')!.click();
+    root.querySelector<HTMLButtonElement>('#cancelBtn')!.click();
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onReroll).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('show/hide toggle the root hidden class', () => {
+    const picker = new TreePicker(root);
+    picker.hide();
+    expect(root.classList.contains('hidden')).toBe(true);
+    picker.show();
+    expect(root.classList.contains('hidden')).toBe(false);
   });
 });
