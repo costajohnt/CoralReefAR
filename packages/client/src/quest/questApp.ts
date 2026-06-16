@@ -425,8 +425,10 @@ export class QuestApp {
 
     if (this.reefAnchor) {
       const tracked = this.reefAnchor.update(frame, this.referenceSpace);
-      if (!tracked && this._state === 'interactive') this.setState('tracking-lost');
-      else if (tracked && this._state === 'tracking-lost') this.setState('interactive');
+      // Route through the guarded transitions so entering tracking-lost always
+      // discards any in-flight compose (see trackingLost).
+      if (!tracked) this.trackingLost();
+      else this.trackingRestored();
     }
 
     this.captureHeadPose(frame);
@@ -482,7 +484,13 @@ export class QuestApp {
   }
 
   private handleRightHandInteraction(frame: XRFrame): void {
-    if (this._state !== 'interactive') return;
+    // Process right-hand input in tracking-lost too, but only far enough to
+    // reach the wrist palette — the Move-reef button is the primary recovery
+    // action when the anchor can't be re-acquired, and gating it behind
+    // `interactive` left ending the session as the only escape (#98).
+    // Placement stays blocked in tracking-lost (handlePinchStart enforces
+    // that) because the anchor pose is stale.
+    if (this._state !== 'interactive' && this._state !== 'tracking-lost') return;
     if (!this.session || !this.referenceSpace) return;
     let sawTrackedRightHand = false;
     for (const source of this.session.inputSources) {
@@ -536,25 +544,40 @@ export class QuestApp {
    * doesn't provide.
    */
   cancelGestureOnHandLoss(): void {
+    this.discardComposeIfAny();
+    this.rightPinchWas = false;
+  }
+
+  /** Dispose and drop any in-flight compose preview. Idempotent. */
+  private discardComposeIfAny(): void {
     if (this.compose) {
       this.disposeComposePreview(this.compose.preview);
       this.compose = null;
     }
-    this.rightPinchWas = false;
   }
 
-  private handlePinchStart(thumb: Vector3, index: Vector3, wristYaw: number): void {
+  /**
+   * Handle a right-hand pinch-start. Exposed (not private) so the unit test
+   * can drive the palette-poke + placement branches directly — the render-loop
+   * path needs a WebGL2 context happy-dom doesn't provide.
+   */
+  handlePinchStart(thumb: Vector3, index: Vector3, wristYaw: number): void {
     if (!this.reef) return;
     if (this.compose) return; // already composing — ignore extra starts
     // Direct-touch poke check: did the user's index fingertip land on a
     // palette button? Distance-based (not raycast) because poke is a
-    // touch gesture, not a far-pointer interaction.
+    // touch gesture, not a far-pointer interaction. Allowed in tracking-lost
+    // so the Move-reef recovery button stays reachable (#98).
     const paletteButtons: Object3D[] = this.palette.object3d.children;
     const poked = pickPokedButton(index, paletteButtons);
     if (poked) {
       this.palette.poke(poked);
       return;
     }
+    // Past the palette, everything places a polyp against the anchor, which is
+    // only valid while tracking is live. In tracking-lost a pinch can reach the
+    // palette (above) but must not start a compose against a stale pose.
+    if (this._state !== 'interactive') return;
     // Tip-node hotspot: ray from thumb toward index hits one of the
     // visible glowing tips? Start the compose anchored at the tip's
     // world transform instead of free-space.
@@ -726,7 +749,15 @@ export class QuestApp {
   }
 
   trackingLost(): void {
-    if (this._state === 'interactive') this.setState('tracking-lost');
+    if (this._state !== 'interactive') return;
+    // Drop any in-flight compose on the way into tracking-lost. The right hand
+    // can still be tracked when only the anchor is lost, so without this a
+    // pinch-end would commit the placement against the now-stale anchor pose
+    // (#98 opened that path by letting right-hand input through in
+    // tracking-lost). Matches the "don't commit what the user can't trust"
+    // rationale in cancelGestureOnHandLoss.
+    this.discardComposeIfAny();
+    this.setState('tracking-lost');
   }
 
   trackingRestored(): void {
