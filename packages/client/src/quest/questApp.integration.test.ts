@@ -348,6 +348,37 @@ describe('QuestApp integration', () => {
     expect(internal.socket).toBeNull();
   });
 
+  it('#97: captureHeadPose computes pose correctly and reuses its objects across frames', () => {
+    const app = new QuestApp(mockUi());
+    const internal = app as unknown as {
+      referenceSpace: object;
+      lastHeadPosition: Vector3 | null;
+      lastHeadForward: Vector3 | null;
+      captureHeadPose: (f: XRFrame) => void;
+    };
+    internal.referenceSpace = {};
+    const frame = {
+      getViewerPose: () => ({
+        transform: {
+          position: { x: 1, y: 2, z: 3 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 }, // identity → forward stays -Z
+        },
+      }),
+    } as unknown as XRFrame;
+
+    internal.captureHeadPose(frame);
+    expect(internal.lastHeadPosition!.toArray()).toEqual([1, 2, 3]);
+    expect(internal.lastHeadForward!.toArray()).toEqual([0, 0, -1]);
+
+    // Second frame must mutate the SAME Vector3 objects in place — object
+    // identity proves the 90 Hz loop isn't allocating fresh ones each frame.
+    const pos = internal.lastHeadPosition;
+    const fwd = internal.lastHeadForward;
+    internal.captureHeadPose(frame);
+    expect(internal.lastHeadPosition).toBe(pos);
+    expect(internal.lastHeadForward).toBe(fwd);
+  });
+
   it('adoptRestoredAnchor releases the XRAnchor and bails if session ended mid-restore', async () => {
     // Round-10 audit guard regression: a restorePersistentAnchor promise
     // can resolve AFTER the user ended the session. Without the

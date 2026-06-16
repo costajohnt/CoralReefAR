@@ -106,6 +106,13 @@ export class QuestApp {
   private lastHeadPosition: Vector3 | null = null;
   /** Last known viewer forward vector. Used to billboard the overlay. */
   private lastHeadForward: Vector3 | null = null;
+  // Per-frame scratch reused by the 90 Hz pose updaters so captureHeadPose /
+  // updatePalettePose don't allocate a fresh Vector3/Quaternion every frame
+  // (#97). Their consumers (palette.updatePose, overlay.updatePose) copy/read
+  // these, never retain them, so reuse is safe.
+  private readonly _scratchQuat = new Quaternion();
+  private readonly _scratchWrist = new Vector3();
+  private readonly _scratchLook = new Vector3();
   /** Tracked id for the 3s transient-error fade-out timer. */
   private transientErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -446,19 +453,16 @@ export class QuestApp {
     const viewerPose = frame.getViewerPose(this.referenceSpace);
     if (!viewerPose) return;
     const t = viewerPose.transform;
-    if (this.lastHeadPosition) {
-      this.lastHeadPosition.set(t.position.x, t.position.y, t.position.z);
-    } else {
-      this.lastHeadPosition = new Vector3(t.position.x, t.position.y, t.position.z);
-    }
+    if (!this.lastHeadPosition) this.lastHeadPosition = new Vector3();
+    this.lastHeadPosition.set(t.position.x, t.position.y, t.position.z);
     // Forward in WebXR's viewer space is local -Z. Rotate that by the viewer
-    // orientation to get the world-space gaze direction.
+    // orientation to get the world-space gaze direction. Written in place
+    // (lastHeadForward + scratch quat) to avoid per-frame allocation.
     const q = t.orientation;
-    const fwd = new Vector3(0, 0, -1).applyQuaternion(
-      new Quaternion(q.x, q.y, q.z, q.w),
-    );
-    if (this.lastHeadForward) this.lastHeadForward.copy(fwd);
-    else this.lastHeadForward = fwd;
+    if (!this.lastHeadForward) this.lastHeadForward = new Vector3();
+    this.lastHeadForward
+      .set(0, 0, -1)
+      .applyQuaternion(this._scratchQuat.set(q.x, q.y, q.z, q.w));
   }
 
   private updateOverlayPose(): void {
@@ -479,8 +483,8 @@ export class QuestApp {
       // Offset 4 cm above the wrist so the palette floats over the back of
       // the user's hand rather than clipping into it. The face-toward target
       // is the user's head, so the palette is always readable.
-      const wristPos = new Vector3(p.x, p.y + 0.04, p.z);
-      const lookTarget = this.lastHeadPosition ?? new Vector3(p.x, p.y + 1, p.z);
+      const wristPos = this._scratchWrist.set(p.x, p.y + 0.04, p.z);
+      const lookTarget = this.lastHeadPosition ?? this._scratchLook.set(p.x, p.y + 1, p.z);
       this.palette.updatePose(wristPos, lookTarget);
       return;
     }
