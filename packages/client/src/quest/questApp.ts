@@ -252,10 +252,13 @@ export class QuestApp {
    * so the user can recover via session end + Enter MR.
    */
   private tearDownPartialReefSetup(): void {
-    this.socket?.close();
-    this.socket = null;
+    // Reef before socket: socket.close() is async, so null this.reef first to
+    // make handleServerMessage no-op for any already-queued WS frame (same
+    // ordering rationale as handleSessionEnd).
     if (this.reef) this.reef.clear();
     this.reef = null;
+    this.socket?.close();
+    this.socket = null;
     this.hotspots.clear();
     if (this.reefAnchor) {
       this.scene.remove(this.reefAnchor.object3d);
@@ -827,10 +830,14 @@ export class QuestApp {
       clearTimeout(this.transientErrorTimer);
       this.transientErrorTimer = null;
     }
-    this.socket?.close();
-    this.socket = null;
+    // Tear the reef down BEFORE closing the socket. socket.close() is async, so
+    // an already-queued WS frame can still dispatch on a later event-loop turn;
+    // nulling this.reef first (synchronously) makes handleServerMessage no-op
+    // for any late frame instead of mutating a half-cleared reef.
     if (this.reef) this.reef.clear();
     this.reef = null;
+    this.socket?.close();
+    this.socket = null;
     this.hotspots.clear();
     // Detach the reef anchor's Object3D from the scene graph before
     // releasing the XRAnchor — otherwise the empty Object3D lingers in

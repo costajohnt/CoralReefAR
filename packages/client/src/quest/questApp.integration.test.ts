@@ -323,6 +323,31 @@ describe('QuestApp integration', () => {
     expect(() => app.cancelGestureOnHandLoss()).not.toThrow();
   });
 
+  it('#97: handleSessionEnd tears the reef down before closing the socket', () => {
+    // socket.close() is async, so a queued WS frame can still dispatch after it.
+    // The reef must already be null when close() runs, so handleServerMessage
+    // no-ops the late frame instead of mutating a half-cleared reef. The fake
+    // socket records whether reef was already null at close time.
+    const app = new QuestApp(mockUi());
+    app._setStateForTest('interactive');
+    const internal = app as unknown as {
+      reef: { clear: () => void } | null;
+      socket: { close: () => void } | null;
+      handleSessionEnd: () => void;
+    };
+    let reefNullAtClose: boolean | null = null;
+    const clear = vi.fn();
+    internal.reef = { clear };
+    internal.socket = { close: () => { reefNullAtClose = internal.reef === null; } };
+
+    internal.handleSessionEnd();
+
+    expect(reefNullAtClose).toBe(true);
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(internal.reef).toBeNull();
+    expect(internal.socket).toBeNull();
+  });
+
   it('adoptRestoredAnchor releases the XRAnchor and bails if session ended mid-restore', async () => {
     // Round-10 audit guard regression: a restorePersistentAnchor promise
     // can resolve AFTER the user ended the session. Without the
