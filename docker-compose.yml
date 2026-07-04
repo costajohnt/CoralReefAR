@@ -19,6 +19,11 @@ services:
       - PORT=8787
       - DB_PATH=/data/reef.db
       - ADMIN_TOKEN=${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+      # Required under NODE_ENV=production: the server fails closed
+      # (assertProductionCorsSafe) and refuses to start if CORS_ORIGINS is
+      # unset or wide-open "*". The :? guard turns that boot crash-loop into a
+      # clear `docker compose up` error instead.
+      - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS in .env}
       # Rate limits are opt-in and default off while the project is in
       # testing. Uncomment to re-enable for production.
       # - RATE_LIMIT_WINDOW_MS=3600000
