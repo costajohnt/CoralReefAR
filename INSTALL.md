@@ -191,4 +191,4 @@ applied migrations, add new ones.
 | WebSocket connects then disconnects every ~60 s | Cloudflare idle timeout; heartbeat is enabled server-side but verify `ws` upgrade headers pass through any proxy |
 | `polyp_added` arrives on some tabs but not others | Hub evicted the stale client; check `docker compose logs server` for `hub broadcast failed` lines |
 | Client shows "Looking for the reef…" and never advances | Pedestal marker is out of frame, too dim, or at a glancing angle. Good light is non-optional. |
-| Container restarts repeatedly | `ADMIN_TOKEN` missing in `.env` and compose fails the `:?` check; set it and `docker compose up -d` |
+| Container restarts repeatedly | `ADMIN_TOKEN` or `CORS_ORIGINS` missing in `.env` and compose fails the `:?` check; set them and `docker compose up -d`. (`CORS_ORIGINS` is also enforced at server startup under `NODE_ENV=production` — it must be an explicit origin, not `*`.) |
