@@ -28,28 +28,31 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
   font-size: 0.9rem;
 }
 
+/* Mobile-first (portrait phone): keep the picker tight so it doesn't eat
+   half the viewport over a live camera feed. Tablet/landscape breakpoint
+   below relaxes the padding. */
 #picker {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  padding: 0.8rem 0.8rem 1.4rem;
-  background: linear-gradient(0deg, rgba(0,0,0,0.85), rgba(0,0,0,0));
+  padding: 0.35rem 0.5rem calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  background: linear-gradient(0deg, rgba(0,0,0,0.88), rgba(0,0,0,0));
 }
-.picker-row { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; margin-bottom: 0.6rem; }
-.picker-actions { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 0.4rem; }
-.picker-actions button { padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 999px; }
+.picker-row { display: flex; gap: 0.3rem; flex-wrap: wrap; justify-content: center; margin-bottom: 0.3rem; }
+.picker-actions { display: flex; gap: 0.4rem; justify-content: center; margin-bottom: 0.25rem; }
+.picker-actions button { padding: 0.25rem 0.7rem; font-size: 0.75rem; border-radius: 999px; }
 .picker-actions button:disabled { opacity: 0.4; }
 #picker button {
-  padding: 0.45rem 0.8rem; border: 1px solid #234; border-radius: 8px;
-  background: rgba(20,28,40,0.75); color: #f4f4f4; font-size: 0.85rem;
+  padding: 0.3rem 0.6rem; border: 1px solid #234; border-radius: 6px;
+  background: rgba(20,28,40,0.75); color: #f4f4f4; font-size: 0.75rem;
 }
 #picker button.active { background: #2ec4b6; color: #012; border-color: #2ec4b6; }
-.swatch { width: 2rem; height: 2rem; padding: 0; border-radius: 50%; border: 2px solid #000; }
+.swatch { width: 1.5rem; height: 1.5rem; padding: 0; border-radius: 50%; border: 2px solid #000; }
 .swatch.active { outline: 2px solid #fff; }
 #growBtn {
-  display: block; margin: 0.5rem auto 0; padding: 0.7rem 2rem; font-size: 1rem;
+  display: block; margin: 0.25rem auto 0; padding: 0.45rem 1.5rem; font-size: 0.9rem;
   border: 0; border-radius: 999px; background: #ff9f1c; color: #211;
 }
 #growBtn:disabled { opacity: 0.45; }
-#hint { text-align: center; margin: 0.5rem 0 0; color: #aab; font-size: 0.8rem; }
+#hint { text-align: center; margin: 0.25rem 0 0; color: #aab; font-size: 0.72rem; }
 
 .hidden { display: none !important; }
 
