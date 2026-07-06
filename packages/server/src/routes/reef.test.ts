@@ -49,6 +49,23 @@ test('POST /api/reef/polyp accepts valid input and strips deviceHash', async () 
   await app.close();
 });
 
+test('POST /api/reef/polyp strips the surface field before persistence', async () => {
+  // surface is transport-only metadata for rate-limit bucket selection.
+  // Defense in depth: verify the response body never carries it AND the
+  // listPublicPolyps row from the DB doesn't either.
+  const { app, db } = buildApp();
+  const r = await app.inject({
+    method: 'POST', url: '/api/reef/polyp',
+    payload: { ...valid, surface: 'quest' },
+  });
+  assert.equal(r.statusCode, 201);
+  const body = r.json() as Record<string, unknown>;
+  assert.ok(!('surface' in body), 'response should not echo surface');
+  const persisted = db.listPublicPolyps()[0]!;
+  assert.ok(!('surface' in (persisted as Record<string, unknown>)), 'DB row should not contain surface');
+  await app.close();
+});
+
 test('POST /api/reef/polyp rejects invalid colorKey', async () => {
   const { app } = buildApp();
   const r = await app.inject({
@@ -129,6 +146,11 @@ test('POST /api/reef/polyp: crossing a window boundary does not reset the count'
 });
 
 test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (default)', async () => {
+  // Use a CONSTANT user-agent so every request lands in the same
+  // deviceHash bucket. The earlier version of this test rotated the UA
+  // per iteration, producing distinct buckets — the test passed
+  // tautologically even with rateLimitMax=1. Keeping the UA constant
+  // actually exercises the "limit-off" code path.
   const savedMax = config.rateLimitMax;
   config.rateLimitMax = 0;
   try {
@@ -136,7 +158,7 @@ test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (de
     for (let i = 0; i < 5; i++) {
       const r = await app.inject({
         method: 'POST', url: '/api/reef/polyp',
-        headers: { 'user-agent': `test-ua-${i}` },
+        headers: { 'user-agent': 'constant-ua-for-rate-limit-test' },
         payload: { ...valid, seed: 100 + i },
       });
       assert.equal(r.statusCode, 201, `request ${i} should succeed, got ${r.statusCode}`);
@@ -144,5 +166,59 @@ test('POST /api/reef/polyp accepts unlimited requests when rate limit is off (de
     await app.close();
   } finally {
     config.rateLimitMax = savedMax;
+  }
+});
+
+test('quest surface uses questRateLimitMax bucket, not rateLimitMax', async () => {
+  // Web bucket = 1 (tight), quest bucket = 3. Plant 3 quest-tagged polyps from
+  // the same device — all succeed. The 4th hits the quest bucket ceiling.
+  const savedMax = config.rateLimitMax;
+  const savedQuestMax = config.questRateLimitMax;
+  config.rateLimitMax = 1;
+  config.questRateLimitMax = 3;
+  try {
+    const { app } = buildApp();
+    for (let i = 0; i < 3; i++) {
+      const r = await app.inject({
+        method: 'POST', url: '/api/reef/polyp',
+        payload: { ...valid, seed: 200 + i, surface: 'quest' },
+      });
+      assert.equal(r.statusCode, 201, `quest #${i} should succeed: ${r.body}`);
+    }
+    const overflow = await app.inject({
+      method: 'POST', url: '/api/reef/polyp',
+      payload: { ...valid, seed: 299, surface: 'quest' },
+    });
+    assert.equal(overflow.statusCode, 429);
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+    config.questRateLimitMax = savedQuestMax;
+  }
+});
+
+test('web surface (or absent surface) uses the strict rateLimitMax bucket', async () => {
+  // Even with quest bucket loose, a web/absent submission hits the tight web
+  // bucket. This guards against accidentally always-loose behavior.
+  const savedMax = config.rateLimitMax;
+  const savedQuestMax = config.questRateLimitMax;
+  config.rateLimitMax = 1;
+  config.questRateLimitMax = 10;
+  try {
+    const { app } = buildApp();
+    const first = await app.inject({
+      method: 'POST', url: '/api/reef/polyp',
+      payload: { ...valid, seed: 301, surface: 'web' },
+    });
+    assert.equal(first.statusCode, 201);
+    const second = await app.inject({
+      method: 'POST', url: '/api/reef/polyp',
+      payload: { ...valid, seed: 302, surface: 'web' },
+    });
+    assert.equal(second.statusCode, 429);
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+    config.questRateLimitMax = savedQuestMax;
   }
 });

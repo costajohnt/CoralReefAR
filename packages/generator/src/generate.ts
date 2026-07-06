@@ -13,10 +13,22 @@ export interface GenerateOptions {
   colorKey: string;
 }
 
+/**
+ * A point on a polyp where new growth can attach. Position is in the
+ * polyp's local mesh space; normal points outward from the surface
+ * (i.e. the direction a new branch would naturally extend).
+ */
+export interface TipNode {
+  position: readonly [number, number, number];
+  normal: readonly [number, number, number];
+}
+
 export interface GeneratedPolyp {
   mesh: MeshData;
   boundingRadius: number;
   approxHeight: number;
+  /** Where new growth can attach. May be empty (e.g. encrusting species). */
+  tips?: TipNode[];
 }
 
 type Builder = (rng: RNG, color: [number, number, number]) => GeneratedPolyp;

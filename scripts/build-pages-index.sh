@@ -43,6 +43,7 @@ cat > "$DIST/index.html" <<'HTML'
     <li><a href="playground.html?mode=screen">Screen view</a> — auto-orbit camera, demo-ready</li>
     <li><a href="tree.html">Tree (interactive)</a> — procedural tree growth (no AR needed, works against any deployed backend)</li>
     <li><a href="tree.html?mode=screen">Tree (screen)</a> — auto-orbit camera, demo-ready</li>
+    <li><a href="quest.html">Quest 3 MR</a> — WebXR immersive-ar surface; open in the Meta Quest Browser (needs backend to load the reef)</li>
     <li><a href="https://github.com/costajohnt/CoralReefAR">Source + runbook</a></li>
     <li><a href="https://github.com/costajohnt/CoralReefAR/pkgs/container/coralreefar">Docker image on GHCR</a></li>
   </ul>

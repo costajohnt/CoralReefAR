@@ -53,6 +53,11 @@ export function generateBranching(rng: RNG, baseColor: Rgb): GeneratedPolyp {
   const SIDES = 5;
   let maxY = 0;
   let maxRadial = 0;
+  // Collect every F segment endpoint, then prune below to a small number
+  // of well-separated tips. The L-system doesn't tell us which segments
+  // end a branch cheaply, so we gather all of them and let the spatial
+  // dedup pass pick the visually distinct ones.
+  const candidateTips: { x: number; y: number; z: number; dx: number; dy: number; dz: number }[] = [];
 
   for (const c of s) {
     if (c === 'F') {
@@ -80,6 +85,10 @@ export function generateBranching(rng: RNG, baseColor: Rgb): GeneratedPolyp {
       if (y2 > maxY) maxY = y2;
       const r = Math.hypot(x2, z2);
       if (r > maxRadial) maxRadial = r;
+      // Capture this segment's endpoint as a tip candidate. The L-system
+      // pushes/pops state at branch boundaries, so we collect everywhere
+      // and prune to the highest few after the walk.
+      candidateTips.push({ x: x2, y: y2, z: z2, dx, dy, dz });
     } else if (c === '+') {
       st = { ...st, yaw: st.yaw + rad(baseAngle) + (rng.next() - 0.5) * 0.1 };
     } else if (c === '-') {
@@ -100,10 +109,43 @@ export function generateBranching(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     indices: new Uint32Array(indices),
   };
 
+  // Pick up to 3 visually-distinct tips. Every F segment pushed a
+  // candidate (including intermediate segments along a single branch),
+  // so a naive top-3-by-Y clusters all three on the tallest branch.
+  // Spatial dedup with a 3cm minimum separation ensures the hotspots
+  // land on different branches that read as distinct growing tips.
+  const MIN_TIP_SEPARATION = 0.03;
+  const sorted = [...candidateTips].sort((a, b) => b.y - a.y);
+  const picked: typeof candidateTips = [];
+  for (const c of sorted) {
+    let tooClose = false;
+    for (const existing of picked) {
+      const dx = c.x - existing.x;
+      const dy = c.y - existing.y;
+      const dz = c.z - existing.z;
+      if (Math.hypot(dx, dy, dz) < MIN_TIP_SEPARATION) {
+        tooClose = true;
+        break;
+      }
+    }
+    if (!tooClose) {
+      picked.push(c);
+      if (picked.length === 3) break;
+    }
+  }
+  const tips = picked.map((t) => {
+    const len = Math.hypot(t.dx, t.dy, t.dz) || 1;
+    return {
+      position: [t.x, t.y, t.z] as const,
+      normal: [t.dx / len, t.dy / len, t.dz / len] as const,
+    };
+  });
+
   return {
     mesh,
     boundingRadius: Math.max(maxRadial, 0.05),
     approxHeight: Math.max(maxY, 0.05),
+    tips,
   };
 }
 

@@ -17,9 +17,11 @@
   },
   "devDependencies": {
     "@types/three": "^0.184.0",
+    "@types/webxr": "^0.5.24",
     "happy-dom": "^20.9.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
+    "vite-plugin-mkcert": "^2.0.0",
     "vitest": "^4.1.4"
   }
 }
