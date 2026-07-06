@@ -26,14 +26,22 @@ export function generateFan(rng: RNG, baseColor: Rgb): GeneratedPolyp {
   const stack: { x: number; y: number; a: number; l: number }[] = [];
   let st = { x: 0, y: 0, a: Math.PI / 2, l: initialLength };
   let maxY = 0, maxX = 0;
+  // Track the segment whose endpoint reaches the highest Y. The seg-by-seg
+  // bend pass below uses midY/maxY to compute each segment's z offset, so
+  // we record both the endpoint x/y AND the midY needed to reconstruct the
+  // tip's z value once curveAmp is known.
+  let tipSeg: { x: number; y: number; midY: number } = { x: 0, y: 0, midY: 0 };
 
   for (const c of s) {
     if (c === 'F') {
       const x2 = st.x + Math.cos(st.a) * st.l;
       const y2 = st.y + Math.sin(st.a) * st.l;
       segs.push({ x1: st.x, y1: st.y, x2, y2 });
+      if (y2 > maxY) {
+        maxY = y2;
+        tipSeg = { x: x2, y: y2, midY: (st.y + y2) / 2 };
+      }
       st = { ...st, x: x2, y: y2, l: st.l * lengthDecay };
-      if (y2 > maxY) maxY = y2;
       if (Math.abs(x2) > maxX) maxX = Math.abs(x2);
     } else if (c === '+') st = { ...st, a: st.a + angle };
     else if (c === '-') st = { ...st, a: st.a - angle };
@@ -67,6 +75,19 @@ export function generateFan(rng: RNG, baseColor: Rgb): GeneratedPolyp {
     },
     boundingRadius: Math.max(maxX, 0.05),
     approxHeight: Math.max(maxY, 0.05),
+    // Fan tip lives on the actual tallest segment endpoint, including the
+    // bend offset that the seg-by-seg pass applies. The fan's branches
+    // rotate by `angle` each split, so the tallest leaf almost never sits
+    // on the vertical centerline; hardcoding (0, maxY, 0) would float the
+    // hotspot between blades.
+    tips: [{
+      position: [
+        tipSeg.x,
+        Math.max(tipSeg.y, 0.05),
+        Math.sin((tipSeg.midY / (maxY || 1)) * Math.PI) * curveAmp,
+      ] as const,
+      normal: [0, 1, 0] as const,
+    }],
   };
 }
 
@@ -77,17 +98,31 @@ function addQuad(
   thickness: number,
   color: Rgb,
 ): void {
-  const base = positions.length / 3;
   const t = thickness;
   const verts: [number, number, number][] = [
     [x1, y1, z1 - t], [x2, y2, z2 - t],
     [x2, y2, z2 + t], [x1, y1, z1 + t],
   ];
+
+  // Front face: +Z normal, original winding.
+  const front = positions.length / 3;
   for (const v of verts) {
     positions.push(v[0], v[1], v[2]);
     normals.push(0, 0, 1);
     colors.push(color[0], color[1], color[2]);
   }
-  indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  indices.push(front, front + 1, front + 2, front, front + 2, front + 3);
+
+  // Back face: reversed winding on its OWN vertices with a -Z normal. The quad
+  // used to be double-sided off a single 4-vertex set with [0,0,1] everywhere,
+  // so the back face (which fans render unculled, being translucent) was lit as
+  // if it faced the camera. Duplicating the verts lets the back carry the
+  // opposite normal so its lighting is correct.
+  const backWind = positions.length / 3;
+  for (const v of verts) {
+    positions.push(v[0], v[1], v[2]);
+    normals.push(0, 0, -1);
+    colors.push(color[0], color[1], color[2]);
+  }
+  indices.push(backWind, backWind + 2, backWind + 1, backWind, backWind + 3, backWind + 2);
 }

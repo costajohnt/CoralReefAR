@@ -6,13 +6,16 @@ import { TreePlacement } from './tree/placement.js';
 import { installUnderwaterLighting } from './tree/scene.js';
 import { fetchTree, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
 import { TreePicker, TREE_VARIANTS } from './ui/treePicker.js';
-import { Shark } from './tree/shark.js';
-import { Clownfish } from './tree/clownfish.js';
-import { Jellyfish } from './tree/jellyfish.js';
-import { SeaTurtle } from './tree/seaTurtle.js';
+import { installSeaLife, type SeaLifeController } from './tree/seaLife.js';
 import { installSway } from './scene/currentSway.js';
 import { installTreePulse } from './tree/pulse.js';
-import { initialState, reduce, type TreeAction, type TreeState } from './tree/state.js';
+import {
+  addedPolypsInvalidateUndo,
+  initialState,
+  reduce,
+  type TreeAction,
+  type TreeState,
+} from './tree/state.js';
 import { createEffects } from './tree/effects.js';
 import { applyAnchorPose } from './tracking/anchor.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
@@ -42,14 +45,6 @@ function readScaleFromUrl(): number {
 const SWAY_INSTALLED = Symbol('sway-installed');
 const PULSE_INSTALLED = Symbol('pulse-installed');
 
-type CreatureType = 'shark' | 'clownfish' | 'jellyfish' | 'seaTurtle';
-interface SwimmingCreature { update: (clockSec: number) => void; }
-interface TrackedCreature {
-  type: CreatureType;
-  instance: SwimmingCreature;
-  group: import('three').Group;
-}
-
 export class TreeApp {
   private readonly scene = new Scene();
   private readonly camera: PerspectiveCamera;
@@ -64,7 +59,7 @@ export class TreeApp {
   private effects!: ReturnType<typeof createEffects>;
   private state: TreeState;
   private running = false;
-  private readonly creatures: TrackedCreature[] = [];
+  private seaLife?: SeaLifeController;
   private readonly hintEl: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly apiBase: string;
@@ -170,71 +165,16 @@ export class TreeApp {
     this.running = false;
     if (this.socket) this.socket.close();
     if (this.tracker) void this.tracker.destroy();
+    this.seaLife?.dispose();
   }
 
   wireToolbar(): void {
     const clearBtn = document.getElementById('clearBtn') as HTMLButtonElement | null;
     const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement | null;
-    const seaLifeBtn = document.getElementById('seaLifeBtn') as HTMLButtonElement | null;
-    const seaLifePanel = document.getElementById('sea-life-panel') as HTMLElement | null;
-    const seaLifeCloseBtn = document.getElementById('sea-life-close-btn') as HTMLButtonElement | null;
-
     if (clearBtn) clearBtn.addEventListener('click', () => this.dispatch({ type: 'CLEAR_CLICKED' }));
     if (undoBtn) undoBtn.addEventListener('click', () => this.dispatch({ type: 'UNDO_CLICKED' }));
-
-    const setPanelOpen = (open: boolean): void => {
-      if (!seaLifePanel || !seaLifeBtn) return;
-      if (open) {
-        seaLifePanel.classList.add('open');
-        seaLifeBtn.setAttribute('aria-expanded', 'true');
-        seaLifeBtn.setAttribute('aria-pressed', 'true');
-      } else {
-        seaLifePanel.classList.remove('open');
-        seaLifeBtn.setAttribute('aria-expanded', 'false');
-        seaLifeBtn.removeAttribute('aria-pressed');
-      }
-    };
-
-    if (seaLifeBtn) seaLifeBtn.addEventListener('click', () => {
-      const isOpen = seaLifePanel?.classList.contains('open') ?? false;
-      setPanelOpen(!isOpen);
-    });
-    if (seaLifeCloseBtn) seaLifeCloseBtn.addEventListener('click', () => setPanelOpen(false));
-
-    document.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Escape') setPanelOpen(false);
-    });
-    document.addEventListener('click', (ev) => {
-      if (!seaLifePanel?.classList.contains('open')) return;
-      const target = ev.target as Node;
-      if (!seaLifePanel.contains(target) && target !== seaLifeBtn && !seaLifeBtn?.contains(target)) {
-        setPanelOpen(false);
-      }
-    });
-
-    const refreshPanel = (): void => {
-      const types: CreatureType[] = ['shark', 'clownfish', 'jellyfish', 'seaTurtle'];
-      for (const type of types) {
-        const n = this.countCreatures(type);
-        const countEl = document.getElementById(`count-${type}`);
-        if (countEl) countEl.textContent = String(n);
-        const capType = type.charAt(0).toUpperCase() + type.slice(1);
-        const removeBtn = document.getElementById(`remove${capType}Btn`) as HTMLButtonElement | null;
-        if (removeBtn) removeBtn.disabled = n === 0;
-      }
-    };
-
-    const wire = (addId: string, removeId: string, type: CreatureType, spawn: () => void): void => {
-      const addBtn = document.getElementById(addId) as HTMLButtonElement | null;
-      const removeBtn = document.getElementById(removeId) as HTMLButtonElement | null;
-      if (addBtn) addBtn.addEventListener('click', () => { spawn(); refreshPanel(); });
-      if (removeBtn) removeBtn.addEventListener('click', () => { this.removeCreature(type); refreshPanel(); });
-    };
-
-    wire('addSharkBtn', 'removeSharkBtn', 'shark', () => this.spawnShark());
-    wire('addClownfishBtn', 'removeClownfishBtn', 'clownfish', () => this.spawnClownfish());
-    wire('addJellyfishBtn', 'removeJellyfishBtn', 'jellyfish', () => this.spawnJellyfish());
-    wire('addSeaTurtleBtn', 'removeSeaTurtleBtn', 'seaTurtle', () => this.spawnSeaTurtle());
+    // Sea-life panel + spawnable creatures, shared with the desktop tree entry.
+    this.seaLife = installSeaLife(this.treeReef.anchor);
   }
 
   private dispatch(action: TreeAction): void {
@@ -323,12 +263,7 @@ export class TreeApp {
         this.treeReef.addPiece(msg.polyp);
         this.installEffectsOnNewPieces();
         this.attachIndicators.refresh(this.treeReef.getAvailableAttachPoints());
-        if (
-          this.state.kind !== 'undoing' &&
-          'lastCommittedId' in this.state &&
-          this.state.lastCommittedId !== null &&
-          msg.polyp.parentId === this.state.lastCommittedId
-        ) {
+        if (addedPolypsInvalidateUndo(this.state, [msg.polyp])) {
           this.dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
         }
       } else if (msg.type === 'tree_polyp_removed') {
@@ -359,6 +294,10 @@ export class TreeApp {
     for (const polyp of sorted) this.treeReef.addPiece(polyp);
     this.installEffectsOnNewPieces();
     this.attachIndicators.refresh(this.treeReef.getAvailableAttachPoints());
+    // A child loaded over HTTP (not just over WS) also invalidates our undo.
+    if (addedPolypsInvalidateUndo(this.state, sorted)) {
+      this.dispatch({ type: 'LAST_COMMITTED_INVALIDATED' });
+    }
   }
 
   private installEffectsOnNewPieces(): void {
@@ -379,79 +318,6 @@ export class TreeApp {
     const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement | null;
     if (!undoBtn) return;
     undoBtn.disabled = !(this.state.kind === 'idle' && this.state.lastCommittedId !== null);
-  }
-
-  private spawnShark(): void {
-    const s = new Shark({
-      orbitRadius: 0.25 + Math.random() * 0.15,
-      orbitHeight: 0.05 + Math.random() * 0.2,
-      orbitPeriodSec: 14 + Math.random() * 10,
-      phaseRad: Math.random() * Math.PI * 2,
-      direction: Math.random() < 0.5 ? 1 : -1,
-    });
-    this.treeReef.anchor.add(s.group);
-    this.creatures.push({ type: 'shark', instance: s, group: s.group });
-  }
-
-  private spawnClownfish(): void {
-    const c = new Clownfish({
-      orbitRadius: 0.15 + Math.random() * 0.15,
-      orbitHeight: 0.04 + Math.random() * 0.2,
-      orbitPeriodSec: 5 + Math.random() * 6,
-      phaseRad: Math.random() * Math.PI * 2,
-      direction: Math.random() < 0.5 ? 1 : -1,
-    });
-    this.treeReef.anchor.add(c.group);
-    this.creatures.push({ type: 'clownfish', instance: c, group: c.group });
-  }
-
-  private spawnJellyfish(): void {
-    const j = new Jellyfish({
-      orbitRadius: 0.18 + Math.random() * 0.14,
-      orbitHeight: 0.1 + Math.random() * 0.2,
-      orbitPeriodSec: 20 + Math.random() * 12,
-      phaseRad: Math.random() * Math.PI * 2,
-      direction: Math.random() < 0.5 ? 1 : -1,
-    });
-    this.treeReef.anchor.add(j.group);
-    this.creatures.push({ type: 'jellyfish', instance: j, group: j.group });
-  }
-
-  private spawnSeaTurtle(): void {
-    const t = new SeaTurtle({
-      orbitRadius: 0.28 + Math.random() * 0.12,
-      orbitHeight: 0.04 + Math.random() * 0.12,
-      orbitPeriodSec: 28 + Math.random() * 12,
-      phaseRad: Math.random() * Math.PI * 2,
-      direction: Math.random() < 0.5 ? 1 : -1,
-    });
-    this.treeReef.anchor.add(t.group);
-    this.creatures.push({ type: 'seaTurtle', instance: t, group: t.group });
-  }
-
-  private removeCreature(type: CreatureType): boolean {
-    const idx = [...this.creatures].map((c, i) => ({ c, i })).reverse()
-      .find(({ c }) => c.type === type)?.i ?? -1;
-    if (idx === -1) return false;
-    const [removed] = this.creatures.splice(idx, 1);
-    if (!removed) return false;
-    this.treeReef.anchor.remove(removed.group);
-    removed.group.traverse((obj) => {
-      const mesh = obj as import('three').Mesh;
-      if (mesh.isMesh) {
-        mesh.geometry?.dispose();
-        if (Array.isArray(mesh.material)) {
-          for (const m of mesh.material) (m as import('three').Material).dispose();
-        } else {
-          (mesh.material as import('three').Material | undefined)?.dispose();
-        }
-      }
-    });
-    return true;
-  }
-
-  private countCreatures(type: CreatureType): number {
-    return this.creatures.filter((c) => c.type === type).length;
   }
 
   private async startCamera(): Promise<void> {
@@ -480,7 +346,7 @@ export class TreeApp {
     if (!this.running) return;
     const tSec = t / 1000;
     this.swayClock.value = tSec;
-    for (const c of this.creatures) c.instance.update(tSec);
+    this.seaLife?.update(tSec);
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame((tt) => this.loop(tt));
   }

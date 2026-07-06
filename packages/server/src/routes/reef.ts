@@ -4,8 +4,8 @@ import { config } from '../config.js';
 import type { ReefDb } from '../db.js';
 import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
-import { deviceHash } from '../deviceHash.js';
-import { perIpRateLimit } from '../security.js';
+import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
+import { perIpRateLimit, ttlCache } from '../security.js';
 import { counters } from '../metrics-registry.js';
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
@@ -14,6 +14,19 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
   const readLimit = config.readRateLimitPerMin > 0
     ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
     : null;
+
+  // The polyps + sim scans are the expensive part of GET /api/reef. Cache them
+  // for READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
+  // payload is bounded to the retention window (0 = retention disabled → all).
+  const buildSnapshot = (): Pick<ReefState, 'polyps' | 'sim'> => ({
+    polyps: db.listPublicPolyps(),
+    sim: config.simRetentionMs > 0
+      ? db.listSimSince(Date.now() - config.simRetentionMs)
+      : db.listSim(),
+  });
+  const readSnapshot = config.readCacheTtlMs > 0
+    ? ttlCache(buildSnapshot, config.readCacheTtlMs)
+    : buildSnapshot;
 
   app.get('/api/reef', async (req, reply) => {
     if (readLimit) {
@@ -24,11 +37,8 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
         return reply.status(429).send({ error: 'rate_limited' });
       }
     }
-    const state: ReefState = {
-      polyps: db.listPublicPolyps(),
-      sim: db.listSim(),
-      serverTime: Date.now(),
-    };
+    // serverTime is always fresh even when the scans are served from cache.
+    const state: ReefState = { ...readSnapshot(), serverTime: Date.now() };
     return state;
   });
 
@@ -43,10 +53,27 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
-    const already = db.countByDeviceSince(dh, windowStart);
-    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
+    // Count under the current AND previous window's hash so crossing a window
+    // boundary can't reset the count (see deviceHashesForCounting).
+    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
+    const already = countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0);
+    // The `surface` tag is client-supplied — there's no cryptographic
+    // proof that a request really came from a Quest session. With the
+    // current defaults (rateLimitMax=0, questRateLimitMax=20) the gap
+    // is benign because the web bucket is unrestricted; but if a
+    // production config tightens rateLimitMax, this becomes a bypass
+    // vector. When productionalizing the write-side limit, either
+    // verify surface against a UA/header pattern, drop the looser
+    // bucket entirely, or accept the risk explicitly.
+    const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
+      ? config.questRateLimitMax
+      : config.rateLimitMax;
+    if (limitMax > 0 && already >= limitMax) {
       counters.inc('rate_limited');
-      const oldest = db.oldestPolypSince(dh, windowStart);
+      const oldests = countHashes
+        .map((h) => db.oldestPolypSince(h, windowStart))
+        .filter((t): t is number => t !== null);
+      const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
         : config.rateLimitWindowMs;
@@ -54,8 +81,12 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
       return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
     }
 
+    // `surface` is a transport-only field for routing rate-limit buckets;
+    // strip before persisting so it never lands in the DB.
+    const { surface: _surface, ...inputFields } = parsed.data;
+    void _surface;
     const polyp: Omit<Polyp, 'id' | 'deleted'> = {
-      ...parsed.data,
+      ...inputFields,
       createdAt: Date.now(),
       deviceHash: dh,
     };

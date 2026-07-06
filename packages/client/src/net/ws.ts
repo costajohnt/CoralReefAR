@@ -23,6 +23,8 @@ export class ReefSocket {
       // parse vs. handler catches) are unit-tested without jsdom.
       dispatchMessage(ev.data as string, this.handlers, {
         onParseError: (err) => console.warn('ws: malformed frame', err),
+        onInvalidMessage: (err, raw) =>
+          console.error('ws: rejected frame (protocol skew?)', raw, err),
         onHandlerError: (err, msg: ServerMessage) => {
           console.error('ws: handler threw on', (msg as { type?: string }).type, err);
         },

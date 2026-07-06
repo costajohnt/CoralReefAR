@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
+import { config } from '../config.js';
 import { TreeDb } from './db.js';
 import { registerTreeRoutes } from './routes.js';
 
@@ -46,13 +47,13 @@ describe('POST /api/tree/polyp', () => {
     const { app, close } = await makeServer();
     const root = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     const rootId = (JSON.parse(root.body) as { id: number }).id;
 
     const child = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'forked', seed: 2, colorKey: 'x', parentId: rootId, attachIndex: 1 },
+      payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 1 },
     });
     assert.equal(child.statusCode, 200);
     assert.equal((JSON.parse(child.body) as { parentId: number }).parentId, rootId);
@@ -63,17 +64,17 @@ describe('POST /api/tree/polyp', () => {
     const { app, close } = await makeServer();
     const root = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     const rootId = (JSON.parse(root.body) as { id: number }).id;
 
     await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'forked', seed: 2, colorKey: 'x', parentId: rootId, attachIndex: 0 },
+      payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
     });
     const dup = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'claw', seed: 3, colorKey: 'x', parentId: rootId, attachIndex: 0 },
+      payload: { variant: 'claw', seed: 3, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
     });
     assert.equal(dup.statusCode, 409);
     assert.match(JSON.parse(dup.body).error as string, /claim/i);
@@ -84,7 +85,7 @@ describe('POST /api/tree/polyp', () => {
     const { app, close } = await makeServer();
     const res = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'forked', seed: 1, colorKey: 'x', parentId: 99999, attachIndex: 0 },
+      payload: { variant: 'forked', seed: 1, colorKey: 'neon-cyan', parentId: 99999, attachIndex: 0 },
     });
     assert.equal(res.statusCode, 404);
     await close();
@@ -94,7 +95,17 @@ describe('POST /api/tree/polyp', () => {
     const { app, close } = await makeServer();
     const res = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'branching', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'branching', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+    });
+    assert.equal(res.statusCode, 400);
+    await close();
+  });
+
+  test('returns 400 when colorKey is not in the palette (poison-key guard)', async () => {
+    const { app, close } = await makeServer();
+    const res = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'starburst', seed: 1, colorKey: 'evil-key', parentId: null, attachIndex: 0 },
     });
     assert.equal(res.statusCode, 400);
     await close();
@@ -117,7 +128,7 @@ describe('POST /api/tree/polyp', () => {
     await app2.ready();
     await app2.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     assert.equal((received as { type: string } | null)?.type, 'tree_polyp_added');
     await app2.close();
@@ -130,7 +141,7 @@ describe('DELETE /api/tree/polyp/:id', () => {
     const { app, close } = await makeServer();
     const root = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     const rootId = (JSON.parse(root.body) as { id: number }).id;
     const res = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${rootId}` });
@@ -155,12 +166,12 @@ describe('DELETE /api/tree/polyp/:id', () => {
     const { app, close } = await makeServer();
     const root = await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     const rootId = (JSON.parse(root.body) as { id: number }).id;
     await app.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'forked', seed: 2, colorKey: 'x', parentId: rootId, attachIndex: 1 },
+      payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 1 },
     });
     const res = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${rootId}` });
     assert.equal(res.statusCode, 409);
@@ -190,7 +201,7 @@ describe('DELETE /api/tree/polyp/:id', () => {
     await app2.ready();
     const root = await app2.inject({
       method: 'POST', url: '/api/tree/polyp',
-      payload: { variant: 'starburst', seed: 1, colorKey: 'x', parentId: null, attachIndex: 0 },
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
     });
     const rootId = (JSON.parse(root.body) as { id: number }).id;
     messages.length = 0; // clear the polyp_added broadcast
@@ -198,5 +209,136 @@ describe('DELETE /api/tree/polyp/:id', () => {
     assert.equal(messages.length, 1);
     assert.deepEqual(messages[0], { type: 'tree_polyp_removed', id: rootId });
     await app2.close();
+  });
+});
+
+describe('tree write rate limit', () => {
+  test('planting is unlimited when RATE_LIMIT_MAX is 0 (default)', async () => {
+    const prevMax = config.rateLimitMax;
+    config.rateLimitMax = 0;
+    const { app, close } = await makeServer();
+    try {
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      // Many children from the same device all succeed with the limit off.
+      for (let i = 0; i < 3; i++) {
+        const child = await app.inject({
+          method: 'POST', url: '/api/tree/polyp',
+          payload: { variant: 'forked', seed: i, colorKey: 'neon-cyan', parentId: rootId, attachIndex: i },
+        });
+        assert.equal(child.statusCode, 200);
+      }
+    } finally {
+      await close();
+      config.rateLimitMax = prevMax;
+    }
+  });
+
+  test('returns 429 with Retry-After once a device exceeds RATE_LIMIT_MAX', async () => {
+    const prevMax = config.rateLimitMax;
+    config.rateLimitMax = 2;
+    const { app, close } = await makeServer();
+    try {
+      // Root counts as the device's first piece.
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      assert.equal(root.statusCode, 200);
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      // Second piece still under the limit.
+      const second = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
+      });
+      assert.equal(second.statusCode, 200);
+      // Third trips the limit.
+      const third = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'claw', seed: 3, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 1 },
+      });
+      assert.equal(third.statusCode, 429);
+      const body = JSON.parse(third.body) as { error: string; retryAfterMs: number };
+      assert.equal(body.error, 'rate_limited');
+      assert.ok(body.retryAfterMs > 0);
+      assert.ok(third.headers['retry-after'] !== undefined);
+    } finally {
+      await close();
+      config.rateLimitMax = prevMax;
+    }
+  });
+});
+
+describe('tree mutation auth gate', () => {
+  test('reset is open when no admin token is configured', async () => {
+    const prev = config.adminToken;
+    config.adminToken = '';
+    const { app, close } = await makeServer();
+    try {
+      const res = await app.inject({ method: 'POST', url: '/api/tree/reset' });
+      assert.equal(res.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
+  });
+
+  test('reset requires the admin token once one is configured', async () => {
+    const prev = config.adminToken;
+    config.adminToken = 'tree-secret';
+    const { app, close } = await makeServer();
+    try {
+      const unauth = await app.inject({ method: 'POST', url: '/api/tree/reset' });
+      assert.equal(unauth.statusCode, 401);
+      const wrong = await app.inject({
+        method: 'POST', url: '/api/tree/reset',
+        headers: { authorization: 'Bearer nope' },
+      });
+      assert.equal(wrong.statusCode, 401);
+      const ok = await app.inject({
+        method: 'POST', url: '/api/tree/reset',
+        headers: { authorization: 'Bearer tree-secret' },
+      });
+      assert.equal(ok.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
+  });
+
+  test('delete is gated, but planting stays open, once an admin token is set', async () => {
+    const prev = config.adminToken;
+    config.adminToken = 'tree-secret';
+    const { app, close } = await makeServer();
+    try {
+      // Planting is NOT gated even with a token configured.
+      const root = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+      });
+      assert.equal(root.statusCode, 200);
+      const rootId = (JSON.parse(root.body) as { id: number }).id;
+      const child = await app.inject({
+        method: 'POST', url: '/api/tree/polyp',
+        payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 0 },
+      });
+      assert.equal(child.statusCode, 200);
+      const childId = (JSON.parse(child.body) as { id: number }).id;
+
+      // Deleting requires the token.
+      const unauth = await app.inject({ method: 'DELETE', url: `/api/tree/polyp/${childId}` });
+      assert.equal(unauth.statusCode, 401);
+      const ok = await app.inject({
+        method: 'DELETE', url: `/api/tree/polyp/${childId}`,
+        headers: { authorization: 'Bearer tree-secret' },
+      });
+      assert.equal(ok.statusCode, 200);
+    } finally {
+      await close();
+      config.adminToken = prev;
+    }
   });
 });

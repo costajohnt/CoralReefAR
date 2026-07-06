@@ -1,4 +1,4 @@
-import type { ServerMessage } from '@reef/shared';
+import type { ServerMessage, TreeServerMessage } from '@reef/shared';
 
 // ws library readyState values — see https://developer.mozilla.org/docs/Web/API/WebSocket/readyState
 const WS_OPEN = 1;
@@ -16,6 +16,7 @@ type WebSocket = {
   on(event: 'close' | 'pong', cb: () => void): void;
   ping?(): void;
   terminate?(): void;
+  close?(code?: number, reason?: string): void;
 };
 
 interface LivenessState {
@@ -26,7 +27,28 @@ export class Hub {
   private clients = new Map<WebSocket, LivenessState>();
   private heartbeat: NodeJS.Timeout | undefined;
 
-  add(ws: WebSocket): void {
+  // 0 = unlimited. Bounds concurrent connections so a connection flood can't
+  // exhaust memory / file descriptors before the heartbeat reaps idle sockets.
+  constructor(private readonly maxClients = 0) {}
+
+  /**
+   * Register a socket. Returns false (and closes the socket) when the hub is at
+   * capacity, so the caller must skip its hello/setup on a false result.
+   */
+  add(ws: WebSocket): boolean {
+    if (this.maxClients > 0 && this.clients.size >= this.maxClients) {
+      // At capacity: refuse with 1013 "Try Again Later" so clients can back off.
+      // A refused socket is never added to the map, so the heartbeat won't reap
+      // it — fall back to an abrupt terminate if close() is missing OR throws,
+      // so it can't linger as an orphaned FD (the leak the cap exists to stop).
+      try {
+        if (ws.close) ws.close(1013, 'server at capacity');
+        else ws.terminate?.();
+      } catch {
+        try { ws.terminate?.(); } catch { /* already torn down */ }
+      }
+      return false;
+    }
     const state: LivenessState = { alive: true };
     // The pong listener must be wired before join so we never miss the
     // first keepalive response. 'close' wired here for the same reason.
@@ -35,9 +57,10 @@ export class Hub {
       this.clients.delete(ws);
     });
     this.clients.set(ws, state);
+    return true;
   }
 
-  broadcast(msg: ServerMessage): void {
+  broadcast(msg: ServerMessage | TreeServerMessage): void {
     const data = JSON.stringify(msg);
     for (const ws of this.clients.keys()) {
       if (ws.readyState !== WS_OPEN) continue;

@@ -1,5 +1,6 @@
 import type { MeshData } from '../meshdata.js';
 import type { AttachPoint } from '@reef/shared';
+import { mulberry32 } from '../rng.js';
 
 export interface VariantGenerateInput {
   seed: number;
@@ -49,22 +50,16 @@ function colorG(c: ColorInput): number { return Array.isArray(c) ? (c as readonl
 function colorB(c: ColorInput): number { return Array.isArray(c) ? (c as readonly number[])[2]! : (c as Vec3Obj).z; }
 
 /**
- * Deterministic PRNG (mulberry32). Takes an integer seed, returns a stateful
- * function that yields floats in [0, 1). Used to give each piece a unique but
- * reproducible shape — variant geometry used to be identical across pieces
- * because `seed` was ignored; now it drives dimensional jitter and surface
- * noise so the reef doesn't read as repeated stamps.
+ * Per-piece PRNG: takes an integer seed, returns a stateful function yielding
+ * floats in [0, 1). Used to give each piece a unique but reproducible shape —
+ * variant geometry used to be identical across pieces because `seed` was
+ * ignored; now it drives dimensional jitter and surface noise so the reef
+ * doesn't read as repeated stamps.
+ *
+ * This is the canonical {@link mulberry32} — re-exported here so existing tree
+ * callers keep importing `seededRand` while there is only one implementation.
  */
-export function seededRand(seed: number): () => number {
-  let state = (seed | 0) >>> 0;
-  return (): number => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 0x1_0000_0000;
-  };
-}
+export const seededRand = mulberry32;
 
 /**
  * Returns `base` multiplied by a random factor in [1 - pct, 1 + pct]. Handy

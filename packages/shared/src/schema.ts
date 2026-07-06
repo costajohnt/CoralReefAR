@@ -28,6 +28,7 @@ export const PolypInputSchema = z.object({
   position: vec3,
   orientation: quat,
   scale: finite.positive().max(3),
+  surface: z.enum(['web', 'quest']).optional(),
 });
 
 export type PolypInputPayload = z.infer<typeof PolypInputSchema>;

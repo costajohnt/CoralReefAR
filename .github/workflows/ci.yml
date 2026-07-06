@@ -27,9 +27,11 @@ jobs:
         uses: pnpm/action-setup@v5
 
       - name: Set up Node.js
+        # Matches the LTS major the production Docker image runs on, so unit
+        # tests exercise the same runtime that ships.
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -76,3 +78,57 @@ jobs:
           path: packages/client/dist
           retention-days: 7
           if-no-files-found: error
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build server image
+        run: docker build -f infra/Dockerfile.server -t reef-server:ci .
+
+      - name: Smoke test /healthz
+        run: |
+          docker run -d --name reef -p 8787:8787 reef-server:ci
+          ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8787/healthz >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs reef || true
+          docker rm -f reef >/dev/null 2>&1 || true
+          if [ "$ok" != "1" ]; then echo "::error::/healthz never came up"; exit 1; fi
+
+      - name: Verify the server runs as a non-root user
+        run: |
+          # The entrypoint drops privileges to "reef" before exec'ing the
+          # command, so this prints reef's (non-zero) uid.
+          uid=$(docker run --rm reef-server:ci sh -c 'id -u')
+          echo "server process uid: $uid"
+          if [ -z "$uid" ] || [ "$uid" = "0" ]; then
+            echo "::error::container did not run as a non-root user (uid='$uid')"; exit 1
+          fi
+
+      - name: Smoke test the Fly volume path (DB on /data, written as non-root)
+        run: |
+          docker volume create reef-ci-data >/dev/null
+          docker run -d --name reefvol -e DB_PATH=/data/reef.db \
+            -v reef-ci-data:/data -p 8788:8787 reef-server:ci
+          ok=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:8788/healthz >/dev/null; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs reefvol || true
+          # The entrypoint chowns /data and drops to reef, so the DB written to
+          # the volume must be reef-owned.
+          owner=$(docker exec reefvol sh -c 'stat -c "%U" /data/reef.db' 2>/dev/null || echo MISSING)
+          docker rm -f reefvol >/dev/null 2>&1 || true
+          docker volume rm reef-ci-data >/dev/null 2>&1 || true
+          if [ "$ok" != "1" ]; then echo "::error::/healthz (volume) never came up"; exit 1; fi
+          if [ "$owner" != "reef" ]; then
+            echo "::error::/data/reef.db owner is '$owner', expected reef"; exit 1
+          fi

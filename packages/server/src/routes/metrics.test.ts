@@ -8,6 +8,7 @@ import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
 import { registerMetricsRoutes } from './metrics.js';
 import { counters } from '../metrics-registry.js';
+import { config } from '../config.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb; hub: Hub } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-metrics-'));
@@ -71,6 +72,43 @@ test('metrics: exposes reef_rate_limited_total as a monotonic counter', async ()
     assert.match(body, /^reef_rate_limited_total 3$/m);
   } finally {
     await app.close();
+  }
+});
+
+test('metrics: open when METRICS_TOKEN is unset', async () => {
+  const prev = config.metricsToken;
+  config.metricsToken = '';
+  const { app } = buildApp();
+  try {
+    const r = await app.inject({ method: 'GET', url: '/metrics' });
+    assert.equal(r.statusCode, 200);
+  } finally {
+    await app.close();
+    config.metricsToken = prev;
+  }
+});
+
+test('metrics: requires the bearer token once METRICS_TOKEN is set', async () => {
+  const prev = config.metricsToken;
+  config.metricsToken = 'scrape-secret';
+  const { app } = buildApp();
+  try {
+    assert.equal((await app.inject({ method: 'GET', url: '/metrics' })).statusCode, 401);
+    assert.equal(
+      (await app.inject({
+        method: 'GET', url: '/metrics', headers: { authorization: 'Bearer wrong' },
+      })).statusCode,
+      401,
+    );
+    assert.equal(
+      (await app.inject({
+        method: 'GET', url: '/metrics', headers: { authorization: 'Bearer scrape-secret' },
+      })).statusCode,
+      200,
+    );
+  } finally {
+    await app.close();
+    config.metricsToken = prev;
   }
 });
 

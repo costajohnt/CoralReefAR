@@ -108,6 +108,32 @@ describe('Picker', () => {
     expect(grow.textContent).toBe('Grow it');
   });
 
+  test('setSubmitting(false) re-enables actions when committable (rejected-commit path)', () => {
+    const p = new Picker(mountPickerDom());
+    const grow = document.getElementById('growBtn') as HTMLButtonElement;
+    const reroll = document.getElementById('rerollBtn') as HTMLButtonElement;
+    const cancel = document.getElementById('cancelBtn') as HTMLButtonElement;
+    // Placing a ghost makes the picker committable, then a commit is attempted.
+    p.setCommittable(true);
+    p.setSubmitting(true);
+    expect(grow.disabled).toBe(true);
+    // The commit is rejected: it unwinds via setSubmitting(false) alone, with no
+    // following setCommittable. The Grow button must become usable again.
+    p.setSubmitting(false);
+    expect(grow.disabled).toBe(false);
+    expect(reroll.disabled).toBe(false);
+    expect(cancel.disabled).toBe(false);
+  });
+
+  test('setSubmitting(false) keeps actions disabled when not committable', () => {
+    const p = new Picker(mountPickerDom());
+    const grow = document.getElementById('growBtn') as HTMLButtonElement;
+    p.setCommittable(false);
+    p.setSubmitting(true);
+    p.setSubmitting(false);
+    expect(grow.disabled).toBe(true);
+  });
+
   test('setHint updates the #hint text', () => {
     const p = new Picker(mountPickerDom());
     p.setHint('now with a longer message');

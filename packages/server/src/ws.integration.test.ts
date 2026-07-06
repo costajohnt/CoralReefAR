@@ -4,56 +4,44 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
-import Fastify, { type FastifyInstance } from 'fastify';
-import websocket from '@fastify/websocket';
+import { z } from 'zod';
 import WebSocket from 'ws';
-import { ReefDb } from './db.js';
-import { Hub } from './hub.js';
-import { registerReefRoutes } from './routes/reef.js';
-import { registerAdminRoutes } from './routes/admin.js';
+import {
+  ServerMessageSchema,
+  TreeServerMessageSchema,
+  PublicPolypSchema,
+  PublicTreePolypSchema,
+} from '@reef/shared';
+import type { ReefDb } from './db.js';
+import type { TreeDb } from './tree/db.js';
+import { makeServer } from './index.js';
 import { config } from './config.js';
 
+// Drive the *real* server (makeServer) rather than a hand-rolled /ws route, so
+// the production hello payload + every registered route is what's under test.
+// makeServer builds the app but does not listen; we bind to an ephemeral port.
 async function buildApp(): Promise<{
-  app: FastifyInstance;
   db: ReefDb;
+  treeDb: TreeDb;
   url: string;
   wsUrl: string;
+  treeWsUrl: string;
   close: () => Promise<void>;
 }> {
   const dir = mkdtempSync(join(tmpdir(), 'reef-ws-integ-'));
-  const db = new ReefDb(join(dir, 'reef.db'));
-  const hub = new Hub();
-  const app = Fastify({ logger: false });
-  await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
-
-  registerReefRoutes(app, db, hub);
-  registerAdminRoutes(app, db, hub);
-
-  app.get('/ws', { websocket: true }, (sock) => {
-    const ws = sock as unknown as {
-      readyState: number;
-      send: (data: string) => void;
-      on: (event: 'close', cb: () => void) => void;
-    };
-    hub.add(ws);
-    ws.send(JSON.stringify({
-      type: 'hello',
-      polypCount: db.listPublicPolyps().length,
-      serverTime: Date.now(),
-    }));
-  });
+  const { app, db, treeDb } = await makeServer({ dbPath: join(dir, 'reef.db'), logger: false });
 
   // Bind to 127.0.0.1:0 so the OS picks a free port and tests can run in parallel.
   await app.listen({ host: '127.0.0.1', port: 0 });
   const addr = app.server.address() as AddressInfo;
-  const url = `http://127.0.0.1:${addr.port}`;
-  const wsUrl = `ws://127.0.0.1:${addr.port}/ws`;
+  const base = `127.0.0.1:${addr.port}`;
 
   return {
-    app,
     db,
-    url,
-    wsUrl,
+    treeDb,
+    url: `http://${base}`,
+    wsUrl: `ws://${base}/ws`,
+    treeWsUrl: `ws://${base}/ws/tree`,
     close: async () => { await app.close(); },
   };
 }
@@ -129,13 +117,17 @@ interface Hello { type: 'hello'; polypCount: number; serverTime: number }
 interface PolypAdded { type: 'polyp_added'; polyp: { id: number; species: string } }
 interface PolypRemoved { type: 'polyp_removed'; id: number }
 
-test('integration: WS upgrade delivers hello', async () => {
+test('integration: WS upgrade delivers a schema-valid hello', async () => {
   const { wsUrl, close } = await buildApp();
   const probe = new WsProbe(wsUrl);
   try {
     await probe.open();
     const hello = await probe.next<Hello>((m: any) => m.type === 'hello');
-    assert.equal(hello.type, 'hello');
+    // Contract check: the live hello frame must satisfy the same schema the
+    // client validates inbound frames with (dispatchMessage). This is the real
+    // production hello payload now that buildApp goes through makeServer.
+    const parsed = ServerMessageSchema.parse(hello);
+    assert.equal(parsed.type, 'hello');
     assert.equal(hello.polypCount, 0);
     assert.ok(typeof hello.serverTime === 'number');
   } finally {
@@ -289,6 +281,107 @@ test('integration: Hub evicts clients whose sockets closed', async () => {
     assert.equal(added.polyp.species, 'tube');
   } finally {
     await a.close();
+    await close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// /ws/tree round-trip — the tree socket had no integration coverage at all.
+// ---------------------------------------------------------------------------
+
+interface TreeHello { type: 'tree_hello'; polypCount: number; serverTime: number }
+interface TreePolypAdded { type: 'tree_polyp_added'; polyp: { id: number; parentId: number | null } }
+
+test('integration: /ws/tree delivers a schema-valid tree_hello, and planting broadcasts tree_polyp_added', async () => {
+  const { treeWsUrl, url, close } = await buildApp();
+  const probe = new WsProbe(treeWsUrl);
+  try {
+    await probe.open();
+    const hello = await probe.next<TreeHello>((m: any) => m.type === 'tree_hello');
+    const parsedHello = TreeServerMessageSchema.parse(hello);
+    assert.equal(parsedHello.type, 'tree_hello');
+    // makeServer seeds one Starburst root at boot.
+    assert.equal(hello.polypCount, 1);
+
+    // Find the seeded root to attach to.
+    const treeRes = await fetch(`${url}/api/tree`);
+    assert.equal(treeRes.status, 200);
+    const tree = await treeRes.json() as { polyps: Array<{ id: number }> };
+    const rootId = tree.polyps[0]!.id;
+
+    const plantPromise = fetch(`${url}/api/tree/polyp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'forked', seed: 4242, colorKey: 'neon-cyan',
+        parentId: rootId, attachIndex: 0, attachYaw: 0,
+      }),
+    });
+
+    const [added, plantRes] = await Promise.all([
+      probe.next<TreePolypAdded>((m: any) => m.type === 'tree_polyp_added' && m.polyp.parentId === rootId),
+      plantPromise,
+    ]);
+    assert.equal(plantRes.status, 200);
+    // Contract check: the broadcast frame satisfies the client's tree schema.
+    const parsedAdded = TreeServerMessageSchema.parse(added);
+    assert.equal(parsedAdded.type, 'tree_polyp_added');
+    assert.equal(added.polyp.parentId, rootId);
+  } finally {
+    await probe.close();
+    await close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// HTTP contract — the client blind-casts r.json() in net/api.ts + tree/api.ts.
+// These parse the live route responses with the shared schemas so a drift
+// between server output and the client's assumed shape fails here.
+// ---------------------------------------------------------------------------
+
+const ReefStateContract = z.object({
+  polyps: z.array(PublicPolypSchema),
+  serverTime: z.number(),
+});
+const TreeStateContract = z.object({
+  polyps: z.array(PublicTreePolypSchema),
+  serverTime: z.number(),
+});
+
+test('contract: GET /api/reef and POST /api/reef/polyp responses match the shared schema', async () => {
+  const { url, close } = await buildApp();
+  try {
+    const empty = ReefStateContract.parse(await (await fetch(`${url}/api/reef`)).json());
+    assert.equal(empty.polyps.length, 0);
+
+    const postRes = await fetch(`${url}/api/reef/polyp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        species: 'branching', seed: 7, colorKey: 'coral-pink',
+        position: [0, 0, 0], orientation: [0, 0, 0, 1], scale: 1,
+      }),
+    });
+    assert.equal(postRes.status, 201);
+    // The POST response is a single public polyp; same shape the WS frame carries.
+    const created = PublicPolypSchema.parse(await postRes.json());
+
+    const after = ReefStateContract.parse(await (await fetch(`${url}/api/reef`)).json());
+    assert.equal(after.polyps.length, 1);
+    assert.equal(after.polyps[0]!.id, created.id);
+  } finally {
+    await close();
+  }
+});
+
+test('contract: GET /api/tree response matches the shared schema', async () => {
+  const { url, close } = await buildApp();
+  try {
+    const state = TreeStateContract.parse(await (await fetch(`${url}/api/tree`)).json());
+    // The seeded Starburst root: a parentless polyp.
+    assert.equal(state.polyps.length, 1);
+    assert.equal(state.polyps[0]!.parentId, null);
+  } finally {
     await close();
   }
 });

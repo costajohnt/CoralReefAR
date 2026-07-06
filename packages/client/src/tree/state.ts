@@ -55,6 +55,23 @@ export function initialState(picker: PickerSelection): TreeState {
   return { kind: 'idle', picker, lastCommittedId: null };
 }
 
+/**
+ * True when any newly-added polyp builds directly on the piece the local user
+ * last committed. The server enforces leaf-only deletes, so once a child exists
+ * the local undo is no longer valid and `lastCommittedId` must be invalidated.
+ * Shared by the WS `tree_polyp_added` path and the HTTP load/refresh path so
+ * both invalidate undo identically regardless of how the child arrives.
+ */
+export function addedPolypsInvalidateUndo(
+  state: TreeState,
+  added: ReadonlyArray<{ parentId: number | null }>,
+): boolean {
+  if (state.kind === 'undoing') return false;
+  const committedId = state.lastCommittedId;
+  if (committedId === null) return false;
+  return added.some((p) => p.parentId === committedId);
+}
+
 export function reduce(state: TreeState, action: TreeAction): TreeState {
   switch (action.type) {
     case 'VARIANT_CHOSEN': {

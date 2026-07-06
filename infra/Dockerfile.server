@@ -1,14 +1,17 @@
-FROM node:25-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache python3 make g++ sqlite
 RUN npm install -g pnpm@9.0.0
 
-COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/generator/package.json packages/generator/
 COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
-RUN pnpm install --frozen-lockfile=false
+# Frozen lockfile: install the exact locked versions so esbuild's JS package
+# and its platform binary can't drift apart (a re-resolving install pulled a
+# 0.28.1 JS against a 0.27.7 binary and the postinstall version check failed).
+RUN pnpm install --frozen-lockfile
 
 COPY packages/shared packages/shared
 COPY packages/generator packages/generator
@@ -19,12 +22,17 @@ RUN pnpm --filter @reef/shared build \
  && pnpm --filter @reef/server build \
  && pnpm --filter @reef/client build
 
-FROM node:25-alpine
+# Pinned to the current LTS major (22). A floating odd/non-LTS tag (e.g. 25)
+# silently advances and can break the better-sqlite3 native binding between
+# smoke runs; the LTS line is the version CI also tests on.
+FROM node:22-alpine
 WORKDIR /app
-RUN apk add --no-cache sqlite tini
+RUN apk add --no-cache sqlite tini su-exec
 RUN npm install -g pnpm@9.0.0
+# Unprivileged runtime user — the server process must not run as root.
+RUN addgroup -S reef && adduser -S -G reef reef
 
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
 COPY --from=builder /app/packages/shared/package.json packages/shared/
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY --from=builder /app/packages/generator/package.json packages/generator/
@@ -33,9 +41,14 @@ COPY --from=builder /app/packages/server/package.json packages/server/
 COPY --from=builder /app/packages/server/dist packages/server/dist
 COPY --from=builder /app/packages/server/migrations packages/server/migrations
 COPY --from=builder /app/packages/client/dist packages/client/dist
-RUN pnpm install --prod --frozen-lockfile=false --filter=@reef/server...
+RUN pnpm install --prod --frozen-lockfile --filter=@reef/server...
+
+COPY infra/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown -R reef:reef /app
 
 ENV CLIENT_DIST_DIR=/app/packages/client/dist
 EXPOSE 8787
-ENTRYPOINT ["/sbin/tini", "--"]
+# tini reaps zombies; the entrypoint chowns the runtime volume (if any) then
+# drops to the unprivileged "reef" user before exec'ing node.
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "packages/server/dist/index.js"]

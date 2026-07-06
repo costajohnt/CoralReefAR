@@ -34,6 +34,7 @@ export class ReefDb {
   readonly db: Database.Database;
   private readonly stmt: {
     listPolyps: Database.Statement;
+    countLivePolyps: Database.Statement;
     statsOverview: Database.Statement;
     statsRecent: Database.Statement;
     statsBySpecies: Database.Statement;
@@ -45,10 +46,13 @@ export class ReefDb {
     countByDevice: Database.Statement;
     oldestByDevice: Database.Statement;
     listSim: Database.Statement;
+    listSimSince: Database.Statement;
+    pruneSim: Database.Statement;
     insertSim: Database.Statement;
     insertSnapshot: Database.Statement;
     listSnapshots: Database.Statement;
     getSnapshot: Database.Statement;
+    pruneSnapshots: Database.Statement;
   };
 
   constructor(path: string) {
@@ -62,6 +66,7 @@ export class ReefDb {
       listPolyps: this.db.prepare(
         'SELECT * FROM polyps WHERE deleted = 0 ORDER BY created_at ASC',
       ),
+      countLivePolyps: this.db.prepare('SELECT COUNT(*) AS n FROM polyps WHERE deleted = 0'),
       statsOverview: this.db.prepare(
         `SELECT COUNT(*) AS total,
                 COUNT(DISTINCT device_hash) AS uniqueDevices,
@@ -99,6 +104,10 @@ export class ReefDb {
         'SELECT MIN(created_at) as t FROM polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
       ),
       listSim: this.db.prepare('SELECT * FROM sim_state ORDER BY created_at ASC'),
+      listSimSince: this.db.prepare(
+        'SELECT * FROM sim_state WHERE created_at >= ? ORDER BY created_at ASC',
+      ),
+      pruneSim: this.db.prepare('DELETE FROM sim_state WHERE created_at < ?'),
       insertSim: this.db.prepare(
         'INSERT INTO sim_state (polyp_id, kind, params, created_at) VALUES (?, ?, ?, ?)',
       ),
@@ -111,18 +120,58 @@ export class ReefDb {
       getSnapshot: this.db.prepare(
         'SELECT id, taken_at as takenAt, polyp_count as polypCount, state_json as stateJson FROM snapshots WHERE id = ?',
       ),
+      // Keep the `?` most recent snapshots (by taken_at, id as tiebreak),
+      // delete the rest.
+      pruneSnapshots: this.db.prepare(
+        `DELETE FROM snapshots WHERE id NOT IN (
+           SELECT id FROM snapshots ORDER BY taken_at DESC, id DESC LIMIT ?
+         )`,
+      ),
     };
   }
 
   private migrate(): void {
+    // Track which .sql files have run so each applies exactly once. Without
+    // this, every file re-exec'd on every boot — fine only because they all use
+    // CREATE ... IF NOT EXISTS. Any future migration that ALTERs or backfills
+    // data would re-run on every restart. The tracking table fixes that: a
+    // recorded file is skipped. Existing DBs (tables already present, but no
+    // schema_migrations row) back-fill cleanly on first run because the
+    // IF NOT EXISTS statements are no-ops and then get recorded.
+    this.db.exec(
+      `CREATE TABLE IF NOT EXISTS schema_migrations (
+         filename   TEXT PRIMARY KEY,
+         applied_at INTEGER NOT NULL
+       )`,
+    );
+    const applied = new Set(
+      (this.db.prepare('SELECT filename FROM schema_migrations').all() as Array<{ filename: string }>)
+        .map((r) => r.filename),
+    );
+    const record = this.db.prepare(
+      'INSERT OR IGNORE INTO schema_migrations (filename, applied_at) VALUES (?, ?)',
+    );
+
+    // Apply each file and record it atomically: exec + the bookkeeping row
+    // commit or roll back together, so a statement that throws mid-file can't
+    // leave the schema partially applied while the file is marked done (or
+    // vice versa). Migration files therefore must not contain their own
+    // BEGIN/COMMIT; current files are CREATE TABLE/INDEX, all transaction-safe.
+    const applyOne = this.db.transaction((f: string, sql: string) => {
+      this.db.exec(sql);
+      record.run(f, Date.now());
+    });
+
     const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
     for (const f of files) {
-      const sql = readFileSync(join(migrationsDir, f), 'utf8');
-      this.db.exec(sql);
+      if (applied.has(f)) continue;
+      applyOne(f, readFileSync(join(migrationsDir, f), 'utf8'));
     }
-    // Imperative column adds. SQLite ALTER TABLE ADD COLUMN has no
-    // IF NOT EXISTS form, so we check pragma_table_info and only alter
-    // when the column is missing.
+
+    // attach_yaw was added imperatively before the tracking table existed, and
+    // ALTER TABLE ADD COLUMN has no IF NOT EXISTS form. Keep the pragma-guarded
+    // add for DBs that predate it. New schema changes should be .sql migration
+    // files now that they run exactly once.
     this.ensureColumn('tree_polyps', 'attach_yaw', 'REAL NOT NULL DEFAULT 0');
   }
 
@@ -140,6 +189,14 @@ export class ReefDb {
   /** Polyps with device_hash stripped — safe for broadcasting. */
   listPublicPolyps(): PublicPolyp[] {
     return (this.stmt.listPolyps.all() as PolypRow[]).map(rowToPublicPolyp);
+  }
+
+  /**
+   * Count of live polyps via a single aggregate — no row materialization. Used
+   * by /metrics so a scrape doesn't hydrate and strip every row each time.
+   */
+  countLivePolyps(): number {
+    return (this.stmt.countLivePolyps.get() as { n: number }).n;
   }
 
   insertPolyp(p: Omit<Polyp, 'id' | 'deleted'>): Polyp {
@@ -198,16 +255,31 @@ export class ReefDb {
     return row.t;
   }
 
-  listSim(): SimDelta[] {
-    const rows = this.stmt.listSim.all() as Array<{
-      polyp_id: number; kind: string; params: string; created_at: number;
-    }>;
+  private mapSimRows(
+    rows: Array<{ polyp_id: number; kind: string; params: string; created_at: number }>,
+  ): SimDelta[] {
     return rows.map((r) => ({
       polypId: r.polyp_id,
       kind: r.kind as SimKind,
       params: JSON.parse(r.params) as Record<string, number | string>,
       createdAt: r.created_at,
     }));
+  }
+
+  listSim(): SimDelta[] {
+    return this.mapSimRows(this.stmt.listSim.all() as Parameters<typeof this.mapSimRows>[0]);
+  }
+
+  /** Sim deltas created at or after `sinceMs`. Used to bound the GET payload. */
+  listSimSince(sinceMs: number): SimDelta[] {
+    return this.mapSimRows(
+      this.stmt.listSimSince.all(sinceMs) as Parameters<typeof this.mapSimRows>[0],
+    );
+  }
+
+  /** Delete sim deltas older than `cutoffMs`. Returns the number removed. */
+  pruneSimBefore(cutoffMs: number): number {
+    return this.stmt.pruneSim.run(cutoffMs).changes;
   }
 
   insertSim(delta: SimDelta): void {
@@ -251,6 +323,11 @@ export class ReefDb {
 
   getSnapshot(id: number): { id: number; takenAt: number; polypCount: number; stateJson: string } | undefined {
     return this.stmt.getSnapshot.get(id) as { id: number; takenAt: number; polypCount: number; stateJson: string } | undefined;
+  }
+
+  /** Keep the `keep` most recent snapshots, delete older ones. Returns removed count. */
+  pruneOldSnapshots(keep: number): number {
+    return this.stmt.pruneSnapshots.run(Math.floor(keep)).changes;
   }
 }
 

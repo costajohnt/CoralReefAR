@@ -15,6 +15,7 @@ import { registerStatsRoutes } from './routes/stats.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
 import { installSecurityHeaders } from './security.js';
+import { resolveCorsOrigin } from './cors.js';
 import { TreeDb } from './tree/db.js';
 import { registerTreeRoutes } from './tree/routes.js';
 import { seedRootIfEmpty } from './tree/seed.js';
@@ -50,18 +51,21 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const useLogger = opts.logger ?? true;
 
   const db = new ReefDb(dbPath);
-  const hub = new Hub();
+  const hub = new Hub(config.wsMaxClients);
   const treeDb = new TreeDb(db);
-  const treeHub = new Hub();
-  seedRootIfEmpty(treeDb);
+  const treeHub = new Hub(config.wsMaxClients);
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
   // rejecting.
   const app = Fastify({ logger: useLogger, trustProxy: true, bodyLimit: 8192 });
-  const corsOrigin: boolean | string[] =
-    corsOriginsList.length === 1 && corsOriginsList[0] === '*' ? true : corsOriginsList;
+  const corsOrigin = resolveCorsOrigin(corsOriginsList);
   await app.register(cors, { origin: corsOrigin });
+  if (corsOrigin === true) {
+    app.log.warn(
+      'CORS is wide open (CORS_ORIGINS=*). Set explicit origins before exposing the server publicly.',
+    );
+  }
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   installSecurityHeaders(app);
 
@@ -76,6 +80,16 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   registerAdminRoutes(app, db, hub);
   registerStatsRoutes(app, db);
   registerMetricsRoutes(app, db, hub);
+  // Seed the first-boot root before the tree routes start serving. Log the
+  // chosen seed/colorKey so a random root (TREE_ROOT_SEED unset) is still
+  // reproducible after the fact.
+  const rootSeed = seedRootIfEmpty(treeDb, { seed: config.treeRootSeed });
+  if (rootSeed.seeded) {
+    app.log.info(
+      { seed: rootSeed.seed, colorKey: rootSeed.colorKey, fixed: config.treeRootSeed !== undefined },
+      'seeded first-boot tree root',
+    );
+  }
   registerTreeRoutes(app, treeDb, treeHub);
 
   // Optional static hosting: serves the built Vite bundle out of the same
@@ -101,7 +115,8 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
       ping?(): void;
       terminate?(): void;
     };
-    hub.add(ws);
+    // add() closes the socket and returns false when the hub is at capacity.
+    if (!hub.add(ws)) return;
     ws.send(JSON.stringify({
       type: 'hello',
       polypCount: db.listPublicPolyps().length,
@@ -117,7 +132,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
       ping?(): void;
       terminate?(): void;
     };
-    treeHub.add(ws);
+    if (!treeHub.add(ws)) return;
     ws.send(JSON.stringify({
       type: 'tree_hello',
       polypCount: treeDb.listLive().length,
@@ -131,9 +146,9 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
 async function main(): Promise<void> {
   const { app, db, hub, treeHub } = await makeServer();
 
-  const sim = new SimWorker(db, hub, config.simIntervalMs);
+  const sim = new SimWorker(db, hub, config.simIntervalMs, config.simRetentionMs);
   sim.start();
-  const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs);
+  const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs, config.snapshotRetentionCount);
   snapshots.start();
   hub.startHeartbeat();
   treeHub.startHeartbeat();

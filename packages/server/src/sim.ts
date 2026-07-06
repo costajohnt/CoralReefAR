@@ -15,6 +15,12 @@ export class SimWorker {
     private readonly db: ReefDb,
     private readonly hub: Hub,
     private readonly intervalMs: number,
+    // Sim deltas older than this are pruned each tick. 0 disables pruning.
+    private readonly retentionMs = 0,
+    // Source of randomness for the probabilistic growth rolls. Defaults to
+    // Math.random in production; tests inject a deterministic stream so the
+    // tick outcome is exact rather than "passes with very high probability".
+    private readonly rng: () => number = Math.random,
   ) {}
 
   start(): void {
@@ -35,22 +41,22 @@ export class SimWorker {
     for (const p of polyps) {
       const ageDays = (now - p.createdAt) / 86_400_000;
 
-      if (ageDays > 30 && Math.random() < 0.02) {
+      if (ageDays > 30 && this.rng() < 0.02) {
         updates.push({
           polypId: p.id, kind: 'barnacle', createdAt: now,
-          params: { u: Math.random(), v: Math.random(), size: 0.3 + Math.random() * 0.7 },
+          params: { u: this.rng(), v: this.rng(), size: 0.3 + this.rng() * 0.7 },
         });
       }
-      if (ageDays > 60 && Math.random() < 0.01) {
+      if (ageDays > 60 && this.rng() < 0.01) {
         updates.push({
           polypId: p.id, kind: 'algae', createdAt: now,
-          params: { u: Math.random(), v: Math.random(), coverage: 0.1 + Math.random() * 0.3 },
+          params: { u: this.rng(), v: this.rng(), coverage: 0.1 + this.rng() * 0.3 },
         });
       }
-      if (ageDays > 90 && Math.random() < 0.005) {
+      if (ageDays > 90 && this.rng() < 0.005) {
         updates.push({
           polypId: p.id, kind: 'weather', createdAt: now,
-          params: { variance: 0.1 + Math.random() * 0.2 },
+          params: { variance: 0.1 + this.rng() * 0.2 },
         });
       }
     }
@@ -60,6 +66,12 @@ export class SimWorker {
         for (const u of updates) this.db.insertSim(u);
       });
       this.hub.broadcast({ type: 'sim_update', updates });
+    }
+
+    // Prune aged deltas every tick (even when nothing grew) so sim_state stays
+    // bounded by the retention window rather than growing forever.
+    if (this.retentionMs > 0) {
+      this.db.pruneSimBefore(now - this.retentionMs);
     }
     return updates;
   }
@@ -71,6 +83,9 @@ export class SnapshotWorker {
   constructor(
     private readonly db: ReefDb,
     private readonly intervalMs: number,
+    // Keep at most this many recent snapshots; older ones are pruned after each
+    // new one. 0 disables pruning (keep all).
+    private readonly retentionCount = 0,
   ) {}
 
   start(): void {
@@ -86,6 +101,10 @@ export class SnapshotWorker {
     const polyps = this.db.listPublicPolyps();
     const sim = this.db.listSim();
     const stateJson = JSON.stringify({ polyps, sim });
-    return this.db.insertSnapshot(polyps.length, stateJson);
+    const id = this.db.insertSnapshot(polyps.length, stateJson);
+    if (this.retentionCount > 0) {
+      this.db.pruneOldSnapshots(this.retentionCount);
+    }
+    return id;
   }
 }

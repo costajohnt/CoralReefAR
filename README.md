@@ -51,7 +51,17 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     tips. Avatar-bioluminescent styling (bloom post-processing, vivid
     palette). Implemented per
     [`docs/superpowers/plans/2026-04-22-tree-mode.md`](docs/superpowers/plans/2026-04-22-tree-mode.md).
-- **CI**: lint (Oxlint) · typecheck · build · 313 tests across four
+  - **Quest 3** (`quest.html`) — WebXR `immersive-ar` surface for the
+    Meta Quest Browser. Passthrough MR, hand tracking only, spatial
+    anchor (session-scoped by default, persistent via `?persist=1`).
+    Pinch a spot on your floor to plant the reef life-size,
+    use the left-wrist palette to pick shape + color, pinch-hold-twist-release
+    to place + rotate a polyp. Same shared global reef and backend as the
+    other surfaces — polyps planted in MR appear on web in real time and
+    vice versa. Implemented per
+    [`docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`](docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md)
+    and [`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`](docs/superpowers/plans/2026-05-25-quest3-mr-surface.md).
+- **CI**: lint (Oxlint) · typecheck · build · 600+ tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout
@@ -75,6 +85,27 @@ pnpm --filter @reef/server dev          # http://localhost:8787
 pnpm --filter @reef/client dev          # http://localhost:5173
 ```
 
+### Quest 3 dev workflow
+
+WebXR requires a secure context off-localhost, and Quest can't see the Mac's
+`localhost`. Two options:
+
+```bash
+# 1. LAN dev — fast iteration, requires mkcert installed once on the Mac.
+brew install mkcert
+VITE_ENABLE_MKCERT=1 pnpm --filter @reef/client dev
+# Then on Quest: open https://<your-mac-lan-ip>:5173/quest.html in the
+# Meta Quest Browser. Trust the cert prompt once.
+
+# 2. Deploy-to-test — push the branch, open the deployed URL on Quest.
+```
+
+Without `VITE_ENABLE_MKCERT=1`, Vite serves plain HTTP and the Quest browser
+will refuse to grant WebXR permission.
+
+Full Quest developer guide: [`docs/QUEST_3_DEV.md`](docs/QUEST_3_DEV.md) —
+state machine diagram, architecture map, tunables table, debugging tips.
+
 The client proxies `/api` and `/ws` to the server in dev.
 
 For desktop testing (no camera or tracker), use `?tracker=noop` — the reef anchors a fixed distance in front of the camera.
@@ -96,17 +127,21 @@ node packages/server/dist/seed.js
 
 ## Developer pages
 
-Vite serves three entry points in addition to the main AR app:
+Vite serves additional entry points alongside the main AR app:
 
 - `/` — visitor-facing AR app (uses camera + tracker)
 - `/preview.html` — grid of all 5 species rendered non-AR with orbit cameras, for visually tuning the generator
 - `/timelapse.html` — scrub through daily snapshots (reads `/api/snapshots`)
+- `/playground.html` — AR-free interactive reef (mouse / keyboard)
+- `/tree.html` and `/treeAr.html` — fractal-branching tree mode
+- `/quest.html` — Meta Quest 3 MR surface (WebXR, hand tracking, passthrough)
 
 ## Server routes
 
 - `GET  /healthz` — liveness
 - `GET  /api/reef` — full public reef state (no `deviceHash` ever leaves)
-- `POST /api/reef/polyp` — submit a polyp (rate-limited to 1/hour/device)
+- `POST /api/reef/polyp` — submit a polyp (rate-limited to one per device
+  per window when `RATE_LIMIT_MAX` is set; open by default while testing)
 - `GET  /api/stats` — polyp count, unique devices, per-species, last 24h/7d
 - `GET  /api/snapshots` / `GET /api/snapshots/:id` — timelapse data
 - `GET  /admin` — admin shell (no auth on the page; API calls require a Bearer token)
@@ -124,6 +159,6 @@ pnpm --filter @reef/server test      # DB, routes, rate limit, admin auth, sim
 
 ## Tracker
 
-Default is 8th Wall if `window.XR8` is present, otherwise noop (useful on desktop/dev — fixed anchor in front of the camera). Force a specific one with `?tracker=eightwall|noop`.
+Default is 8th Wall if `window.XR8` is present, otherwise noop (useful on desktop/dev — fixed anchor in front of the camera). Force a specific one with `?tracker=eightwall|noop`, or `?tracker=auto` to make the default feature-detection explicit (it's what you get with no param). An unknown value also falls back to `auto`.
 
 The client loads the self-hosted `@8thwall/engine-binary` from jsDelivr — no account, no appKey, no phone-home, and the hosted `apps.8thwall.com` path is gone (retired Feb 28, 2026). See [`NEXT_STEPS.md`](./NEXT_STEPS.md) for the binary-EOL notes.
