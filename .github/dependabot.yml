@@ -42,3 +42,10 @@ updates:
     labels: [dependencies, docker]
     commit-message:
       prefix: docker
+    ignore:
+      # Dockerfile.server deliberately pins the current LTS major (22): a
+      # floating odd/non-LTS tag silently advances and can break the
+      # better-sqlite3 native binding between smoke runs. Node major bumps
+      # are a deliberate manual change, not a dependabot PR (see closed #84).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
