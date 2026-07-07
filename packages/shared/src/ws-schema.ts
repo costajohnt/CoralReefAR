@@ -27,7 +27,7 @@ export const PublicPolypSchema = z.object({
 const simDelta = z.object({
   polypId: z.number(),
   kind: z.string(),
-  params: z.record(z.union([z.number(), z.string()])),
+  params: z.record(z.string(), z.union([z.number(), z.string()])),
   createdAt: z.number(),
 });
 
