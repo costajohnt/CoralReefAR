@@ -12,20 +12,20 @@
     "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec $(find dist-test -name '*.test.js')"
   },
   "dependencies": {
-    "@fastify/cors": "^11.2.0",
+    "@fastify/cors": "^11.3.0",
     "@fastify/static": "^9.1.3",
-    "@fastify/websocket": "^11.2.0",
+    "@fastify/websocket": "^11.3.0",
     "@reef/generator": "workspace:*",
     "@reef/shared": "workspace:*",
     "better-sqlite3": "^12.11.1",
     "fastify": "^5.10.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.10",
     "@types/node": "^25.6.0",
     "@types/ws": "^8.5.10",
-    "tsx": "^4.23.0",
+    "tsx": "^4.23.1",
     "ws": "^8.21.0"
   }
 }
