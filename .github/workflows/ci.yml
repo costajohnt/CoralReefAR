@@ -29,7 +29,7 @@ jobs:
       - name: Set up Node.js
         # Matches the LTS major the production Docker image runs on, so unit
         # tests exercise the same runtime that ships.
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
