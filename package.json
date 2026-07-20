@@ -15,7 +15,7 @@
     "clean": "pnpm -r exec rm -rf dist node_modules"
   },
   "devDependencies": {
-    "oxlint": "^1.72.0",
+    "oxlint": "^1.74.0",
     "typescript": "^6.0.3"
   },
   "engines": {
