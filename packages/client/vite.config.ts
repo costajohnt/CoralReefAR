@@ -28,6 +28,7 @@ export default defineConfig(async () => {
     test: {
       environment: 'happy-dom',
       include: ['src/**/*.test.ts'],
+      setupFiles: ['src/vitest.setup.ts'],
     },
     server: {
       port: 5173,
