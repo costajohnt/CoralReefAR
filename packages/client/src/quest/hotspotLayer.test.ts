@@ -103,6 +103,25 @@ describe('HotspotLayer', () => {
     layer.removePolyp(8);
     expect(layer.hotspotTransform(id)).toBeNull();
   });
+
+  it('#97: removePolyp clears the group\'s children to release wrapper references', () => {
+    // After removal the group should have no children — group.clear() severs
+    // the parent link on each hotspot Mesh so wrappers are collected promptly.
+    // (Geometry/material are shared singletons and are intentionally NOT
+    // disposed here; only the per-polyp Group wrapper is torn down.)
+    const layer = new HotspotLayer();
+    layer.addPolyp(polyp(9, 'bulbous'));
+    // Capture the group reference before removal so we can inspect it after.
+    const groups = Array.from((layer as unknown as {
+      byPolypId: Map<number, import('three').Group>;
+    }).byPolypId.values());
+    const group = groups[0]!;
+    expect(group.children.length).toBeGreaterThan(0);
+
+    layer.removePolyp(9);
+
+    expect(group.children).toHaveLength(0);
+  });
 });
 
 describe('getTipsCached', () => {

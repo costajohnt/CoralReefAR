@@ -36,4 +36,27 @@ describe('InstructionOverlay', () => {
     expect(o.object3d.position.y).toBeCloseTo(1.45, 3);
     expect(o.object3d.position.x).toBeCloseTo(0, 3);
   });
+
+  it('#97: updatePose does not mutate the caller-supplied headForward vector', () => {
+    // The scratch-based implementation writes into _scratchTarget, not into
+    // the argument. Callers (QuestApp.lastHeadForward) reuse their Vector3s
+    // across frames, so mutation would corrupt subsequent reads.
+    const o = new InstructionOverlay();
+    const head = new Vector3(1, 1.6, 2);
+    const forward = new Vector3(0, 0, -1);
+    const forwardBefore = forward.clone();
+    o.updatePose(head, forward);
+    expect(forward.equals(forwardBefore)).toBe(true);
+  });
+
+  it('#97: updatePose is correct with a non-axis-aligned forward', () => {
+    const o = new InstructionOverlay();
+    const head = new Vector3(1, 1.6, 2);
+    const forward = new Vector3(1, 0, 0); // pointing +X
+    o.updatePose(head, forward);
+    // Panel should be 0.7m in the +X direction from head, 0.15m below.
+    expect(o.object3d.position.x).toBeCloseTo(1.7, 3);
+    expect(o.object3d.position.y).toBeCloseTo(1.45, 3);
+    expect(o.object3d.position.z).toBeCloseTo(2, 3);
+  });
 });

@@ -5,7 +5,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
-  type Vector3,
+  Vector3,
 } from 'three';
 
 const CANVAS_WIDTH = 512;
@@ -31,6 +31,10 @@ export class InstructionOverlay {
   private readonly mesh: Mesh;
   private _visible = true;
   private currentText = '';
+  // Per-frame scratch for updatePose — avoids allocating two Vector3s per
+  // frame at 90 Hz (#97). The caller (QuestApp.updateOverlayPose) never
+  // retains a reference to position, so reuse is safe.
+  private readonly _scratchTarget = new Vector3();
 
   constructor() {
     this.canvas = document.createElement('canvas');
@@ -88,9 +92,13 @@ export class InstructionOverlay {
    * world position and forward vector each frame.
    */
   updatePose(headPosition: Vector3, headForward: Vector3): void {
-    const target = headPosition.clone().add(headForward.clone().multiplyScalar(0.7));
-    target.y -= 0.15;
-    this.object3d.position.copy(target);
+    // Write into scratch to avoid allocating two Vector3s per frame at 90 Hz.
+    this._scratchTarget
+      .copy(headForward)
+      .multiplyScalar(0.7)
+      .add(headPosition);
+    this._scratchTarget.y -= 0.15;
+    this.object3d.position.copy(this._scratchTarget);
     this.object3d.lookAt(headPosition);
   }
 
