@@ -107,12 +107,15 @@ export class QuestApp {
   /** Last known viewer forward vector. Used to billboard the overlay. */
   private lastHeadForward: Vector3 | null = null;
   // Per-frame scratch reused by the 90 Hz pose updaters so captureHeadPose /
-  // updatePalettePose don't allocate a fresh Vector3/Quaternion every frame
-  // (#97). Their consumers (palette.updatePose, overlay.updatePose) copy/read
-  // these, never retain them, so reuse is safe.
+  // updatePalettePose / handleRightHandInteraction / yawFromXrQuaternion don't
+  // allocate a fresh Vector3/Quaternion/Euler every frame (#97). Their
+  // consumers copy/read these values and never retain them, so reuse is safe.
   private readonly _scratchQuat = new Quaternion();
+  private readonly _scratchEuler = new Euler();
   private readonly _scratchWrist = new Vector3();
   private readonly _scratchLook = new Vector3();
+  private readonly _scratchThumb = new Vector3();
+  private readonly _scratchIndex = new Vector3();
   /** Tracked id for the 3s transient-error fade-out timer. */
   private transientErrorTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -513,8 +516,8 @@ export class QuestApp {
       sawTrackedRightHand = true;
       const thumbP = thumbPose.transform.position;
       const indexP = indexPose.transform.position;
-      const thumbVec = new Vector3(thumbP.x, thumbP.y, thumbP.z);
-      const indexVec = new Vector3(indexP.x, indexP.y, indexP.z);
+      const thumbVec = this._scratchThumb.set(thumbP.x, thumbP.y, thumbP.z);
+      const indexVec = this._scratchIndex.set(indexP.x, indexP.y, indexP.z);
       const wristYaw = this.yawFromXrQuaternion(wristPose.transform.orientation);
       const pinching = isPinching(thumbVec, indexVec, this.rightPinchWas);
       const isPinchStart = pinching && !this.rightPinchWas;
@@ -729,9 +732,8 @@ export class QuestApp {
   }
 
   private yawFromXrQuaternion(orientation: DOMPointReadOnly): number {
-    const q = new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);
-    const euler = new Euler().setFromQuaternion(q, 'YXZ');
-    return euler.y;
+    this._scratchQuat.set(orientation.x, orientation.y, orientation.z, orientation.w);
+    return this._scratchEuler.setFromQuaternion(this._scratchQuat, 'YXZ').y;
   }
 
   /** Returns (current - initial) wrapped to (-π, π] so the polyp doesn't spin past full turns. */
