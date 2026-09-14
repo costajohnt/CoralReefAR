@@ -13,14 +13,14 @@
   "dependencies": {
     "@reef/generator": "workspace:*",
     "@reef/shared": "workspace:*",
-    "three": "^0.185.1"
+    "three": "^0.186.0"
   },
   "devDependencies": {
-    "@types/three": "^0.185.4",
+    "@types/three": "^0.186.0",
     "@types/webxr": "^0.5.24",
-    "happy-dom": "^20.11.6",
+    "happy-dom": "^20.14.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vite-plugin-mkcert": "^2.0.0",
     "vitest": "^4.1.11"
   }
