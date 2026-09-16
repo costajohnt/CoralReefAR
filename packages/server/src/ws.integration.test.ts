@@ -377,6 +377,10 @@ test('contract: GET /api/reef and POST /api/reef/polyp responses match the share
 test('contract: POST /api/tree/polyp and POST /api/tree/reset responses match the shared schema', async () => {
   // tree/api.ts blind-casts both: submitTreePolyp -> PublicTreePolyp,
   // resetTree -> { polyps: PublicTreePolyp[] }.
+  // Reset is admin-gated whenever a token is configured; pin it open so the
+  // test does not depend on ADMIN_TOKEN in the runner's environment.
+  const savedAdminToken = config.adminToken;
+  config.adminToken = '';
   const { url, close } = await buildApp();
   try {
     const before = TreeStateContract.parse(await (await fetch(`${url}/api/tree`)).json());
@@ -405,6 +409,7 @@ test('contract: POST /api/tree/polyp and POST /api/tree/reset responses match th
     const after = TreeStateContract.parse(await (await fetch(`${url}/api/tree`)).json());
     assert.deepEqual(after.polyps.map((p) => p.id), [reset.polyps[0]!.id]);
   } finally {
+    config.adminToken = savedAdminToken;
     await close();
   }
 });
