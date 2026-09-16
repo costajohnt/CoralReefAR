@@ -4,20 +4,27 @@
  * The other QuestApp suites drive anchor promotion, the pinch state machine
  * and tracking-lost as isolated units (handlePinchStart, beginCompose,
  * cancelGestureOnHandLoss, ...). None of them run the real frame callback
- * with a viewer pose, so a regression in the ORDER the frame does things
- * (promote anchor -> update anchor pose -> head pose -> hand input -> render)
- * would slip through. This suite feeds a stub XRFrame that returns a
- * non-null viewer pose, hand-joint poses and an anchor pose, and asserts on
- * the observable state after each frame.
+ * with a viewer pose, so the frame-level wiring (pending pose promoted once,
+ * anchor pose applied to the reef, head pose captured, hand input walked
+ * through the pinch state machine, render last) has no test. This suite
+ * feeds a stub XRFrame that returns a non-null viewer pose, hand-joint poses
+ * and a translated anchor pose, and asserts on the observable state after
+ * each frame.
  *
  * happy-dom has no WebGL2, so start() never builds a renderer; the tests
- * install a stub renderer the same way questApp.integration.test.ts does.
+ * install a stub renderer the same way questApp.integration.test.ts does,
+ * plus the one thing WebGLRenderer.render does that these paths depend on:
+ * scene.updateMatrixWorld(), so the anchor's world matrix reaches
+ * worldToLocal in beginCompose.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Object3D, Vector3 } from 'three';
 import { QuestApp } from './questApp.js';
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+/** Anchor sits at world (1, 0, -1) so reef-local coords differ from world coords. */
+const ANCHOR_OFFSET = { x: 1, y: 0, z: -1 };
+const ANCHOR_MATRIX = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, ANCHOR_OFFSET.x, ANCHOR_OFFSET.y, ANCHOR_OFFSET.z, 1]);
 
 type Xyz = { x: number; y: number; z: number };
 type JointName = 'thumb-tip' | 'index-finger-tip' | 'wrist';
@@ -79,7 +86,7 @@ function makeFrame(opts: {
     })),
     createAnchor: opts.createAnchor,
     // Anchor-space pose: ReefAnchor.update() reads transform.matrix.
-    getPose: vi.fn(() => ((opts.anchorTracked?.() ?? true) ? { transform: { matrix: IDENTITY } } : null)),
+    getPose: vi.fn(() => ((opts.anchorTracked?.() ?? true) ? { transform: { matrix: ANCHOR_MATRIX } } : null)),
     getJointPose: vi.fn((joint: { name: JointName }) => opts.hand.poseFor(joint)),
   } as unknown as XRFrame;
 }
@@ -127,7 +134,7 @@ async function bootToPendingAnchor(hand: ReturnType<typeof makeRightHand>) {
   expect(app.state).toBe('loading');
 
   const internal = app as unknown as Internal;
-  internal.renderer = { render: vi.fn() };
+  internal.renderer = { render: vi.fn(() => internal.scene.updateMatrixWorld()) };
   return { app, ui, internal, session, placementTransform };
 }
 
@@ -139,6 +146,11 @@ async function bootToInteractive(hand: ReturnType<typeof makeRightHand>) {
   hand.setGap(0.1); // open hand during the promotion frame
   booted.internal.onXRFrame(makeFrame({ hand, createAnchor }));
   await vi.waitFor(() => expect(booted.app.state).toBe('interactive'));
+  // The anchor object3d joined the scene after the promotion frame rendered;
+  // one settling frame applies its pose and refreshes matrixWorld.
+  booted.internal.onXRFrame(makeFrame({ hand }));
+  expect(booted.internal.reefAnchor!.object3d.matrixWorld.elements.slice(12, 15))
+    .toEqual([ANCHOR_OFFSET.x, ANCHOR_OFFSET.y, ANCHOR_OFFSET.z]);
   return { ...booted, anchor, createAnchor };
 }
 
@@ -229,6 +241,7 @@ describe('QuestApp.onXRFrame orchestration', () => {
     // Frame 1: fingers 1 cm apart -> pinch-start -> compose begins, preview
     // parented under the anchor so it tracks the reef.
     hand.setGap(0.01);
+    const pinchPoint = { ...hand.index }; // free-space compose anchors at the index tip
     internal.onXRFrame(frame);
     expect(internal.compose).not.toBeNull();
     expect(internal.rightPinchWas).toBe(true);
@@ -261,6 +274,12 @@ describe('QuestApp.onXRFrame orchestration', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]!.url).toMatch(/\/api\/reef\/polyp$/);
     expect(posts[0]!.body).toMatchObject({ species: 'branching', colorKey: 'coral-pink', surface: 'quest', scale: 1 });
+    // Position is the pinch point in reef-local space: world index tip minus
+    // the anchor's world offset (ReefAnchor.update -> matrixWorld -> worldToLocal).
+    const [px, py, pz] = posts[0]!.body.position as number[];
+    expect(px).toBeCloseTo(pinchPoint.x - ANCHOR_OFFSET.x);
+    expect(py).toBeCloseTo(pinchPoint.y - ANCHOR_OFFSET.y);
+    expect(pz).toBeCloseTo(pinchPoint.z - ANCHOR_OFFSET.z);
     // Orientation is the twisted yaw as a quaternion about +Y.
     const [qx, qy, qz, qw] = posts[0]!.body.orientation as number[];
     expect(qx).toBeCloseTo(0);
@@ -291,6 +310,14 @@ describe('QuestApp.onXRFrame orchestration', () => {
     hand.tracked = true;
     hand.setGap(0.1);
     internal.onXRFrame(frame);
+    expect(postCalls()).toHaveLength(0);
+    expect(internal.compose).toBeNull();
+
+    // Reappearing already pinched reads as a fresh pinch-start (rightPinchWas
+    // was reset on loss), so a new compose opens instead of a commit or a no-op.
+    hand.setGap(0.01);
+    internal.onXRFrame(frame);
+    expect(internal.compose).not.toBeNull();
     expect(postCalls()).toHaveLength(0);
   });
 

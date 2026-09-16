@@ -397,10 +397,13 @@ test('contract: POST /api/tree/polyp and POST /api/tree/reset responses match th
     const resetRes = await fetch(`${url}/api/tree/reset`, { method: 'POST' });
     assert.equal(resetRes.status, 200);
     const reset = z.object({ polyps: z.array(PublicTreePolypSchema) }).parse(await resetRes.json());
-    // Reset re-seeds a single fresh root; the planted child is gone.
+    // Reset re-seeds a single fresh root: neither the old root nor the child survives.
     assert.equal(reset.polyps.length, 1);
     assert.equal(reset.polyps[0]!.parentId, null);
-    assert.notEqual(reset.polyps[0]!.id, planted.id);
+    assert.notEqual(reset.polyps[0]!.id, rootId);
+    // Clients re-fetch after reset (tree/api.ts); the re-fetch must agree.
+    const after = TreeStateContract.parse(await (await fetch(`${url}/api/tree`)).json());
+    assert.deepEqual(after.polyps.map((p) => p.id), [reset.polyps[0]!.id]);
   } finally {
     await close();
   }
