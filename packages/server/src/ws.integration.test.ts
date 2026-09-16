@@ -374,6 +374,38 @@ test('contract: GET /api/reef and POST /api/reef/polyp responses match the share
   }
 });
 
+test('contract: POST /api/tree/polyp and POST /api/tree/reset responses match the shared schema', async () => {
+  // tree/api.ts blind-casts both: submitTreePolyp -> PublicTreePolyp,
+  // resetTree -> { polyps: PublicTreePolyp[] }.
+  const { url, close } = await buildApp();
+  try {
+    const before = TreeStateContract.parse(await (await fetch(`${url}/api/tree`)).json());
+    const rootId = before.polyps[0]!.id;
+
+    const plantRes = await fetch(`${url}/api/tree/polyp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'forked', seed: 11, colorKey: 'neon-cyan',
+        parentId: rootId, attachIndex: 0, attachYaw: 0,
+      }),
+    });
+    assert.equal(plantRes.status, 200);
+    const planted = PublicTreePolypSchema.parse(await plantRes.json());
+    assert.equal(planted.parentId, rootId);
+
+    const resetRes = await fetch(`${url}/api/tree/reset`, { method: 'POST' });
+    assert.equal(resetRes.status, 200);
+    const reset = z.object({ polyps: z.array(PublicTreePolypSchema) }).parse(await resetRes.json());
+    // Reset re-seeds a single fresh root; the planted child is gone.
+    assert.equal(reset.polyps.length, 1);
+    assert.equal(reset.polyps[0]!.parentId, null);
+    assert.notEqual(reset.polyps[0]!.id, planted.id);
+  } finally {
+    await close();
+  }
+});
+
 test('contract: GET /api/tree response matches the shared schema', async () => {
   const { url, close } = await buildApp();
   try {
