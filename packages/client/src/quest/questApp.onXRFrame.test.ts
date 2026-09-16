@@ -93,7 +93,6 @@ function makeFrame(opts: {
 
 interface Internal {
   renderer: { render: ReturnType<typeof vi.fn> } | null;
-  referenceSpace: object | null;
   reefAnchor: { object3d: Object3D } | null;
   pendingAnchorPose: unknown;
   compose: { preview: Object3D; yaw: number; initialYaw: number } | null;
@@ -151,7 +150,7 @@ async function bootToInteractive(hand: ReturnType<typeof makeRightHand>) {
   booted.internal.onXRFrame(makeFrame({ hand }));
   expect(booted.internal.reefAnchor!.object3d.matrixWorld.elements.slice(12, 15))
     .toEqual([ANCHOR_OFFSET.x, ANCHOR_OFFSET.y, ANCHOR_OFFSET.z]);
-  return { ...booted, anchor, createAnchor };
+  return booted;
 }
 
 function postCalls(): Array<{ url: string; body: Record<string, unknown> }> {
