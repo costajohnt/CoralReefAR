@@ -115,7 +115,7 @@ For desktop testing (no camera or tracker), use `?tracker=noop` — the reef anc
 See `INSTALL.md` for the full runbook. Three paths:
 
 - **Self-hosted Beelink + Cloudflare Tunnel** (the original deploy target). Free ongoing cost, requires hardware.
-- **Fly.io** — `fly.toml` is checked in. One-time: `fly apps create coralreefar`, create a `reef_data` volume, set `ADMIN_TOKEN` + `CORS_ORIGINS` secrets, add a `FLY_API_TOKEN` repo secret. Then every push to main triggers `.github/workflows/fly-deploy.yml`. ~$5/mo for a shared-1x VM.
+- **Fly.io** — `fly.toml` is checked in. One-time: `fly apps create coralreefar`, create a `reef_data` volume, set `ADMIN_TOKEN` + `CORS_ORIGINS` secrets, add a `FLY_API_TOKEN` repo secret. Fly is paused on billing, so `.github/workflows/fly-deploy.yml` is manual-only (`workflow_dispatch`); restore its `push` trigger to auto-deploy main once billing is resolved (see `NEXT_STEPS.md`). ~$5/mo for a shared-1x VM.
 - **GitHub Pages** (static-only) — `.github/workflows/pages.yml` builds the client and publishes the preview. No backend → no placement persistence, just the generator demo.
 
 ## Seeding the reef
