@@ -16,6 +16,7 @@ import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
 import { installSecurityHeaders } from './security.js';
 import { resolveCorsOrigin } from './cors.js';
+import { makeTrustProxy } from './proxyTrust.js';
 import { TreeDb } from './tree/db.js';
 import { registerTreeRoutes } from './tree/routes.js';
 import { seedRootIfEmpty } from './tree/seed.js';
@@ -26,6 +27,7 @@ export interface MakeServerOptions {
   corsOrigins?: string[];
   clientDistDir?: string | undefined;
   logger?: boolean;
+  trustProxyHops?: number;
 }
 
 export interface MakeServerResult {
@@ -49,6 +51,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const corsOriginsList = opts.corsOrigins ?? config.corsOrigins;
   const clientDistDir = opts.clientDistDir ?? config.clientDistDir;
   const useLogger = opts.logger ?? true;
+  const trustProxyHops = opts.trustProxyHops ?? config.trustProxyHops;
 
   const db = new ReefDb(dbPath);
   const hub = new Hub(config.wsMaxClients);
@@ -57,8 +60,13 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
-  // rejecting.
-  const app = Fastify({ logger: useLogger, trustProxy: true, bodyLimit: 8192 });
+  // rejecting. trustProxy trusts only the configured proxy hops, so a client
+  // cannot pick its own req.ip (and dodge the rate limits) via X-Forwarded-For.
+  const app = Fastify({
+    logger: useLogger,
+    trustProxy: makeTrustProxy(trustProxyHops),
+    bodyLimit: 8192,
+  });
   const corsOrigin = resolveCorsOrigin(corsOriginsList);
   await app.register(cors, { origin: corsOrigin });
   if (corsOrigin === true) {

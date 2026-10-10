@@ -8,6 +8,10 @@ never published) and stays at `0.1.0` on purpose. See CONTRIBUTING for why.
 
 ## [Unreleased]
 
+### Security
+
+- `req.ip` no longer trusts every `X-Forwarded-For` hop. A new `TRUST_PROXY_HOPS` (default `0`, `1` in `fly.toml` and `docker-compose.yml`) trusts only that many private/loopback proxy hops, so a client can no longer pick its own IP to bypass the per-device write limit and per-IP read limit.
+
 ### Added — Quest 3 MR surface (2026-05-25)
 
 A new client surface at `quest.html` runs the shared global reef in the

@@ -43,7 +43,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
     // Per-device write limit, mirroring the reef route. Off by default
     // (RATE_LIMIT_MAX=0); counts this device's live tree pieces in the window.
     const ua = req.headers['user-agent'] ?? 'unknown';
-    const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
+    const ip = req.ip || 'unknown';
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
     const windowStart = Date.now() - config.rateLimitWindowMs;
     // Count under the current AND previous window's hash so crossing a window

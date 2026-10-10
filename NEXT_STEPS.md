@@ -15,43 +15,44 @@ Related docs:
 
 ## Current state
 
-- **Main branch CI**: green. 434 tests pass across 4 packages (shared 21 /
-  generator 54 / server 99 / client 334 as of tree-overnight tip; +121
-  from the mid-April baseline as the tree surface has grown).
-- **Deployed version**: v0.4.0 live on the Beelink LXC at
-  `https://reef.home.local/`. Three surfaces available on main:
-  `index.html` (AR landscape, phone), `playground.html` (orbit camera,
-  desktop), `playground.html?mode=screen` (auto-orbit, museum display),
-  `tree.html` (desktop tree sandbox — PRs #73-#77).
-- **In flight on `tree-overnight`**: Phase A (persisted drag yaw,
-  committed) + Phase B (AR client reads tree data — in progress via
-  background agent). Not yet a PR. See
-  `docs/superpowers/specs/2026-04-24-ar-phase-2-migration.md` for design
-  rationale and `docs/superpowers/plans/2026-04-24-ar-phase-2-migration.md`
-  for task breakdown.
-- **Stack**: TypeScript 6 · Vite 7 · Vitest 4 · better-sqlite3 12 ·
-  Fastify 5 + @fastify/cors 11 (the Fastify 5 migration shipped in
-  v0.3.0) · node:22-alpine · happy-dom 20 · Oxlint.
-- **Live production**: **<https://reef.home.local/>** (LAN) — v0.2.0
-  image on LXC 300 behind Nginx Proxy Manager with self-signed TLS.
-  See _Managing the deployed LXC_ below.
+Snapshot as of 2026-10-10 (main at `aab759c`). The project is paused; no
+feature work is in flight.
+
+- **Main branch CI**: green. 756 tests pass across 4 packages (shared 35
+  / generator 68 / server 149 / client 504), from `pnpm -r test`.
+- **Stack**: TypeScript 7 · Vite 8 · Vitest 4 · three 0.185 ·
+  better-sqlite3 12 · Fastify 5 + @fastify/cors 11 · node:22-alpine
+  (server image) · happy-dom 20 · Oxlint 1.
+- **Surfaces on main**: `index.html` (AR landscape, phone),
+  `playground.html` (orbit camera, desktop), `playground.html?mode=screen`
+  (auto-orbit, museum display), `tree.html` (desktop tree sandbox),
+  `quest.html` (Quest 3 MR, merged in #87).
+- **Releases**: latest tag `v0.6.1` (2026-04-24, see `CHANGELOG.md`).
+  Tags `vX.Y.Z` publish `ghcr.io/costajohnt/coralreefar` (amd64 + arm64).
+- **Self-hosted deployment**: LXC 300 on the homelab Proxmox host behind
+  Nginx Proxy Manager, at <https://reef.home.local/> (LAN, self-signed
+  TLS). April 2026 notes recorded both `v0.2.0` and `v0.4.0` for this
+  container, and it has not been checked since; confirm what is running
+  with the commands in _Managing the deployed LXC_ before relying on it.
+- **Fly.io**: provisioned but paused on billing. The deploy workflow is
+  manual-only (`workflow_dispatch`); see _Alternative: Fly.io_.
 - **Live static demo**: <https://jcosta.tech/CoralReefAR/> (GitHub
   Pages). No backend; AR entry loads but can't save polyps.
-- **Docker image**: `ghcr.io/costajohnt/coralreefar:latest`. Multi-arch
-  (amd64 + arm64). Auto-published on `vX.Y.Z` tag. Last tag: v0.2.0.
 - **Branch protection** on `main`: CI required, linear history, no
-  force-push. Hook bypass for `costajohnt/*` repos so operator actions
-  flow without per-command approval.
-- **Rate limits**: off by default (tracked in [#25] — flip env vars for
+  force-push.
+- **Rate limits**: off by default (tracked in [#25]; flip env vars for
   production). Quest sessions go through a separate `questRateLimitMax`
   bucket (default 20/hour) selected by `surface: "quest"` on the polyp
   payload.
 
+History: the April "AR phase 2" work (persisted drag yaw, AR client
+reading tree data) was designed in
+`docs/superpowers/specs/2026-04-24-ar-phase-2-migration.md`; the
+`tree-overnight` branch it lived on is gone.
+
 ## Quest 3 MR surface
 
-A WebXR `immersive-ar` surface at `/quest.html`. Code-complete on the
-`quest3-mr-surface` branch (not yet merged). Awaiting on-headset
-validation before merge.
+A WebXR `immersive-ar` surface at `/quest.html`, merged to main in #87.
 
 What's in v1:
 - Enter MR button → `immersive-ar` session with passthrough + hand tracking
@@ -710,9 +711,8 @@ Carrying forward — these are intentional or accepted:
 - **No auth for regular users.** Anyone can plant once per device
   (or once, period, with limits off). Admin path is the moderation
   surface.
-- **Vitest 4 + Vite 7** is current; Vitest 4 needed Vite 6+ and we
-  skipped straight to 7. Tests pass; stay alert for Vite 7 ecosystem
-  gaps.
+- **Vitest 4 + Vite 8** is current. Tests pass; stay alert for Vite 8
+  ecosystem gaps.
 - **8th Wall binary EOL** — self-hosted projects work through Feb 28,
   2027; binary-engine maintenance ends ~March 2026. See _AR tracker_
   above.
