@@ -49,6 +49,11 @@ export const config = {
     (process.env.TREE_ROOT_SEED ?? '').trim() === ''
       ? undefined
       : Number(process.env.TREE_ROOT_SEED),
+  // Number of reverse proxies in front of the server whose X-Forwarded-For
+  // entry is trusted for req.ip (rate limits key on it). 0 = use the socket
+  // address and ignore the header (local dev). 1 = behind Fly's proxy or a
+  // cloudflared tunnel. See proxyTrust.ts for why this is not `trustProxy: true`.
+  trustProxyHops: Number(process.env.TRUST_PROXY_HOPS ?? 0),
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
   // Absolute path to the built Vite client bundle. When set, the server
   // serves the static files and SPA index fallbacks. Leave unset in dev so
@@ -84,6 +89,13 @@ if (!Number.isInteger(config.wsMaxClients) || config.wsMaxClients < 0) {
   throw new Error(
     `WS_MAX_CLIENTS must be a non-negative integer (0 = unlimited), ` +
       `got ${JSON.stringify(process.env.WS_MAX_CLIENTS)}`,
+  );
+}
+
+if (!Number.isInteger(config.trustProxyHops) || config.trustProxyHops < 0) {
+  throw new Error(
+    `TRUST_PROXY_HOPS must be a non-negative integer (0 = no proxy), ` +
+      `got ${JSON.stringify(process.env.TRUST_PROXY_HOPS)}`,
   );
 }
 
