@@ -24,6 +24,9 @@ services:
       # unset or wide-open "*". The :? guard turns that boot crash-loop into a
       # clear `docker compose up` error instead.
       - CORS_ORIGINS=${CORS_ORIGINS:?set CORS_ORIGINS in .env}
+      # Requests arrive through the cloudflared tunnel below, so trust its one
+      # X-Forwarded-For hop for req.ip (the key every rate limit uses).
+      - TRUST_PROXY_HOPS=1
       # Rate limits are opt-in and default off while the project is in
       # testing. Uncomment to re-enable for production.
       # - RATE_LIMIT_WINDOW_MS=3600000

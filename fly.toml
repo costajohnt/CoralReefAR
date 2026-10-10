@@ -30,6 +30,7 @@ primary_region = "iad"
   RATE_LIMIT_MAX = "1"               # polyps per device per window
   READ_RATE_LIMIT_PER_MIN = "60"     # reads per IP per minute on /api/reef + /api/stats
   READ_CACHE_TTL_MS = "1000"         # coalesce read scans within 1s
+  TRUST_PROXY_HOPS = "1"             # req.ip = the address Fly's proxy appended to X-Forwarded-For
   # WS_MAX_CLIENTS (default 1000/hub), SIM_RETENTION_MS (30d), and
   # SNAPSHOT_RETENTION_COUNT (90) already default to safe production values.
 
