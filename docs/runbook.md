@@ -15,6 +15,7 @@ container environment for a self-hosted deploy):
 | `RATE_LIMIT_WINDOW_MS` | `3600000` (1h) | Sliding window for the per-device write limit. |
 | `RATE_LIMIT_MAX` | `1` | Polyps per device per window. Also bounds tree writes. `0` = off. |
 | `READ_RATE_LIMIT_PER_MIN` | `60` | Per-IP token bucket on `GET /api/reef` and `/api/stats`. `0` = off. |
+| `TRUST_PROXY_HOPS` | `1` | Reverse-proxy hops whose `X-Forwarded-For` entry sets `req.ip`, which every rate limit keys on. Only private/loopback peers are trusted. `0` (code default) = socket address, header ignored. After a deploy, confirm the logged `remoteAddress` is the visitor's IP, not Fly's proxy. |
 | `READ_CACHE_TTL_MS` | `1000` | Coalesce read scans within this window. `0` = off. |
 | `WS_MAX_CLIENTS` | `1000` (default) | Max concurrent WebSocket connections per hub (reef + tree counted separately). `0` = unlimited. |
 | `SIM_RETENTION_MS` | `2592000000` (30d, default) | Prune sim decorations older than this. `0` = keep all. |

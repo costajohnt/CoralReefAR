@@ -49,7 +49,7 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     }
 
     const ua = req.headers['user-agent'] ?? 'unknown';
-    const ip = req.ip || req.headers['x-forwarded-for']?.toString() || 'unknown';
+    const ip = req.ip || 'unknown';
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
