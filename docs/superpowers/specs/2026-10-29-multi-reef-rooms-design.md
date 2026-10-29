@@ -1,6 +1,6 @@
 # Multi-Reef Rooms: Design
 
-**Status:** accepted 2026-10-29 (all 12 defaults in section 12 accepted by John); not yet implemented
+**Status:** accepted 2026-10-29 (all 11 defaults in section 12 accepted by John); not yet implemented
 **Date:** 2026-10-29
 **Issue:** #113
 **Decision owner:** John Costa
