@@ -171,8 +171,12 @@ if (config.mode === 'screen') {
         fetchStats: async (): Promise<GalleryStats> => {
           const r = await fetch(`${config.apiBase}/api/stats`);
           if (!r.ok) throw new Error(`stats ${r.status}`);
-          const j = (await r.json()) as { total: number; contributors?: number };
-          return { total: j.total, contributors: j.contributors ?? 0 };
+          const j = (await r.json()) as { total: number; contributors?: number; asOf?: number };
+          return {
+            total: j.total,
+            contributors: j.contributors ?? 0,
+            ...(typeof j.asOf === 'number' ? { asOf: j.asOf } : {}),
+          };
         },
       },
     );
@@ -228,10 +232,10 @@ socket.on((msg) => {
     installEffectsOnNewMeshes();
     const node = reef.node(msg.polyp.id);
     if (highlights && node) highlights.add(msg.polyp.id, node, performance.now() / 1000);
-    gallery?.polypAdded();
+    gallery?.polypAdded(msg.polyp);
   } else if (msg.type === 'polyp_removed') {
     highlights?.forget(msg.id);
-    if (reef.hasPolyp(msg.id)) gallery?.polypRemoved();
+    if (reef.hasPolyp(msg.id)) gallery?.polypRemoved(msg.id);
     reef.removePolyp(msg.id);
     mine?.removed(msg.id);
   } else if (msg.type === 'sim_update') {

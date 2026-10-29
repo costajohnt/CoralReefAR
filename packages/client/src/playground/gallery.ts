@@ -105,7 +105,12 @@ export class ArrivalHighlights {
 
 // --- Counter overlay ------------------------------------------------------
 
-export interface GalleryStats { total: number; contributors: number }
+export interface GalleryStats {
+  total: number;
+  contributors: number;
+  /** Server time the counts were computed at (/api/stats asOf). */
+  asOf?: number;
+}
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
@@ -178,7 +183,15 @@ export interface GalleryOptions {
 
 export class GalleryOverlay {
   private stats: GalleryStats | null = null;
-  private delta = 0;
+  // Live changes since the last stats snapshot, keyed by polyp id so a
+  // duplicate message counts once and an arrival that's then undone nets out.
+  // Arrivals carry the server's createdAt and are dropped once a snapshot
+  // with asOf >= createdAt has counted them. Removals carry no server time
+  // (the WS message is just an id), so one is dropped only if it was
+  // received before the refresh request went out, when the server had
+  // certainly applied it.
+  private readonly adds = new Map<number, number>();
+  private readonly removals = new Map<number, number>();
   private timer: ReturnType<typeof setInterval> | undefined;
 
   constructor(private readonly dom: GalleryDom, private readonly opts: GalleryOptions) {}
@@ -196,8 +209,9 @@ export class GalleryOverlay {
     this.timer = undefined;
   }
 
-  polypAdded(): void {
-    this.delta++;
+  polypAdded(p: { id: number; createdAt: number }): void {
+    this.removals.delete(p.id);
+    this.adds.set(p.id, p.createdAt);
     this.render();
     const n = this.total();
     this.dom.newsEl.textContent = n === null
@@ -205,19 +219,30 @@ export class GalleryOverlay {
       : `A new coral was just planted. The reef now has ${plural(n, 'coral', 'corals')}.`;
   }
 
-  polypRemoved(): void {
-    this.delta--;
+  polypRemoved(id: number): void {
+    // An arrival we were still counting locally simply cancels out.
+    if (this.adds.delete(id)) { this.render(); return; }
+    this.removals.set(id, performance.now());
     this.render();
   }
 
+  /** Re-sync with the server now (also runs on the refresh interval). */
+  refreshNow(): Promise<void> {
+    return this.refresh();
+  }
+
   private total(): number | null {
-    return this.stats ? Math.max(0, this.stats.total + this.delta) : null;
+    return this.stats ? Math.max(0, this.stats.total + this.adds.size - this.removals.size) : null;
   }
 
   private async refresh(): Promise<void> {
+    const sentAt = performance.now();
     try {
-      this.stats = await this.opts.fetchStats();
-      this.delta = 0;
+      const stats = await this.opts.fetchStats();
+      const asOf = stats.asOf ?? Number.POSITIVE_INFINITY;
+      for (const [id, createdAt] of this.adds) if (createdAt <= asOf) this.adds.delete(id);
+      for (const [id, receivedAt] of this.removals) if (receivedAt < sentAt) this.removals.delete(id);
+      this.stats = stats;
       this.render();
     } catch (e) {
       console.warn('gallery stats refresh failed', e);

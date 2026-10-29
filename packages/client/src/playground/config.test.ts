@@ -46,13 +46,29 @@ describe('readPlaygroundConfig', () => {
     expect(readPlaygroundConfig().mode).toBe('screen');
   });
 
-  test('?plant= overrides the planting URL shown in the gallery QR code', () => {
-    vi.stubGlobal('location', { search: '?plant=' + encodeURIComponent('https://reef.example/?tracker=noop'), origin: 'https://x.test' });
+  test('a same-origin ?plant= overrides the planting URL', () => {
+    vi.stubGlobal('location', { search: '?plant=' + encodeURIComponent('https://reef.example/?tracker=noop'), origin: 'https://reef.example' });
     expect(readPlaygroundConfig().plantUrl).toBe('https://reef.example/?tracker=noop');
   });
 
+  test('a path ?plant= resolves against this origin', () => {
+    vi.stubGlobal('location', { search: '?plant=' + encodeURIComponent('/quest.html?persist=1'), origin: 'https://reef.example' });
+    expect(readPlaygroundConfig().plantUrl).toBe('https://reef.example/quest.html?persist=1');
+  });
+
+  test('a cross-origin ?plant= is ignored with a warning (no QR codes to other sites)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const other of ['https://evil.example/', '//evil.example/x', 'http://reef.example/']) {
+      vi.stubGlobal('location', { search: '?plant=' + encodeURIComponent(other), origin: 'https://reef.example' });
+      expect(readPlaygroundConfig().plantUrl).toBe('https://reef.example/');
+    }
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
   test('a non-http(s) ?plant= is ignored (no javascript: or data: QR codes)', () => {
-    for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'not a url']) {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    for (const bad of ['javascript:alert(1)', 'data:text/html,hi']) {
       vi.stubGlobal('location', { search: '?plant=' + encodeURIComponent(bad), origin: 'https://reef.example' });
       expect(readPlaygroundConfig().plantUrl).toBe('https://reef.example/');
     }

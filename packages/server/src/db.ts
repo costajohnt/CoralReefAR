@@ -14,6 +14,8 @@ export interface ReefStats {
    * stable per browser. Unowned rows from older clients aren't counted.
    */
   contributors: number;
+  /** Server time (ms) the counts were computed at; lets clients merge live deltas. */
+  asOf: number;
   firstAt: number | null;
   lastAt: number | null;
   last24h: number;
@@ -347,11 +349,13 @@ export class ReefDb {
   }
 
   stats(): ReefStats {
+    // Taken before the counts: any polyp with created_at <= asOf was inserted
+    // before this query ran, so it's included (clients rely on this).
+    const now = Date.now();
     const overview = this.stmt.statsOverview.get() as {
       total: number; uniqueDevices: number; contributors: number;
       firstAt: number | null; lastAt: number | null;
     };
-    const now = Date.now();
     const last24h = (this.stmt.statsRecent.get(now - 86_400_000) as { n: number }).n;
     const last7d = (this.stmt.statsRecent.get(now - 7 * 86_400_000) as { n: number }).n;
     const bySpecies = (this.stmt.statsBySpecies.all() as Array<{ species: string; n: number }>)
@@ -360,6 +364,7 @@ export class ReefDb {
       total: overview.total,
       uniqueDevices: overview.uniqueDevices,
       contributors: overview.contributors,
+      asOf: now,
       firstAt: overview.firstAt,
       lastAt: overview.lastAt,
       last24h,

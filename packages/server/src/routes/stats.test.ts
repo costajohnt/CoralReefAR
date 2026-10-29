@@ -114,3 +114,11 @@ test('stats: contributors counts distinct stable owner hashes, not rotating devi
   assert.equal(j.uniqueDevices, 3);
   await app.close();
 });
+
+test('stats: asOf is the server time the counts were computed at', async () => {
+  const { app } = buildApp();
+  const before = Date.now();
+  const j = (await app.inject({ method: 'GET', url: '/api/stats' })).json() as { asOf: number };
+  assert.ok(j.asOf >= before && j.asOf <= Date.now());
+  await app.close();
+});

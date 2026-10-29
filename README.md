@@ -47,7 +47,7 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     the landscape reef. `?mode=screen` (alias `?mode=gallery`) turns it
     into a wall display: drifting cinematic orbit, a glow on polyps as
     they're planted, a live coral/visitor counter, and a QR code to the
-    planting app (`?plant=<url>` overrides the QR target).
+    planting app (`?plant=<path or same-origin url>` overrides the QR target).
   - **Tree** (`tree.html`) — a different reef. Fractal branching-coral
     web built by attaching small composable pieces to each other's
     tips. Avatar-bioluminescent styling (bloom post-processing, vivid

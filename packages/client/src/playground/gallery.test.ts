@@ -132,7 +132,7 @@ describe('GalleryOverlay', () => {
       </div>`;
   });
 
-  function make(stats: () => Promise<{ total: number; contributors: number }>) {
+  function make(stats: () => Promise<{ total: number; contributors: number; asOf?: number }>) {
     return new GalleryOverlay({
       root: document.getElementById('gallery')!,
       countEl: document.getElementById('galleryCount')!,
@@ -141,32 +141,90 @@ describe('GalleryOverlay', () => {
       qrUrlEl: document.getElementById('galleryQrUrl')!,
     }, { fetchStats: stats, plantUrl: 'https://reef.example/' });
   }
+  const count = () => document.getElementById('galleryCount')!.textContent;
 
   test('shows the overlay, the QR code and its URL, and the counter from stats', async () => {
-    const o = make(async () => ({ total: 10, contributors: 4 }));
+    const o = make(async () => ({ total: 10, contributors: 4, asOf: 1000 }));
     await o.start();
     expect(document.getElementById('gallery')!.hidden).toBe(false);
     expect(document.querySelector('#galleryQrCode svg')).not.toBeNull();
     expect(document.getElementById('galleryQrUrl')!.textContent).toBe('reef.example');
-    expect(document.getElementById('galleryCount')!.textContent).toBe('10 corals planted by 4 visitors');
+    expect(count()).toBe('10 corals planted by 4 visitors');
     o.stop();
   });
 
   test('live arrivals/removals adjust the total between refreshes and announce arrivals', async () => {
-    const o = make(async () => ({ total: 10, contributors: 4 }));
+    const o = make(async () => ({ total: 10, contributors: 4, asOf: 1000 }));
     await o.start();
-    o.polypAdded();
-    o.polypAdded();
-    o.polypRemoved();
-    expect(document.getElementById('galleryCount')!.textContent).toBe('11 corals planted by 4 visitors');
+    o.polypAdded({ id: 11, createdAt: 2000 });
+    o.polypAdded({ id: 12, createdAt: 2001 });
+    o.polypRemoved(3);
+    expect(count()).toBe('11 corals planted by 4 visitors');
     expect(document.getElementById('galleryNews')!.textContent).toMatch(/new coral/i);
+    o.stop();
+  });
+
+  test('a duplicate arrival for the same id counts once', async () => {
+    const o = make(async () => ({ total: 10, contributors: 4, asOf: 1000 }));
+    await o.start();
+    o.polypAdded({ id: 11, createdAt: 2000 });
+    o.polypAdded({ id: 11, createdAt: 2000 });
+    expect(count()).toBe('11 corals planted by 4 visitors');
+    o.stop();
+  });
+
+  test('an arrival that is then undone nets to zero', async () => {
+    const o = make(async () => ({ total: 10, contributors: 4, asOf: 1000 }));
+    await o.start();
+    o.polypAdded({ id: 11, createdAt: 2000 });
+    o.polypRemoved(11);
+    expect(count()).toBe('10 corals planted by 4 visitors');
+    o.stop();
+  });
+
+  test('refresh race: arrivals after the stats snapshot survive, ones it already counted are dropped', async () => {
+    let call = 0;
+    let release!: () => void;
+    const o = make(async () => {
+      call++;
+      if (call === 1) return { total: 10, contributors: 4, asOf: 1000 };
+      await new Promise<void>((r) => { release = r; });
+      // Server computed stats at t=3000: it already includes #11 (2000) but not #12 (4000).
+      return { total: 11, contributors: 5, asOf: 3000 };
+    });
+    await o.start();
+    o.polypAdded({ id: 11, createdAt: 2000 });
+    const refreshing = o.refreshNow();
+    o.polypAdded({ id: 12, createdAt: 4000 }); // lands while the fetch is in flight
+    release();
+    await refreshing;
+    expect(count()).toBe('12 corals planted by 5 visitors');
+    o.stop();
+  });
+
+  test('removals seen before a refresh was sent are dropped; ones during/after are kept', async () => {
+    let call = 0;
+    let release!: () => void;
+    const o = make(async () => {
+      call++;
+      if (call === 1) return { total: 10, contributors: 4, asOf: 1000 };
+      await new Promise<void>((r) => { release = r; });
+      return { total: 9, contributors: 4, asOf: 3000 }; // reflects removal of #3
+    });
+    await o.start();
+    o.polypRemoved(3);
+    const refreshing = o.refreshNow();
+    o.polypRemoved(4); // after the request went out
+    release();
+    await refreshing;
+    expect(count()).toBe('8 corals planted by 4 visitors');
     o.stop();
   });
 
   test('refreshes stats periodically and stops on stop()', async () => {
     vi.useFakeTimers();
     let total = 1;
-    const fetchStats = vi.fn(async () => ({ total: total++, contributors: 1 }));
+    const fetchStats = vi.fn(async () => ({ total: total++, contributors: 1, asOf: 0 }));
     const o = make(fetchStats);
     await o.start();
     await vi.advanceTimersByTimeAsync(60_000);
