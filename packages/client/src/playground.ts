@@ -6,6 +6,7 @@ import { installSway } from './scene/currentSway.js';
 import { installPulse } from './scene/pulse.js';
 import { Reef } from './scene/reef.js';
 import { FishSchool } from './sim/fish.js';
+import { EcosystemView } from './sim/ecosystemView.js';
 import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { createPedestal } from './playground/scene.js';
@@ -39,6 +40,9 @@ scene.add(reef.anchor);
 
 const fish = new FishSchool();
 reef.anchor.add(fish.points);
+// Reef-wide bleaching (#117), shared by every polyp's sway shader.
+const bleach = { value: 0 };
+const eco = new EcosystemView({ fish, bleach, statusEl: document.getElementById('reefHealth') });
 
 const swayClock = { value: 0 };
 
@@ -190,7 +194,7 @@ function installEffectsOnNewMeshes(): void {
     if (!m.isMesh) continue;
     const flags = m.userData as Record<PropertyKey, unknown>;
     if (!flags[SWAY_INSTALLED]) {
-      installSway(m, swayClock);
+      installSway(m, swayClock, bleach);
       flags[SWAY_INSTALLED] = true;
     }
     if (!flags[PULSE_INSTALLED]) {
@@ -208,6 +212,7 @@ async function loadInitial(): Promise<void> {
     const state = await fetchReef();
     for (const p of state.polyps) reef.addPolyp(p, false);
     for (const d of state.sim) reef.applySim(d);
+    eco.apply(state.ecosystem, { immediate: true });
     installEffectsOnNewMeshes();
     // Screen mode is a museum display: no per-visitor highlight.
     if (config.mode === 'interactive') void mine?.load();
@@ -240,6 +245,7 @@ socket.on((msg) => {
     mine?.removed(msg.id);
   } else if (msg.type === 'sim_update') {
     for (const d of msg.updates) reef.applySim(d);
+    eco.apply(msg.ecosystem);
   }
 });
 
@@ -258,6 +264,7 @@ function loop(t: number): void {
   lastT = t;
   swayClock.value = t / 1000;
   fish.update(dt);
+  eco.update(dt);
   reef.animateGrowth(t);
 
   if (config.mode === 'screen') {

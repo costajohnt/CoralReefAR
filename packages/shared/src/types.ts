@@ -35,4 +35,6 @@ export interface ReefState {
   polyps: PublicPolyp[];
   sim: SimDelta[];
   serverTime: number;
+  /** Reef-wide ecosystem state (#117). Absent from older servers. */
+  ecosystem?: import('./ecosystem.js').EcosystemState;
 }

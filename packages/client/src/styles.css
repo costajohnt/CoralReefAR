@@ -66,6 +66,8 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
 #picker #undoBtn:disabled { opacity: 0.45; }
 #mineNote { text-align: center; margin: 0.15rem 0 0; color: #7fffd4; font-size: 0.68rem; }
 #mineNote:empty { display: none; }
+#reefHealth { text-align: center; margin: 0.15rem 0 0; color: #f3d9a4; font-size: 0.68rem; }
+#reefHealth:empty { display: none; }
 #hint { text-align: center; margin: 0.25rem 0 0; color: #aab; font-size: 0.72rem; }
 
 .hidden { display: none !important; }

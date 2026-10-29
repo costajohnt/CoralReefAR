@@ -59,6 +59,24 @@ point, not a measured one.
   the limiter counts a device under both the current and previous window's
   hash, so crossing a window boundary no longer resets the count.
 
+## Reef ecosystem (sim tick)
+
+Each sim tick (`SIM_INTERVAL_MS`, hourly by default) steps the reef-wide
+ecosystem state (fish count, bleaching, phase) and stores it in the single-row
+`ecosystem_state` table. Tunables are constants in
+`packages/server/src/ecosystem.ts`. Polyps are never modified by it.
+
+- **Downtime is capped at 24 hours of catch-up** (`MAX_CATCHUP_HOURS`). After
+  a longer outage the first tick applies at most 24 h of bleaching change, and
+  any decline beyond that is dropped by design. The reef shouldn't come back
+  from a maintenance window looking abandoned, and later ticks continue
+  normally from there.
+- `computedAt` never moves backwards, so a host clock stepping back and then
+  forward doesn't add time twice.
+- **Reset to healthy:** `DELETE FROM ecosystem_state;`. The next tick starts
+  from an unbleached state (it doesn't jump to the current stagnation level),
+  and `GET /api/reef` serves a computed healthy state until then.
+
 ## Backups (Litestream)
 
 All production state is one SQLite file (`/data/reef.db`) on one Fly volume.

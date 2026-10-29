@@ -31,11 +31,28 @@ const simDelta = z.object({
   createdAt: z.number(),
 });
 
+// Optional on sim_update so older clients (whose z.object strips unknown keys)
+// keep accepting the frame. Phase is a plain string for version-skew tolerance.
+export const EcosystemStateSchema = z.object({
+  version: z.number(),
+  computedAt: z.number(),
+  polypCount: z.number(),
+  plantedLast7d: z.number(),
+  daysSinceLastPlant: z.number().nullable(),
+  bleaching: z.number(),
+  fishCount: z.number(),
+  phase: z.string(),
+});
+
 export const ServerMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hello'), polypCount: z.number(), serverTime: z.number() }),
   z.object({ type: z.literal('polyp_added'), polyp: PublicPolypSchema }),
   z.object({ type: z.literal('polyp_removed'), id: z.number() }),
-  z.object({ type: z.literal('sim_update'), updates: z.array(simDelta) }),
+  z.object({
+    type: z.literal('sim_update'),
+    updates: z.array(simDelta),
+    ecosystem: EcosystemStateSchema.optional(),
+  }),
 ]);
 
 // The tree polyp shape as it crosses the wire — embedded in `tree_polyp_added`

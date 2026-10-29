@@ -5,6 +5,7 @@ import { installLighting } from './scene/lighting.js';
 import { installSway } from './scene/currentSway.js';
 import { installPulse } from './scene/pulse.js';
 import { FishSchool } from './sim/fish.js';
+import { EcosystemView } from './sim/ecosystemView.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
 import { MyPolyps } from './ui/mine.js';
@@ -36,6 +37,9 @@ export class App {
   // Null when the page has no #undoBtn (the feature is optional UI).
   private readonly mine: MyPolyps | null;
   private readonly fish = new FishSchool();
+  // Reef-wide bleaching (#117), shared by every polyp's sway shader.
+  private readonly bleach = { value: 0 };
+  private readonly eco: EcosystemView;
   private readonly swayClock = { value: 0 };
   // Selected in start() after we've given the 8th Wall engine script a chance
   // to load; picking here would always lose the race.
@@ -70,6 +74,11 @@ export class App {
 
     this.placement = new Placement(this.reef, this.camera, this.reef.anchor);
     this.picker = new Picker(opts.pickerRoot);
+    this.eco = new EcosystemView({
+      fish: this.fish,
+      bleach: this.bleach,
+      statusEl: opts.pickerRoot.querySelector<HTMLElement>('#reefHealth'),
+    });
     const undoBtn = opts.pickerRoot.querySelector<HTMLButtonElement>('#undoBtn');
     this.mine = undoBtn
       ? new MyPolyps({
@@ -155,6 +164,7 @@ export class App {
       const state = await fetchReef();
       for (const p of state.polyps) this.reef.addPolyp(p, false);
       for (const d of state.sim) this.reef.applySim(d);
+      this.eco.apply(state.ecosystem, { immediate: true });
       this.installSwayOnNewMeshes();
       void this.mine?.load();
     } catch (e) {
@@ -174,7 +184,7 @@ export class App {
       if (!m.isMesh) continue;
       const flags = m.userData as Record<PropertyKey, unknown>;
       if (!flags[SWAY_INSTALLED]) {
-        installSway(m, this.swayClock);
+        installSway(m, this.swayClock, this.bleach);
         flags[SWAY_INSTALLED] = true;
       }
       if (!flags[PULSE_INSTALLED]) {
@@ -312,6 +322,7 @@ export class App {
       }
       else if (msg.type === 'sim_update') {
         for (const d of msg.updates) this.reef.applySim(d);
+        this.eco.apply(msg.ecosystem);
       }
     });
   }
@@ -346,6 +357,7 @@ export class App {
     this.lastFrameT = t;
     this.swayClock.value = t / 1000;
     this.fish.update(dt);
+    this.eco.update(dt);
     this.reef.animateGrowth(t);
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame((tt) => this.loop(tt));
