@@ -7,9 +7,12 @@
 #   4. fly volumes create reef_data --size 1 --region iad --yes
 #   5. fly secrets set ADMIN_TOKEN="$(openssl rand -hex 32)"
 #   6. fly secrets set CORS_ORIGINS="https://coralreefar.fly.dev"
-#   7. In GitHub: repo settings → secrets → add FLY_API_TOKEN
+#   7. fly storage create -a coralreefar -n coralreefar-backups
+#      (Tigris bucket + secrets; turns on Litestream backups, see
+#      docs/runbook.md "Backups". Without it the app runs with no backups.)
+#   8. In GitHub: repo settings → secrets → add FLY_API_TOKEN
 #      (value from `fly tokens create deploy`)
-#   8. Push to main — .github/workflows/fly-deploy.yml does the rest.
+#   9. Push to main — .github/workflows/fly-deploy.yml does the rest.
 
 app = "coralreefar"
 primary_region = "iad"
