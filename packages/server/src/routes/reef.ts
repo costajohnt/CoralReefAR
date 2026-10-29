@@ -36,6 +36,12 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
     : null;
 
+  // Separate bucket from reads so undo traffic can't starve GET /api/reef
+  // (or vice versa).
+  const undoLimit = config.undoRateLimitPerMin > 0
+    ? perIpRateLimit({ tokensPerInterval: config.undoRateLimitPerMin, intervalMs: 60_000 })
+    : null;
+
   // The polyps + sim scans are the expensive part of GET /api/reef. Cache them
   // for READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
   // payload is bounded to the retention window (0 = retention disabled → all).
@@ -85,6 +91,14 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
   // UNDO_WINDOW_MS of planting it. Not admin-gated: the owner token is the
   // authorization. All checks + the delete are one transaction (db.undoPolyp).
   app.post('/api/reef/polyp/:id/undo', async (req, reply) => {
+    if (undoLimit) {
+      const check = undoLimit(req.ip || 'unknown');
+      if (!check.ok) {
+        counters.inc('rate_limited');
+        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
+        return reply.status(429).send({ error: 'rate_limited' });
+      }
+    }
     const { id: rawId } = req.params as { id: string };
     if (!NUMERIC_ID_RE.test(rawId)) return reply.status(400).send({ error: 'invalid_id' });
     const token = readOwnerToken(req);

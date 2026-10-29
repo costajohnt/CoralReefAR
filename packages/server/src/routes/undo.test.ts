@@ -8,6 +8,7 @@ import { OWNER_HEADER, UNDO_WINDOW_MS, type ServerMessage } from '@reef/shared';
 import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
 import { registerReefRoutes } from './reef.js';
+import { config } from '../config.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb; sent: ServerMessage[] } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-undo-'));
@@ -241,4 +242,39 @@ test('undo: snapshot and sim tick around an undo stay consistent', async () => {
   assert.ok(updates.length > 0);
   assert.ok(updates.every((u) => u.polypId === keep));
   await app.close();
+});
+
+test('undo: per-IP rate limit returns 429 with Retry-After once the bucket is empty', async () => {
+  const saved = config.undoRateLimitPerMin;
+  config.undoRateLimitPerMin = 2; // the limiter is built at route registration
+  try {
+    const { app, db } = buildApp();
+    const id = await plant(app, ALICE);
+    assert.equal((await undo(app, id, BOB)).statusCode, 403);
+    assert.equal((await undo(app, id, BOB)).statusCode, 403);
+    const limited = await undo(app, id, ALICE);
+    assert.equal(limited.statusCode, 429);
+    assert.equal((limited.json() as { error: string }).error, 'rate_limited');
+    assert.ok(Number(limited.headers['retry-after']) >= 1);
+    // Rejected before any DB work: the owner's polyp is still live.
+    assert.equal(db.listPublicPolyps().length, 1);
+    // Planting and reading are separate buckets and unaffected.
+    assert.equal((await app.inject({ method: 'GET', url: '/api/reef' })).statusCode, 200);
+    await app.close();
+  } finally {
+    config.undoRateLimitPerMin = saved;
+  }
+});
+
+test('undo: UNDO_RATE_LIMIT_PER_MIN=0 disables the limiter', async () => {
+  const saved = config.undoRateLimitPerMin;
+  config.undoRateLimitPerMin = 0;
+  try {
+    const { app } = buildApp();
+    const id = await plant(app, ALICE);
+    for (let i = 0; i < 15; i++) assert.equal((await undo(app, id, BOB)).statusCode, 403);
+    await app.close();
+  } finally {
+    config.undoRateLimitPerMin = saved;
+  }
 });
