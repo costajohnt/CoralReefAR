@@ -41,6 +41,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Entrypoint tests
+        run: sh infra/docker-entrypoint.test.sh
+
       - name: Typecheck
         run: pnpm -r typecheck
 
@@ -110,6 +113,17 @@ jobs:
           echo "server process uid: $uid"
           if [ -z "$uid" ] || [ "$uid" = "0" ]; then
             echo "::error::container did not run as a non-root user (uid='$uid')"; exit 1
+          fi
+
+      - name: Backup smoke (Litestream replicate + restore against local S3)
+        run: sh infra/litestream-smoke.sh reef-server:ci
+
+      - name: Backups stay off without replica secrets
+        run: |
+          out=$(docker run --rm reef-server:ci true 2>&1)
+          echo "$out"
+          if [ "$out" != "[entrypoint] backups disabled: no Litestream replica configured (BUCKET_NAME unset)" ]; then
+            echo "::error::expected exactly one 'backups disabled' line"; exit 1
           fi
 
       - name: Smoke test the Fly volume path (DB on /data, written as non-root)

@@ -1,0 +1,20 @@
+# Litestream config, used only when the replica secrets are set (see
+# infra/docker-entrypoint.sh and docs/runbook.md, "Backups"). Every value comes
+# from the environment; there are no credentials in this file. The access keys
+# are read from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY automatically. Only
+# variables set on the app itself (fly.toml [env] / secrets) belong here, so
+# `litestream` run from `fly ssh console` resolves the same replica.
+snapshot:
+  # Full snapshot daily, keep a week. Point-in-time restore covers this window.
+  interval: 24h
+  retention: 168h
+
+dbs:
+  - path: ${DB_PATH}
+    replica:
+      type: s3
+      bucket: ${BUCKET_NAME}
+      path: reef.db
+      endpoint: ${AWS_ENDPOINT_URL_S3}
+      region: ${AWS_REGION}
+      sync-interval: 1s
