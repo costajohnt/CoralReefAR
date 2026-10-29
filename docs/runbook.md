@@ -111,8 +111,8 @@ built after it merged).
 # Boot log should say "backups enabled", not "backups disabled".
 fly logs -a coralreefar --no-tail | grep -E 'entrypoint|litestream|level=(WARN|ERROR)'
 
-# What Litestream has in the bucket (LTX files, newest last).
-fly ssh console -a coralreefar -C 'litestream ltx -config /etc/litestream.yml /data/reef.db'
+# What Litestream has in the bucket, every compaction level (LTX files).
+fly ssh console -a coralreefar -C 'litestream ltx -level all -config /etc/litestream.yml /data/reef.db'
 ```
 
 `level=ERROR` lines from Litestream mean replication is failing (bad keys,
@@ -131,10 +131,10 @@ fly deploy --image ghcr.io/costajohnt/coralreefar:latest -a coralreefar
 fly logs -a coralreefar --no-tail | grep entrypoint   # "restored /data/reef.db from s3://..."
 ```
 
-If that restore fails (bucket unreachable, bad keys), the server still starts,
-with a new empty DB and **replication off** so the empty DB can't be pushed
-over the good backup. The log says `restore FAILED`. Fix the cause, then stop
-the machine, delete `/data/reef.db*`, and start it again to retry.
+If that restore fails (bucket unreachable, bad keys, wrong region), or it
+reports "no backup" but a listing of the bucket isn't provably empty, the
+server still starts on a new empty DB, with **replication held** (next
+section) so that empty DB is never pushed over the real backup.
 
 **Manual, to a point in time** (e.g. after a bad admin action). Restore to a
 side file, check it, then swap it in while the server is stopped:
@@ -159,10 +159,81 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
 litestream restore -o reef.db "s3://coralreefar-backups/reef.db?endpoint=fly.storage.tigris.dev&region=auto"
 ```
 
+### Replication held
+
+The entrypoint writes `/data/reef.db.replication-hold` (a UTC timestamp and
+the reason) whenever it can't prove replicating is safe:
+
+- the boot-time restore failed, or
+- the restore found no backup, but `litestream ltx -json -level all` either
+  failed (auth, region, network; a listing error is never read as "empty") or
+  listed files.
+
+While that file exists, **every** boot starts the server without Litestream
+and logs:
+
+```
+[entrypoint] replication HELD: 2026-10-29T16:37:43Z restore failed from s3://coralreefar-backups/reef.db; the server started on a new empty DB
+[entrypoint] the server runs WITHOUT backups until /data/reef.db.replication-hold is removed (see docs/runbook.md, "Replication held")
+```
+
+Check for it with
+`fly logs -a coralreefar --no-tail | grep 'replication HELD'`. To clear it,
+first read "Retention and lineage" below and take a copy of the backup, then
+pick one:
+
+- **The backup is the truth** (usual case after a lost volume): fix the cause
+  (secrets, bucket), then in `fly ssh console` run
+  `rm /data/reef.db /data/reef.db-wal /data/reef.db-shm /data/reef.db.replication-hold`
+  and `fly machine restart`. The boot restores from the bucket. Anything
+  written to the interim empty DB is lost.
+- **The local DB is the truth** (you've decided the bucket's contents don't
+  matter): `rm /data/reef.db.replication-hold` and `fly machine restart`.
+  Replication resumes and the local DB becomes the latest backup.
+
+### Retention and lineage (read before any manual intervention)
+
+Behaviour verified against Litestream 0.5.17 and a local S3 server:
+
+- Litestream 0.5 has no separate "generations". A DB that starts replicating
+  to a bucket path that already holds data is treated as the **next state of
+  that same history**: the log only says `detected database behind replica`
+  (level INFO, no warning), and from then on a plain restore returns the new
+  DB, not the old one.
+- The old state stays reachable for a while with `litestream restore -txid
+  <old max_txid>` (find it with `litestream ltx -level all`), but it ages out:
+  in a test with a short snapshot retention, the old snapshot was replaced and
+  its level 0 and 1 files were deleted within about six minutes, leaving one
+  higher-level file. With this repo's settings (daily snapshots, 7 days
+  retention) assume the old state is gone within a week, possibly sooner.
+
+That's why the entrypoint holds replication when in doubt. It also means any
+manual step that starts a different DB replicating (removing a hold marker,
+swapping in a restored file, pointing a new app at the bucket) overwrites
+what a plain restore returns. **Before any of those, take an off-box copy of
+the current backup:**
+
+```sh
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # from your password manager, not the shell history
+litestream restore -o "reef-$(date -u +%Y%m%dT%H%M%SZ).db" \
+  "s3://coralreefar-backups/reef.db?endpoint=fly.storage.tigris.dev&region=auto"
+sqlite3 reef-*.db 'PRAGMA integrity_check; SELECT count(*) FROM polyps;'
+```
+
+Keep that file until the reef has replicated cleanly for a while. For a
+second safety net, Tigris buckets can be switched to snapshot-enabled in the
+Tigris dashboard (Bucket Settings, Storage Settings), which keeps object
+history independent of Litestream's retention. That isn't set up by this
+repo, and its exact snapshot workflow hasn't been tested here.
+
 ### Tested
 
-`infra/docker-entrypoint.test.sh` covers the entrypoint's decisions with stubs
-(disabled, partial config, existing DB untouched, restore, empty replica,
-restore failure). `infra/litestream-smoke.sh` runs the real image against a
-local S3 server: replicate, restore into a fresh volume, and boot with an
-unreachable replica. CI runs both.
+`infra/docker-entrypoint.test.sh` covers the entrypoint's decisions with stubs:
+disabled, partial config, existing DB untouched, restore, verified-empty
+replica, non-empty or unlistable replica (held), restore failure (held), and a
+restart after a failure (still held until the marker is removed).
+`infra/litestream-smoke.sh` runs the real image against a local S3 server:
+replicate from an empty bucket, restore into a fresh volume, boot with an
+unreachable replica (held, marker written), restart that volume with the
+replica reachable (still held), and an existing DB with a dead replica
+(replicating, server up). CI runs both.
