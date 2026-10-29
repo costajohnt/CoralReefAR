@@ -8,6 +8,7 @@ import { FishSchool } from './sim/fish.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
 import { MyPolyps } from './ui/mine.js';
+import { wireExportButton } from './ui/exportButton.js';
 import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
@@ -81,6 +82,9 @@ export class App {
           onUndone: () => { this.placementLockedUntil = 0; },
         })
       : null;
+
+    const exportBtn = opts.pickerRoot.querySelector<HTMLButtonElement>('#exportBtn');
+    if (exportBtn) wireExportButton(exportBtn, this.reef, (t) => this.picker.setHint(t));
 
     this.wireInteractions();
     this.wireSocket();

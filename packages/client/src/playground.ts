@@ -13,6 +13,7 @@ import { readPlaygroundConfig } from './playground/config.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
 import { MyPolyps } from './ui/mine.js';
+import { wireExportButton } from './ui/exportButton.js';
 import { computePlacementFromClick } from './playground/interaction.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
 
@@ -69,6 +70,8 @@ let currentSeed = Math.floor(Math.random() * 0xffffffff);
 
 if (config.mode === 'interactive') {
   picker.show();
+  const exportBtn = document.getElementById('exportBtn') as HTMLButtonElement | null;
+  if (exportBtn) wireExportButton(exportBtn, reef, (t) => { hintEl.textContent = t; });
   canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
     const ndc = new Vector2(
