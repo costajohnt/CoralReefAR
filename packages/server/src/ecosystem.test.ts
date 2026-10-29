@@ -105,3 +105,15 @@ test('an empty reef is calm: no bleaching target, minimum fish', () => {
   assert.equal(s.fishCount, 8);
   assert.equal(s.phase, 'thriving');
 });
+
+test('computedAt never goes backwards, so a backward-then-forward clock cannot over-advance', () => {
+  const prev = run(stepEcosystem(null, inputs()), T0, 24 * 10, T0); // bleaching on its way up
+  const back = stepEcosystem(prev, inputs({ now: prev.computedAt - 5 * H, lastPlantedAt: T0, plantedLast7d: 0 }));
+  assert.equal(back.computedAt, prev.computedAt);
+  assert.equal(back.bleaching, prev.bleaching);
+  const forward = stepEcosystem(back, inputs({ now: prev.computedAt + H, lastPlantedAt: T0, plantedLast7d: 0 }));
+  // Exactly one hour of change, not the six hours a rewound computedAt would allow.
+  assert.ok(forward.bleaching - prev.bleaching <= BLEACH_UP_PER_HOUR + 1e-9);
+  assert.ok(forward.bleaching > prev.bleaching);
+  assert.equal(forward.computedAt, prev.computedAt + H);
+});

@@ -73,7 +73,9 @@ export function stepEcosystem(prev: EcosystemState | null, i: EcosystemInputs): 
   }
   return {
     version: 1,
-    computedAt: i.now,
+    // Never moves backwards: after a clock step back, the next forward tick
+    // measures elapsed time from the latest time already accounted for.
+    computedAt: prev ? Math.max(prev.computedAt, i.now) : i.now,
     polypCount: i.polypCount,
     plantedLast7d: i.plantedLast7d,
     daysSinceLastPlant: days === null ? null : Math.floor(days),
