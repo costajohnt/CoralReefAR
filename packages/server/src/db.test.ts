@@ -49,13 +49,36 @@ test('migrations: back-fills an existing db that has tables but no tracking row'
   db1.insertPolyp(basePolyp());
   const expected = appliedMigrations(db1);
   db1.db.exec('DROP TABLE schema_migrations');
+  // Pre-tracking DBs also predate 004's owner_hash column (004 is a bare
+  // ALTER, which only works because it runs exactly once). Strip it so this
+  // simulates a genuinely old file rather than a current one.
+  db1.db.exec('DROP INDEX idx_polyps_owner');
+  db1.db.exec('ALTER TABLE polyps DROP COLUMN owner_hash');
   db1.db.close();
 
   // New code re-opening must recreate the tracking table, re-run the (no-op,
-  // IF NOT EXISTS) files, record them, and leave existing data intact.
+  // IF NOT EXISTS) files plus 004's ALTER, record them, and leave existing
+  // data intact.
   const db2 = new ReefDb(path);
   assert.deepEqual(appliedMigrations(db2), expected);
   assert.equal(db2.listPublicPolyps().length, 1);
+});
+
+test('migrations: 004 adds a nullable owner_hash to a db that already has polyps', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'reef-004-'));
+  const path = join(dir, 'reef.db');
+  const db1 = new ReefDb(path);
+  db1.insertPolyp(basePolyp());
+  db1.db.exec('DROP INDEX idx_polyps_owner');
+  db1.db.exec('ALTER TABLE polyps DROP COLUMN owner_hash');
+  db1.db.prepare("DELETE FROM schema_migrations WHERE filename = '004_polyp_owner.sql'").run();
+  db1.db.close();
+
+  const db2 = new ReefDb(path);
+  assert.ok(appliedMigrations(db2).includes('004_polyp_owner.sql'));
+  const row = db2.db.prepare('SELECT owner_hash FROM polyps WHERE id = 1').get() as { owner_hash: string | null };
+  assert.equal(row.owner_hash, null, 'existing polyps stay unowned');
+  assert.equal(db2.listOwnedIds('anything').length, 0);
 });
 
 const basePolyp = () => ({

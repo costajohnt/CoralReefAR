@@ -12,6 +12,7 @@ import { createPedestal } from './playground/scene.js';
 import { readPlaygroundConfig } from './playground/config.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
+import { MyPolyps } from './ui/mine.js';
 import { computePlacementFromClick } from './playground/interaction.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
 
@@ -54,6 +55,15 @@ const placement = new Placement(reef, camera, reef.anchor);
 const pickerRoot = document.getElementById('picker')!;
 const picker = new Picker(pickerRoot);
 const hintEl = document.getElementById('hint')!;
+const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement | null;
+const mine = undoBtn
+  ? new MyPolyps({
+      reef,
+      undoBtn,
+      noteEl: document.getElementById('mineNote'),
+      setHint: (t) => { hintEl.textContent = t; },
+    })
+  : null;
 
 let currentSeed = Math.floor(Math.random() * 0xffffffff);
 
@@ -114,6 +124,7 @@ if (config.mode === 'interactive') {
       placement.reset();
       reef.addPolyp(saved, true);
       installEffectsOnNewMeshes();
+      mine?.planted(saved.id);
       picker.setSubmitting(false);
       picker.setCommittable(false);
       hintEl.textContent = 'Grown. Click another spot to plant again.';
@@ -161,6 +172,8 @@ async function loadInitial(): Promise<void> {
     for (const p of state.polyps) reef.addPolyp(p, false);
     for (const d of state.sim) reef.applySim(d);
     installEffectsOnNewMeshes();
+    // Screen mode is a museum display: no per-visitor highlight.
+    if (config.mode === 'interactive') void mine?.load();
   } catch (e) {
     console.error('Failed to load reef', e);
   }
@@ -182,6 +195,7 @@ socket.on((msg) => {
     installEffectsOnNewMeshes();
   } else if (msg.type === 'polyp_removed') {
     reef.removePolyp(msg.id);
+    mine?.removed(msg.id);
   } else if (msg.type === 'sim_update') {
     for (const d of msg.updates) reef.applySim(d);
   }

@@ -9,6 +9,9 @@ export const config = {
   // (Prometheus-style scrape auth). Unset = open, for a network-isolated
   // scrape target.
   metricsToken: process.env.METRICS_TOKEN ?? '',
+  // Optional HMAC key for hashing "my polyps" owner tokens (see ownerHash.ts).
+  // Unset = salted SHA-256. Changing it later orphans existing ownership.
+  ownerHashSecret: process.env.OWNER_HASH_SECRET ?? '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 3_600_000),
   // 0 = disabled. Default off while the project is in testing; before
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up

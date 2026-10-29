@@ -21,6 +21,7 @@ container environment for a self-hosted deploy):
 | `SIM_RETENTION_MS` | `2592000000` (30d, default) | Prune sim decorations older than this. `0` = keep all. |
 | `SNAPSHOT_RETENTION_COUNT` | `90` (default) | Keep the N most recent daily snapshots. `0` = keep all. |
 | `ADMIN_TOKEN` | secret | Gates the reef admin routes and (when set) the destructive tree reset/delete. |
+| `OWNER_HASH_SECRET` | secret (optional) | HMAC key for the stored "my polyps" owner hash. Unset = salted SHA-256 (the client token is already a hash of a 256-bit random ID). Changing it later orphans existing ownership (highlights stop; nothing breaks). |
 | `METRICS_TOKEN` | secret (optional) | When set, `GET /metrics` requires `Authorization: Bearer <token>`. |
 | `CORS_ORIGINS` | the deployed origin | Comma-separated allowlist. **Required in production**: with `NODE_ENV=production` the server refuses to start if this is `*` or unset (fail-closed). `*` stays the convenient default in dev/test. |
 

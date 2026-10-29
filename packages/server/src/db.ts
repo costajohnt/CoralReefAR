@@ -27,6 +27,7 @@ export interface PolypRow {
   scale: number;
   created_at: number;
   device_hash: string;
+  owner_hash: string | null;
   deleted: number;
 }
 
@@ -44,6 +45,9 @@ export class ReefDb {
     getPolypById: Database.Statement;
     listDeletedPolyps: Database.Statement;
     countByDevice: Database.Statement;
+    listOwnedIds: Database.Statement;
+    latestOwnedId: Database.Statement;
+    undoDelete: Database.Statement;
     oldestByDevice: Database.Statement;
     listSim: Database.Statement;
     listSimSince: Database.Statement;
@@ -84,9 +88,9 @@ export class ReefDb {
       ),
       insertPolyp: this.db.prepare(`
         INSERT INTO polyps (species, seed, color_key, pos_x, pos_y, pos_z,
-          quat_x, quat_y, quat_z, quat_w, scale, created_at, device_hash, deleted)
+          quat_x, quat_y, quat_z, quat_w, scale, created_at, device_hash, owner_hash, deleted)
         VALUES (@species, @seed, @color_key, @pos_x, @pos_y, @pos_z,
-          @quat_x, @quat_y, @quat_z, @quat_w, @scale, @created_at, @device_hash, 0)
+          @quat_x, @quat_y, @quat_z, @quat_w, @scale, @created_at, @device_hash, @owner_hash, 0)
       `),
       softDelete: this.db.prepare('UPDATE polyps SET deleted = 1 WHERE id = ?'),
       // Only restores a row that's currently soft-deleted. Rows that are
@@ -100,6 +104,16 @@ export class ReefDb {
       countByDevice: this.db.prepare(
         'SELECT COUNT(*) as n FROM polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
       ),
+      listOwnedIds: this.db.prepare(
+        'SELECT id FROM polyps WHERE owner_hash = ? AND deleted = 0 ORDER BY id ASC',
+      ),
+      // Includes deleted rows on purpose: after undoing the latest polyp the
+      // owner's "latest" is still that (now deleted) row, so undo can't walk
+      // back through older polyps one at a time.
+      latestOwnedId: this.db.prepare(
+        'SELECT MAX(id) AS id FROM polyps WHERE owner_hash = ?',
+      ),
+      undoDelete: this.db.prepare('UPDATE polyps SET deleted = 1 WHERE id = ? AND deleted = 0'),
       oldestByDevice: this.db.prepare(
         'SELECT MIN(created_at) as t FROM polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
       ),
@@ -199,7 +213,7 @@ export class ReefDb {
     return (this.stmt.countLivePolyps.get() as { n: number }).n;
   }
 
-  insertPolyp(p: Omit<Polyp, 'id' | 'deleted'>): Polyp {
+  insertPolyp(p: Omit<Polyp, 'id' | 'deleted'>, ownerHash: string | null = null): Polyp {
     const info = this.stmt.insertPolyp.run({
       species: p.species, seed: p.seed, color_key: p.colorKey,
       pos_x: p.position[0], pos_y: p.position[1], pos_z: p.position[2],
@@ -208,6 +222,7 @@ export class ReefDb {
       scale: p.scale,
       created_at: p.createdAt,
       device_hash: p.deviceHash,
+      owner_hash: ownerHash,
     });
     return { ...p, id: Number(info.lastInsertRowid), deleted: false };
   }
@@ -244,6 +259,37 @@ export class ReefDb {
       // Leave result as the default 'unknown' so the caller sends a 404.
     })();
     return result;
+  }
+
+  /** Live polyp ids planted under `ownerHash`, oldest first. */
+  listOwnedIds(ownerHash: string): number[] {
+    return (this.stmt.listOwnedIds.all(ownerHash) as Array<{ id: number }>).map((r) => r.id);
+  }
+
+  /**
+   * Owner undo of a just-planted polyp. Every check and the soft-delete run
+   * in one SQLite transaction, so two concurrent undos, an admin delete, or a
+   * sim/snapshot pass on the same handle can't interleave between "is this
+   * still undoable?" and the UPDATE. better-sqlite3 is synchronous, so in
+   * this process nothing else runs mid-transaction anyway; the transaction
+   * also covers a second process writing the same file.
+   *
+   * Order matters: ownership, then "latest", then already-deleted (so a
+   * repeat undo is idempotent even after the window), then the window.
+   */
+  undoPolyp(id: number, ownerHash: string, now: number, windowMs: number): UndoResult {
+    return this.db.transaction((): UndoResult => {
+      const row = this.stmt.getPolypById.get(id) as PolypRow | undefined;
+      if (!row) return { status: 'not_found' };
+      if (row.owner_hash === null || row.owner_hash !== ownerHash) return { status: 'not_owner' };
+      const latest = (this.stmt.latestOwnedId.get(ownerHash) as { id: number | null }).id;
+      if (latest !== id) return { status: 'not_latest' };
+      if (row.deleted) return { status: 'already_undone' };
+      if (now - row.created_at > windowMs) return { status: 'expired' };
+      return this.stmt.undoDelete.run(id).changes > 0
+        ? { status: 'undone' }
+        : { status: 'already_undone' };
+    })();
   }
 
   countByDeviceSince(deviceHash: string, sinceMs: number): number {
@@ -330,6 +376,10 @@ export class ReefDb {
     return this.stmt.pruneSnapshots.run(Math.floor(keep)).changes;
   }
 }
+
+export type UndoResult = {
+  status: 'undone' | 'already_undone' | 'not_found' | 'not_owner' | 'not_latest' | 'expired';
+};
 
 export type RestoreResult =
   | { status: 'restored'; polyp: PublicPolyp }

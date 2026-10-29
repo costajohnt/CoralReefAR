@@ -141,7 +141,12 @@ Vite serves additional entry points alongside the main AR app:
 - `GET  /healthz` — liveness
 - `GET  /api/reef` — full public reef state (no `deviceHash` ever leaves)
 - `POST /api/reef/polyp` — submit a polyp (rate-limited to one per device
-  per window when `RATE_LIMIT_MAX` is set; open by default while testing)
+  per window when `RATE_LIMIT_MAX` is set; open by default while testing).
+  Optional `X-Reef-Owner` header: the device's owner token (SHA-256 of a
+  random ID kept in localStorage); stored only as a further server-side hash
+- `GET  /api/reef/mine` — ids of the caller's live polyps (`X-Reef-Owner` required)
+- `POST /api/reef/polyp/:id/undo` — the owner undoes their most recent polyp
+  within 60s of planting it (`X-Reef-Owner` required; repeat undo is a no-op)
 - `GET  /api/stats` — polyp count, unique devices, per-species, last 24h/7d
 - `GET  /api/snapshots` / `GET /api/snapshots/:id` — timelapse data
 - `GET  /admin` — admin shell (no auth on the page; API calls require a Bearer token)

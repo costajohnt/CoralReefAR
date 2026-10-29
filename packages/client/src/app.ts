@@ -7,6 +7,7 @@ import { installPulse } from './scene/pulse.js';
 import { FishSchool } from './sim/fish.js';
 import { Placement } from './placement.js';
 import { Picker } from './ui/picker.js';
+import { MyPolyps } from './ui/mine.js';
 import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
 import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
@@ -31,6 +32,8 @@ export class App {
   private readonly reef = new Reef();
   private readonly placement: Placement;
   private readonly picker: Picker;
+  // Null when the page has no #undoBtn (the feature is optional UI).
+  private readonly mine: MyPolyps | null;
   private readonly fish = new FishSchool();
   private readonly swayClock = { value: 0 };
   // Selected in start() after we've given the 8th Wall engine script a chance
@@ -66,6 +69,18 @@ export class App {
 
     this.placement = new Placement(this.reef, this.camera, this.reef.anchor);
     this.picker = new Picker(opts.pickerRoot);
+    const undoBtn = opts.pickerRoot.querySelector<HTMLButtonElement>('#undoBtn');
+    this.mine = undoBtn
+      ? new MyPolyps({
+          reef: this.reef,
+          undoBtn,
+          noteEl: opts.pickerRoot.querySelector<HTMLElement>('#mineNote'),
+          setHint: (t) => this.picker.setHint(t),
+          // The server's plant limit counts live polyps only, so an undone
+          // polyp frees the slot; lift the client-side cooldown to match.
+          onUndone: () => { this.placementLockedUntil = 0; },
+        })
+      : null;
 
     this.wireInteractions();
     this.wireSocket();
@@ -137,6 +152,7 @@ export class App {
       for (const p of state.polyps) this.reef.addPolyp(p, false);
       for (const d of state.sim) this.reef.applySim(d);
       this.installSwayOnNewMeshes();
+      void this.mine?.load();
     } catch (e) {
       // Without this, a failed fetch looks identical to an empty reef — new
       // visitors think nobody has planted and may plant a duplicate, or an
@@ -258,6 +274,7 @@ export class App {
       this.placement.reset();
       this.reef.addPolyp(saved, true);
       this.installSwayOnNewMeshes();
+      this.mine?.planted(saved.id);
       this.placementLockedUntil = Date.now() + 60 * 60 * 1000;
       this.picker.setSubmitting(false);
       this.picker.setCommittable(false);
@@ -285,7 +302,10 @@ export class App {
     this.socket.on((msg) => {
       if (msg.type === 'hello') this.onHello(msg.polypCount);
       else if (msg.type === 'polyp_added') this.onRemoteAdded(msg.polyp);
-      else if (msg.type === 'polyp_removed') this.reef.removePolyp(msg.id);
+      else if (msg.type === 'polyp_removed') {
+        this.reef.removePolyp(msg.id);
+        this.mine?.removed(msg.id);
+      }
       else if (msg.type === 'sim_update') {
         for (const d of msg.updates) this.reef.applySim(d);
       }

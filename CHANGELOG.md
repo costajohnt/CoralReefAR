@@ -8,6 +8,10 @@ never published) and stays at `0.1.0` on purpose. See CONTRIBUTING for why.
 
 ## [Unreleased]
 
+### Added
+
+- **My polyps + landscape undo (#112).** Each browser keeps a random owner ID in localStorage and sends only its SHA-256 (`X-Reef-Owner`) when planting; the server stores a further hash (`polyps.owner_hash`, migration `004_polyp_owner.sql`). The AR app and playground ring your own polyps in aqua and show an Undo button for 60s after planting. `POST /api/reef/polyp/:id/undo` only lets the same owner undo their most recent polyp inside that window; repeat undo is a no-op. Clients without the header keep working (unowned polyps). Optional `OWNER_HASH_SECRET` keys the stored hash.
+
 ### Security
 
 - `req.ip` no longer trusts every `X-Forwarded-For` hop. A new `TRUST_PROXY_HOPS` (default `0`, `1` in `fly.toml` and `docker-compose.yml`) trusts only that many private/loopback proxy hops, so a client can no longer pick its own IP to bypass the per-device write limit and per-IP read limit.
