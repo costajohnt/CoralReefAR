@@ -21,8 +21,8 @@ distance in front of the virtual camera.
 Or use the playground:
 `http://localhost:5173/playground.html?api=http://localhost:8787`.
 Orbit-camera view, click-to-place, full picker UI — no AR
-code-paths involved. Add `?mode=screen` for the auto-orbit
-museum-display variant.
+code-paths involved. Add `?mode=screen` (or `?mode=gallery`) for the
+wall-display variant: auto-orbit, arrival glow, counter, and QR code.
 
 Or use tree mode:
 `http://localhost:5173/tree.html?api=http://localhost:8787`. A

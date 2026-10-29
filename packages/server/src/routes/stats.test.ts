@@ -95,3 +95,22 @@ test('stats: read cache serves a snapshot for the TTL window', async () => {
     config.readCacheTtlMs = prev;
   }
 });
+
+test('stats: contributors counts distinct stable owner hashes, not rotating device hashes', async () => {
+  const { app, db } = buildApp();
+  // Same browser across two rate-limit windows: two device hashes, one owner.
+  db.insertPolyp({ ...base(), deviceHash: 'window-1' }, 'owner-a');
+  db.insertPolyp({ ...base(), deviceHash: 'window-2' }, 'owner-a');
+  db.insertPolyp({ ...base(), deviceHash: 'window-2' }, 'owner-b');
+  // Legacy/unowned rows don't count as contributors.
+  db.insertPolyp({ ...base(), deviceHash: 'legacy' });
+  // Undone/deleted polyps don't count either.
+  const gone = db.insertPolyp({ ...base(), deviceHash: 'x' }, 'owner-c');
+  db.softDeletePolyp(gone.id);
+  const r = await app.inject({ method: 'GET', url: '/api/stats' });
+  const j = r.json() as { total: number; contributors: number; uniqueDevices: number };
+  assert.equal(j.total, 4);
+  assert.equal(j.contributors, 2);
+  assert.equal(j.uniqueDevices, 3);
+  await app.close();
+});

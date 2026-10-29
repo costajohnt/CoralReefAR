@@ -15,7 +15,8 @@ import { Picker } from './ui/picker.js';
 import { MyPolyps } from './ui/mine.js';
 import { wireExportButton } from './ui/exportButton.js';
 import { computePlacementFromClick } from './playground/interaction.js';
-import { computeOrbitPose } from './playground/autoOrbit.js';
+import { computeCinematicPose } from './playground/autoOrbit.js';
+import { ArrivalHighlights, GalleryOverlay, type GalleryStats } from './playground/gallery.js';
 
 const SWAY_INSTALLED = Symbol('sway-installed');
 const PULSE_INSTALLED = Symbol('pulse-installed');
@@ -143,11 +144,40 @@ if (config.mode === 'interactive') {
   });
 }
 
+// Screen (gallery) mode: a passive wall display (#110). Cinematic orbit,
+// a highlight on polyps that arrive over the WS feed, a live counter and a QR
+// code pointing visitors at the planting app.
+const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+let highlights: ArrivalHighlights | null = null;
+let gallery: GalleryOverlay | null = null;
 if (config.mode === 'screen') {
   // Hide the picker and take over camera movement.
   picker.hide();
   (document.getElementById('picker') as HTMLElement).classList.add('hidden');
   controls.enabled = false;
+  highlights = new ArrivalHighlights(reducedMotion);
+  const root = document.getElementById('gallery');
+  if (root) {
+    gallery = new GalleryOverlay(
+      {
+        root,
+        countEl: document.getElementById('galleryCount')!,
+        newsEl: document.getElementById('galleryNews')!,
+        qrEl: document.getElementById('galleryQrCode')!,
+        qrUrlEl: document.getElementById('galleryQrUrl')!,
+      },
+      {
+        plantUrl: config.plantUrl,
+        fetchStats: async (): Promise<GalleryStats> => {
+          const r = await fetch(`${config.apiBase}/api/stats`);
+          if (!r.ok) throw new Error(`stats ${r.status}`);
+          const j = (await r.json()) as { total: number; contributors?: number };
+          return { total: j.total, contributors: j.contributors ?? 0 };
+        },
+      },
+    );
+    void gallery.start();
+  }
 }
 
 function installEffectsOnNewMeshes(): void {
@@ -196,7 +226,12 @@ socket.on((msg) => {
   if (msg.type === 'polyp_added' && !reef.hasPolyp(msg.polyp.id)) {
     reef.addPolyp(msg.polyp, true);
     installEffectsOnNewMeshes();
+    const node = reef.node(msg.polyp.id);
+    if (highlights && node) highlights.add(msg.polyp.id, node, performance.now() / 1000);
+    gallery?.polypAdded();
   } else if (msg.type === 'polyp_removed') {
+    highlights?.forget(msg.id);
+    if (reef.hasPolyp(msg.id)) gallery?.polypRemoved();
     reef.removePolyp(msg.id);
     mine?.removed(msg.id);
   } else if (msg.type === 'sim_update') {
@@ -222,9 +257,10 @@ function loop(t: number): void {
   reef.animateGrowth(t);
 
   if (config.mode === 'screen') {
-    const pose = computeOrbitPose(t / 1000);
+    const pose = computeCinematicPose(t / 1000, { reducedMotion });
     camera.position.copy(pose.position);
     camera.lookAt(pose.target);
+    highlights?.update(t / 1000);
   } else {
     controls.update();
   }

@@ -7,6 +7,13 @@ import type { Polyp, PublicPolyp, SimDelta, SimKind, Species } from '@reef/share
 export interface ReefStats {
   total: number;
   uniqueDevices: number;
+  /**
+   * Distinct browsers that planted with an owner token (#112). Unlike
+   * uniqueDevices, which counts device hashes salted per rate-limit window
+   * (so one visitor across several hours counts several times), this is
+   * stable per browser. Unowned rows from older clients aren't counted.
+   */
+  contributors: number;
   firstAt: number | null;
   lastAt: number | null;
   last24h: number;
@@ -74,6 +81,7 @@ export class ReefDb {
       statsOverview: this.db.prepare(
         `SELECT COUNT(*) AS total,
                 COUNT(DISTINCT device_hash) AS uniqueDevices,
+                COUNT(DISTINCT owner_hash) AS contributors,
                 MIN(created_at) AS firstAt,
                 MAX(created_at) AS lastAt
          FROM polyps WHERE deleted = 0`,
@@ -340,7 +348,8 @@ export class ReefDb {
 
   stats(): ReefStats {
     const overview = this.stmt.statsOverview.get() as {
-      total: number; uniqueDevices: number; firstAt: number | null; lastAt: number | null;
+      total: number; uniqueDevices: number; contributors: number;
+      firstAt: number | null; lastAt: number | null;
     };
     const now = Date.now();
     const last24h = (this.stmt.statsRecent.get(now - 86_400_000) as { n: number }).n;
@@ -350,6 +359,7 @@ export class ReefDb {
     return {
       total: overview.total,
       uniqueDevices: overview.uniqueDevices,
+      contributors: overview.contributors,
       firstAt: overview.firstAt,
       lastAt: overview.lastAt,
       last24h,

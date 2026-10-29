@@ -25,7 +25,7 @@ function mineRing(node: Object3D): Mesh {
   const geom = (node as Mesh).geometry;
   let r = 0.02;
   if (geom) {
-    geom.boundingBox ?? geom.computeBoundingBox();
+    if (!geom.boundingBox) geom.computeBoundingBox();
     const b = geom.boundingBox;
     if (b) r = Math.max(0.005, Math.abs(b.min.x), b.max.x, Math.abs(b.min.z), b.max.z) * 1.15;
   }
@@ -76,6 +76,11 @@ export class Reef {
       disposeTree(obj);
     }
     this.polypsById.clear();
+  }
+
+  /** The scene node for a polyp id, if it's in the reef. */
+  node(id: number): Object3D | undefined {
+    return this.polypsById.get(id);
   }
 
   hasPolyp(id: number): boolean {
