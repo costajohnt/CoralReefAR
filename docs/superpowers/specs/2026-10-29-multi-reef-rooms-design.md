@@ -1,6 +1,6 @@
 # Multi-Reef Rooms: Design
 
-**Status:** proposed, awaiting decisions (no implementation yet)
+**Status:** accepted 2026-10-29 (all 12 defaults in section 12 accepted by John); not yet implemented
 **Date:** 2026-10-29
 **Issue:** #113
 **Decision owner:** John Costa
@@ -310,7 +310,7 @@ Regardless of the creation option:
   `active rooms × SNAPSHOT_RETENTION_COUNT × blob size`. `ROOM_MAX_POLYPS`
   bounds the blob size.
 
-## 12. Open product questions (decisions for John)
+## 12. Product questions (decided 2026-10-29: recommended defaults accepted)
 
 Each has a recommended default. Implementation can start from the defaults
 and change any of them before phase 3 (section 15) without rework.
