@@ -34,6 +34,14 @@ export interface TimelapsePlayer {
   init: () => Promise<void>;
   /** Stop playback and drop the DOM listeners. */
   dispose: () => void;
+  /** The loaded snapshot list (empty until init() resolves). */
+  snapshots: () => SnapshotMeta[];
+  /**
+   * Hand the scene to something else (video recording): stop playback,
+   * disable the controls, and drop any in-flight scrub. Unlocking re-enables
+   * them and re-applies the selected snapshot.
+   */
+  setLocked: (locked: boolean) => void;
 }
 
 /**
@@ -117,6 +125,20 @@ export function createTimelapsePlayer(dom: TimelapseDom, deps: TimelapseDeps): T
       dom.metaEl.textContent = `${snapshots.length} snapshot${snapshots.length === 1 ? '' : 's'}`;
       dom.scrubEl.max = String(snapshots.length - 1);
       dom.scrubEl.value = String(snapshots.length - 1);
+      dom.scrubEl.dispatchEvent(new Event('input'));
+    },
+    snapshots: () => snapshots,
+    setLocked(locked: boolean): void {
+      if (locked) {
+        playing = false;
+        dom.playBtn.textContent = 'Play';
+        scrubToken++;
+        dom.playBtn.disabled = true;
+        dom.scrubEl.disabled = true;
+        return;
+      }
+      dom.playBtn.disabled = snapshots.length === 0;
+      dom.scrubEl.disabled = false;
       dom.scrubEl.dispatchEvent(new Event('input'));
     },
     dispose(): void {
