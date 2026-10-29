@@ -160,9 +160,15 @@ once chosen so reinstalls are reproducible.
 
 ## Operations
 
-**Data.** The SQLite database lives at `./data/reef.db`. Back it up on a
-cron. `sqlite3 reef.db ".backup /tmp/backup.db"` is safe against a live
-writer; scp the result anywhere.
+**Data.** The SQLite database lives at `./data/reef.db`. For continuous
+off-machine backups, set `BUCKET_NAME`, `AWS_ENDPOINT_URL_S3`,
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (any S3-compatible bucket;
+add `AWS_REGION` for non-Tigris providers) in the server's environment: the
+image's bundled Litestream then replicates every write and restores the DB on
+boot if `./data/reef.db` is missing. Setup, verification and restore steps are
+in [docs/runbook.md](./docs/runbook.md#backups-litestream). Without those
+variables, back it up on a cron: `sqlite3 reef.db ".backup /tmp/backup.db"`
+is safe against a live writer; scp the result anywhere.
 
 **Log level.** Pino JSON to stdout. Docker's json-file driver keeps
 logs until you rotate them — set `"log-opts": { "max-size": "10m" }`

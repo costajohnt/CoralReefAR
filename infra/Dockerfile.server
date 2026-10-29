@@ -48,12 +48,18 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
  && pnpm install --prod --frozen-lockfile --filter=@reef/server... \
  && apk del .build-deps
 
+# Litestream (off-machine SQLite backups). Inert unless the replica secrets are
+# set; see infra/docker-entrypoint.sh and docs/runbook.md. Copied from the
+# official multi-arch image so amd64 and arm64 builds both get a native binary.
+COPY --from=litestream/litestream:0.5.17 /usr/local/bin/litestream /usr/local/bin/litestream
+COPY infra/litestream.yml /etc/litestream.yml
 COPY infra/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown -R reef:reef /app
 
 ENV CLIENT_DIST_DIR=/app/packages/client/dist
 EXPOSE 8787
-# tini reaps zombies; the entrypoint chowns the runtime volume (if any) then
-# drops to the unprivileged "reef" user before exec'ing node.
+# tini reaps zombies; the entrypoint chowns the runtime volume (if any), runs
+# Litestream around node when backups are configured, and drops to the
+# unprivileged "reef" user.
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "packages/server/dist/index.js"]

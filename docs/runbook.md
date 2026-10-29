@@ -56,3 +56,113 @@ point, not a measured one.
 - The per-window salt is reconstructible (HMAC of a per-process secret), and
   the limiter counts a device under both the current and previous window's
   hash, so crossing a window boundary no longer resets the count.
+
+## Backups (Litestream)
+
+All production state is one SQLite file (`/data/reef.db`) on one Fly volume.
+The daily snapshot worker writes *into that same file*, so it is not a backup.
+Off-machine backups come from [Litestream](https://litestream.io), bundled in
+the image (`infra/Dockerfile.server`), which streams every committed write to
+an S3-compatible bucket (Tigris on Fly) about once a second.
+
+**It is off until the bucket secrets exist.** `infra/docker-entrypoint.sh`
+turns it on only when all of `BUCKET_NAME`, `AWS_ENDPOINT_URL_S3`,
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set (exactly what
+`fly storage create` sets). Otherwise the server starts as it always has and
+logs one line:
+
+```
+[entrypoint] backups disabled: no Litestream replica configured (BUCKET_NAME unset)
+```
+
+Config: `infra/litestream.yml`, entirely from the environment; no credentials
+live in the repo; the replica lives under `reef.db/` in the bucket. Optional
+knobs:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `AWS_REGION` | `auto` | Right for Tigris; set it for other S3 providers. |
+| `LITESTREAM_RESTORE_TIMEOUT` | `300` | Seconds the boot-time restore may take before giving up. |
+
+Snapshots are taken daily and kept for 7 days, so point-in-time restore covers
+the last week.
+
+### Turning it on (Fly)
+
+```sh
+# 1. Create a private Tigris bucket and attach its credentials to the app as
+#    secrets (BUCKET_NAME, AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID,
+#    AWS_SECRET_ACCESS_KEY, AWS_REGION).
+fly storage create -a coralreefar -n coralreefar-backups
+
+# 2. Check they landed (names and digests only; values are never shown).
+fly secrets list -a coralreefar
+
+# 3. Restart onto the new secrets if `fly storage create` didn't already.
+fly deploy --image ghcr.io/costajohnt/coralreefar:latest -a coralreefar
+```
+
+The image must include this change (any `ghcr.io/costajohnt/coralreefar:latest`
+built after it merged).
+
+### Verifying replication
+
+```sh
+# Boot log should say "backups enabled", not "backups disabled".
+fly logs -a coralreefar --no-tail | grep -E 'entrypoint|litestream|level=(WARN|ERROR)'
+
+# What Litestream has in the bucket (LTX files, newest last).
+fly ssh console -a coralreefar -C 'litestream ltx -config /etc/litestream.yml /data/reef.db'
+```
+
+`level=ERROR` lines from Litestream mean replication is failing (bad keys,
+bucket gone). The server keeps running either way; fix the secrets and it
+catches up on the next restart.
+
+### Restoring
+
+**Automatic, on an empty volume.** When the entrypoint finds no DB at
+`DB_PATH` it runs `litestream restore -if-replica-exists` before starting the
+server. It never touches an existing DB file. So after losing the volume:
+
+```sh
+fly volumes create reef_data --size 1 --region iad -a coralreefar
+fly deploy --image ghcr.io/costajohnt/coralreefar:latest -a coralreefar
+fly logs -a coralreefar --no-tail | grep entrypoint   # "restored /data/reef.db from s3://..."
+```
+
+If that restore fails (bucket unreachable, bad keys), the server still starts,
+with a new empty DB and **replication off** so the empty DB can't be pushed
+over the good backup. The log says `restore FAILED`. Fix the cause, then stop
+the machine, delete `/data/reef.db*`, and start it again to retry.
+
+**Manual, to a point in time** (e.g. after a bad admin action). Restore to a
+side file, check it, then swap it in while the server is stopped:
+
+```sh
+fly ssh console -a coralreefar
+# inside the machine:
+litestream restore -config /etc/litestream.yml -o /tmp/reef-restore.db \
+  -timestamp 2026-10-28T12:00:00Z /data/reef.db
+sqlite3 /tmp/reef-restore.db 'PRAGMA integrity_check; SELECT count(*) FROM polyps;'
+```
+
+To swap it in: copy it to your machine (`fly ssh sftp get /tmp/reef-restore.db`),
+then stop the app, replace `/data/reef.db` (deleting `/data/reef.db-wal` and
+`/data/reef.db-shm`), and start it. An easier route for a full rollback: create
+a new empty volume, point the app at it, and let the automatic restore run.
+
+**Off Fly** (any machine with `litestream` and the bucket keys):
+
+```sh
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
+litestream restore -o reef.db "s3://coralreefar-backups/reef.db?endpoint=fly.storage.tigris.dev&region=auto"
+```
+
+### Tested
+
+`infra/docker-entrypoint.test.sh` covers the entrypoint's decisions with stubs
+(disabled, partial config, existing DB untouched, restore, empty replica,
+restore failure). `infra/litestream-smoke.sh` runs the real image against a
+local S3 server: replicate, restore into a fresh volume, and boot with an
+unreachable replica. CI runs both.

@@ -8,6 +8,10 @@ never published) and stays at `0.1.0` on purpose. See CONTRIBUTING for why.
 
 ## [Unreleased]
 
+### Added
+
+- Off-machine SQLite backups via Litestream, bundled in the server image. Inert unless `BUCKET_NAME`, `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are set (what `fly storage create` sets); then every write streams to the bucket and an empty volume restores from it on boot. An existing DB is never overwritten, and a failed restore starts the server without replication rather than blocking. See docs/runbook.md, "Backups".
+
 ### Security
 
 - `req.ip` no longer trusts every `X-Forwarded-For` hop. A new `TRUST_PROXY_HOPS` (default `0`, `1` in `fly.toml` and `docker-compose.yml`) trusts only that many private/loopback proxy hops, so a client can no longer pick its own IP to bypass the per-device write limit and per-IP read limit.
