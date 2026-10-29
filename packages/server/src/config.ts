@@ -9,6 +9,9 @@ export const config = {
   // (Prometheus-style scrape auth). Unset = open, for a network-isolated
   // scrape target.
   metricsToken: process.env.METRICS_TOKEN ?? '',
+  // Optional HMAC key for hashing "my polyps" owner tokens (see ownerHash.ts).
+  // Unset = salted SHA-256. Changing it later orphans existing ownership.
+  ownerHashSecret: process.env.OWNER_HASH_SECRET ?? '',
   rateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 3_600_000),
   // 0 = disabled. Default off while the project is in testing; before
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
@@ -20,6 +23,11 @@ export const config = {
   // 0 = disabled. Default off; set READ_RATE_LIMIT_PER_MIN=60 (or similar)
   // to re-enable the per-IP read-side token bucket on /api/reef and /api/stats.
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),
+  // Per-IP token bucket on POST /api/reef/polyp/:id/undo. On by default
+  // (unlike the testing-era read/write limits): a real visitor undoes at most
+  // once per plant, so 10/min never bites, while it caps token-probing and
+  // hammering of a write path. 0 = off.
+  undoRateLimitPerMin: Number(process.env.UNDO_RATE_LIMIT_PER_MIN ?? 10),
   // Short-TTL read cache (ms) for /api/reef and /api/stats so a burst of reads
   // coalesces into one DB scan. 0 = disabled (default, matching the testing
   // posture). Set e.g. 1000 in production. Staleness is bounded by this value;
@@ -82,6 +90,13 @@ if (!Number.isFinite(config.readCacheTtlMs) || config.readCacheTtlMs < 0) {
   throw new Error(
     `READ_CACHE_TTL_MS must be a non-negative number of milliseconds (0 disables), ` +
       `got ${JSON.stringify(process.env.READ_CACHE_TTL_MS)}`,
+  );
+}
+
+if (!Number.isInteger(config.undoRateLimitPerMin) || config.undoRateLimitPerMin < 0) {
+  throw new Error(
+    `UNDO_RATE_LIMIT_PER_MIN must be a non-negative integer (0 = off), ` +
+      `got ${JSON.stringify(process.env.UNDO_RATE_LIMIT_PER_MIN)}`,
   );
 }
 

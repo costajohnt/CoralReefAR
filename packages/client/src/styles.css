@@ -52,6 +52,15 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family:
   border: 0; border-radius: 999px; background: #ff9f1c; color: #211;
 }
 #growBtn:disabled { opacity: 0.45; }
+#picker #undoBtn {
+  display: block; margin: 0.35rem auto 0; padding: 0.25rem 0.9rem;
+  font-size: 0.75rem; border-radius: 999px;
+  border: 1px solid #7fffd4; background: transparent; color: #7fffd4;
+}
+#picker #undoBtn[hidden] { display: none; }
+#picker #undoBtn:disabled { opacity: 0.45; }
+#mineNote { text-align: center; margin: 0.15rem 0 0; color: #7fffd4; font-size: 0.68rem; }
+#mineNote:empty { display: none; }
 #hint { text-align: center; margin: 0.25rem 0 0; color: #aab; font-size: 0.72rem; }
 
 .hidden { display: none !important; }

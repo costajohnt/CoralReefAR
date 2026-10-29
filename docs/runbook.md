@@ -16,11 +16,13 @@ container environment for a self-hosted deploy):
 | `RATE_LIMIT_MAX` | `1` | Polyps per device per window. Also bounds tree writes. `0` = off. |
 | `READ_RATE_LIMIT_PER_MIN` | `60` | Per-IP token bucket on `GET /api/reef` and `/api/stats`. `0` = off. |
 | `TRUST_PROXY_HOPS` | `1` | Reverse-proxy hops whose `X-Forwarded-For` entry sets `req.ip`, which every rate limit keys on. Only private/loopback peers are trusted. `0` (code default) = socket address, header ignored. After a deploy, confirm the logged `remoteAddress` is the visitor's IP, not Fly's proxy. |
+| `UNDO_RATE_LIMIT_PER_MIN` | `10` (default) | Per-IP token bucket on the owner undo route (`POST /api/reef/polyp/:id/undo`). `0` = off. |
 | `READ_CACHE_TTL_MS` | `1000` | Coalesce read scans within this window. `0` = off. |
 | `WS_MAX_CLIENTS` | `1000` (default) | Max concurrent WebSocket connections per hub (reef + tree counted separately). `0` = unlimited. |
 | `SIM_RETENTION_MS` | `2592000000` (30d, default) | Prune sim decorations older than this. `0` = keep all. |
 | `SNAPSHOT_RETENTION_COUNT` | `90` (default) | Keep the N most recent daily snapshots. `0` = keep all. |
 | `ADMIN_TOKEN` | secret | Gates the reef admin routes and (when set) the destructive tree reset/delete. |
+| `OWNER_HASH_SECRET` | secret (optional) | HMAC key for the stored "my polyps" owner hash. Unset = salted SHA-256 (the client token is already a hash of a 256-bit random ID). Changing it later orphans existing ownership (highlights stop; nothing breaks). |
 | `METRICS_TOKEN` | secret (optional) | When set, `GET /metrics` requires `Authorization: Bearer <token>`. |
 | `CORS_ORIGINS` | the deployed origin | Comma-separated allowlist. **Required in production**: with `NODE_ENV=production` the server refuses to start if this is `*` or unset (fail-closed). `*` stays the convenient default in dev/test. |
 

@@ -269,8 +269,9 @@ describe('QuestApp.onXRFrame orchestration', () => {
     expect(internal.compose).toBeNull();
     expect(internal.rightPinchWas).toBe(false);
     expect(preview.parent).toBeNull();
+    // submitPolyp hashes the owner token (async WebCrypto) before fetching.
+    await vi.waitFor(() => expect(postCalls()).toHaveLength(1));
     const posts = postCalls();
-    expect(posts).toHaveLength(1);
     expect(posts[0]!.url).toMatch(/\/api\/reef\/polyp$/);
     expect(posts[0]!.body).toMatchObject({ species: 'branching', colorKey: 'coral-pink', surface: 'quest', scale: 1 });
     // Position is the pinch point in reef-local space: world index tip minus
