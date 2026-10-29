@@ -1,13 +1,17 @@
 #!/bin/sh
 # End-to-end backup/restore check for the server image against a throwaway
 # local S3 server (versitygw). Proves, with the real image and Litestream:
-#   1. a fresh volume on an empty bucket verifies it's empty, then replicates;
-#   2. a fresh volume restores that DB on boot (the disaster-recovery path);
-#   3. an unreachable replica never blocks startup, and a failed restore leaves
-#      a sticky hold marker;
-#   4. a restart after that failure stays unreplicated even once the replica
-#      is reachable again;
-#   5. an existing DB with a dead replica (no marker) still starts.
+#   1. first enable: a DB created with backups off binds to an empty bucket
+#      and replicates;
+#   2. a fresh volume restores that DB on boot (the disaster-recovery path),
+#      and a normal restart of it keeps replicating;
+#   3. foreign replica: a DB created with backups off is NOT replicated over a
+#      bucket that already holds data (held), the bucket still restores the
+#      original data, and the override command the log prints resumes it;
+#   4. a fresh volume on an empty bucket verifies it's empty, then replicates;
+#   5. an unreachable replica never blocks startup, a failed restore leaves a
+#      sticky hold marker, and a restart stays held once the replica is back;
+#   6. a bound DB with a dead replica still starts, replicating.
 #
 # Usage: sh infra/litestream-smoke.sh [image]   (default: reef-server:ci)
 set -eu
@@ -16,94 +20,141 @@ IMAGE="${1:-reef-server:ci}"
 GW_IMAGE="versity/versitygw:v1.8.0"
 P="reefbk$$"
 NET="$P-net"
-ENVS="-e BUCKET_NAME=reef -e AWS_ENDPOINT_URL_S3=http://$P-gw:7070
-  -e AWS_ACCESS_KEY_ID=testkey -e AWS_SECRET_ACCESS_KEY=testsecret
-  -e AWS_REGION=us-east-1 -e DB_PATH=/data/reef.db"
+GW="http://$P-gw:7070"
+DEAD="http://nonexistent.invalid:7070"
 
 cleanup() {
-  docker rm -f "$P-gw" "$P-a" "$P-b" "$P-c" "$P-d" "$P-e" >/dev/null 2>&1 || true
-  docker volume rm "$P-va" "$P-vb" "$P-vc" >/dev/null 2>&1 || true
+  docker ps -aq --filter "name=^$P-" | xargs docker rm -f >/dev/null 2>&1 || true
+  docker volume ls -q --filter "name=^$P-" | xargs docker volume rm >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
-fail() { echo "FAIL: $*" >&2; for c in a b c d e; do docker logs "$P-$c" 2>&1 | grep -v '^{' | tail -20 || true; done; exit 1; }
+fail() {
+  echo "FAIL: $*" >&2
+  for c in $(docker ps -aq --filter "name=^$P-"); do
+    echo "--- $(docker inspect -f '{{.Name}}' "$c")" >&2
+    docker logs "$c" 2>&1 | grep -v '^{' | tail -15 >&2 || true
+  done
+  exit 1
+}
 
+# start <name> <volume> [bucket endpoint]: run the server; with a bucket, backups on.
+start() {
+  name="$P-$1"; vol="$P-$2"
+  if [ $# -ge 4 ]; then
+    docker run -d --name "$name" --network "$NET" -v "$vol:/data" -e DB_PATH=/data/reef.db \
+      -e BUCKET_NAME="$3" -e AWS_ENDPOINT_URL_S3="$4" -e AWS_ACCESS_KEY_ID=testkey \
+      -e AWS_SECRET_ACCESS_KEY=testsecret -e AWS_REGION=us-east-1 \
+      -e LITESTREAM_RESTORE_TIMEOUT=15 "$IMAGE" >/dev/null
+  else
+    docker run -d --name "$name" --network "$NET" -v "$vol:/data" -e DB_PATH=/data/reef.db \
+      "$IMAGE" >/dev/null
+  fi
+}
 wait_healthy() {
-  for _ in $(seq 1 30); do
-    if docker exec "$1" wget -qO- http://127.0.0.1:8787/healthz >/dev/null 2>&1; then return 0; fi
+  for _ in $(seq 1 45); do
+    if docker exec "$P-$1" wget -qO- http://127.0.0.1:8787/healthz >/dev/null 2>&1; then return 0; fi
     sleep 1
   done
   fail "$1 /healthz never came up"
 }
-replicating() { docker exec "$1" ps -o args | grep -q '^litestream replicate'; }
+logs_have() { docker logs "$P-$1" 2>&1 | grep -q "$2"; }
+replicating() { docker exec "$P-$1" ps -o args | grep -q '^litestream replicate'; }
+# latest_probe <bucket>: what a plain restore of the bucket returns for backup_probe.
+latest_probe() {
+  docker run --rm --network "$NET" -e AWS_ACCESS_KEY_ID=testkey -e AWS_SECRET_ACCESS_KEY=testsecret \
+    --entrypoint sh "$IMAGE" -c "litestream restore -o /tmp/r.db 's3://$1/reef.db?endpoint=$GW&region=us-east-1' >/dev/null 2>&1 \
+      && sqlite3 /tmp/r.db 'SELECT v FROM backup_probe;' 2>&1"
+}
 
 docker network create "$NET" >/dev/null
 docker run -d --name "$P-gw" --network "$NET" \
   -e ROOT_ACCESS_KEY=testkey -e ROOT_SECRET_KEY=testsecret \
-  --entrypoint sh "$GW_IMAGE" -c 'mkdir -p /gw/reef && exec versitygw posix /gw' >/dev/null
+  --entrypoint sh "$GW_IMAGE" -c 'mkdir -p /gw/reef /gw/reef2 && exec versitygw posix /gw' >/dev/null
 
-echo "== 1. replicate"
-# shellcheck disable=SC2086 # ENVS is a deliberate word-split list of -e flags
-docker run -d --name "$P-a" --network "$NET" $ENVS -v "$P-va:/data" "$IMAGE" >/dev/null
-wait_healthy "$P-a"
-docker logs "$P-a" 2>&1 | grep -q 'verified empty' || fail "a: empty bucket not verified empty"
-docker logs "$P-a" 2>&1 | grep -q 'backups enabled' || fail "a: no 'backups enabled' log"
-replicating "$P-a" || fail "a: litestream is not running"
-docker exec -u reef "$P-a" sqlite3 /data/reef.db \
+echo "== 1. first enable: existing DB, empty bucket"
+start a0 va
+wait_healthy a0
+docker exec -u reef "$P-a0" sqlite3 /data/reef.db \
   "CREATE TABLE backup_probe(v); INSERT INTO backup_probe VALUES('marker-$P');"
+docker rm -f "$P-a0" >/dev/null
+start a va reef "$GW"
+wait_healthy a
+logs_have a 'binding it (first enable)' || fail "a: did not bind on first enable"
+replicating a || fail "a: litestream is not running"
+docker exec "$P-a" grep -q "s3://reef/reef.db" /data/reef.db.replica-bound || fail "a: no binding file"
 sleep 5
 docker stop "$P-a" >/dev/null # SIGTERM: Litestream does a final sync on exit
-echo "ok  server A replicated"
+echo "ok  existing DB bound to the empty bucket and replicated"
 
-echo "== 2. restore into an empty volume"
-# shellcheck disable=SC2086
-docker run -d --name "$P-b" --network "$NET" $ENVS -v "$P-vb:/data" "$IMAGE" >/dev/null
-wait_healthy "$P-b"
-docker logs "$P-b" 2>&1 | grep -q 'restored /data/reef.db' || fail "b: no 'restored' log"
+echo "== 2. restore into an empty volume, then a normal restart"
+start b vb reef "$GW"
+wait_healthy b
+logs_have b 'restored /data/reef.db' || fail "b: no 'restored' log"
 got=$(docker exec -u reef "$P-b" sqlite3 /data/reef.db "SELECT v FROM backup_probe;")
 [ "$got" = "marker-$P" ] || fail "b: restored marker was '$got'"
 owner=$(docker exec "$P-b" stat -c %U /data/reef.db)
 [ "$owner" = "reef" ] || fail "b: restored DB owned by '$owner'"
-echo "ok  server B restored marker-$P (owner $owner)"
-
-echo "== 3. unreachable replica does not block startup"
-docker run -d --name "$P-c" --network "$NET" -e BUCKET_NAME=reef \
-  -e AWS_ENDPOINT_URL_S3=http://nonexistent.invalid:7070 -e AWS_ACCESS_KEY_ID=x \
-  -e AWS_SECRET_ACCESS_KEY=y -e DB_PATH=/data/reef.db -e LITESTREAM_RESTORE_TIMEOUT=15 \
-  -v "$P-vc:/data" "$IMAGE" >/dev/null
-for _ in $(seq 1 45); do
-  docker logs "$P-c" 2>&1 | grep -q 'restore FAILED' && break
-  sleep 1
-done
-docker logs "$P-c" 2>&1 | grep -q 'restore FAILED' || fail "c: no 'restore FAILED' log"
-wait_healthy "$P-c"
-replicating "$P-c" && fail "c: litestream is running after a failed restore"
-docker exec "$P-c" grep -q 'restore failed' /data/reef.db.replication-hold || fail "c: no hold marker"
-echo "ok  server C came up without replication and wrote the hold marker"
-docker stop "$P-c" >/dev/null
-
-echo "== 4. restart after the failure, replica now reachable"
-# The volume holds the DB C created plus the marker. Even with a working
-# replica, this boot must not replicate that DB over A's backup.
-# shellcheck disable=SC2086
-docker run -d --name "$P-e" --network "$NET" $ENVS -v "$P-vc:/data" "$IMAGE" >/dev/null
-wait_healthy "$P-e"
-docker logs "$P-e" 2>&1 | grep -q 'replication HELD' || fail "e: no 'replication HELD' log"
-replicating "$P-e" && fail "e: litestream is running despite the hold marker"
-docker logs "$P-e" 2>&1 | grep -q 'no database at' && fail "e: tried to restore over an existing DB"
-echo "ok  server E stayed unreplicated while the marker exists"
-
-echo "== 5. existing DB, dead replica, no marker"
-# B's volume holds a restored DB and no marker: replication starts (and
-# retries in the background) while the server itself must still come up.
+replicating b || fail "b: litestream is not running after restore"
+echo "ok  restored marker-$P (owner $owner) and replicating"
+docker restart "$P-b" >/dev/null
+wait_healthy b
+replicating b || fail "b: litestream is not running after a normal restart"
+logs_have b 'replication HELD' && fail "b: normal restart was held"
+echo "ok  normal restart of the bound DB keeps replicating"
 docker stop "$P-b" >/dev/null
-docker run -d --name "$P-d" --network "$NET" -e BUCKET_NAME=reef \
-  -e AWS_ENDPOINT_URL_S3=http://nonexistent.invalid:7070 -e AWS_ACCESS_KEY_ID=x \
-  -e AWS_SECRET_ACCESS_KEY=y -e DB_PATH=/data/reef.db \
-  -v "$P-vb:/data" "$IMAGE" >/dev/null
-wait_healthy "$P-d"
-docker logs "$P-d" 2>&1 | grep -q 'backups enabled' || fail "d: no 'backups enabled' log"
-replicating "$P-d" || fail "d: litestream is not running"
-echo "ok  server D (existing DB, dead replica) came up replicating"
+
+echo "== 3. foreign replica: DB created with backups off, bucket already has data"
+start f0 vf
+wait_healthy f0
+docker rm -f "$P-f0" >/dev/null
+start f vf reef "$GW"
+wait_healthy f
+logs_have f 'replication HELD' || fail "f: not held"
+docker exec "$P-f" grep -q 'not bound to this replica' /data/reef.db.replication-hold || fail "f: no hold marker"
+replicating f && fail "f: litestream is running over a foreign replica"
+got=$(latest_probe reef)
+[ "$got" = "marker-$P" ] || fail "f: bucket's latest restore changed to '$got'"
+echo "ok  held, and the bucket still restores marker-$P"
+# The operator override the hold log prints ("local DB is the truth"):
+override=$(docker logs "$P-f" 2>&1 | sed -n 's/.*(copy the replica first): \(.*\), then restart$/\1/p' | tail -1)
+[ -n "$override" ] || fail "f: no override command in the log"
+docker exec "$P-f" sh -c "$override"
+docker restart "$P-f" >/dev/null
+wait_healthy f
+replicating f || fail "f: not replicating after the logged override"
+echo "ok  the logged override binds the local DB and replication resumes"
+docker rm -f "$P-f" >/dev/null
+
+echo "== 4. fresh volume, empty bucket"
+start g vg reef2 "$GW"
+wait_healthy g
+logs_have g 'verified empty' || fail "g: empty bucket not verified empty"
+replicating g || fail "g: litestream is not running"
+echo "ok  verified empty, bound and replicating"
+docker rm -f "$P-g" >/dev/null
+
+echo "== 5. unreachable replica, then a restart with it reachable"
+start c vc reef "$DEAD"
+for _ in $(seq 1 45); do logs_have c 'restore FAILED' && break; sleep 1; done
+logs_have c 'restore FAILED' || fail "c: no 'restore FAILED' log"
+wait_healthy c
+replicating c && fail "c: litestream is running after a failed restore"
+docker exec "$P-c" grep -q 'restore failed' /data/reef.db.replication-hold || fail "c: no hold marker"
+docker stop "$P-c" >/dev/null
+start e vc reef "$GW"
+wait_healthy e
+logs_have e 'replication HELD' || fail "e: no 'replication HELD' log"
+replicating e && fail "e: litestream is running despite the hold marker"
+logs_have e 'no database at' && fail "e: tried to restore over an existing DB"
+echo "ok  failed restore held, and the restart stayed held"
+docker rm -f "$P-e" >/dev/null
+
+echo "== 6. bound DB, replica down"
+docker stop "$P-gw" >/dev/null
+start d vb reef "$GW"
+wait_healthy d
+replicating d || fail "d: litestream is not running"
+echo "ok  bound DB with a dead replica came up replicating"
 
 echo "PASS litestream smoke"

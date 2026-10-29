@@ -105,6 +105,49 @@ fly deploy --image ghcr.io/costajohnt/coralreefar:latest -a coralreefar
 The image must include this change (any `ghcr.io/costajohnt/coralreefar:latest`
 built after it merged).
 
+**The existing production DB binds on first enable.** The first boot with the
+secrets finds `/data/reef.db` present but not yet bound to any replica, lists
+the brand-new bucket, sees it's empty, writes the binding and starts
+replicating. Expect this once:
+
+```
+[entrypoint] local DB not yet bound and s3://coralreefar-backups/reef.db is empty; binding it (first enable)
+[entrypoint] backups enabled: replicating /data/reef.db to s3://coralreefar-backups/reef.db
+```
+
+If instead the log says `replication HELD ... already holds data`, the bucket
+wasn't empty (an old bucket reused, or the wrong `BUCKET_NAME`); see
+"Replication held".
+
+### Replica binding
+
+Litestream 0.5 treats whatever local DB it replicates as the next state of the
+history already in the bucket (see "Retention and lineage"), so replicating
+the wrong DB silently replaces the backup. The entrypoint therefore replicates
+a DB only once it's **bound** to the configured replica, recorded in
+`/data/reef.db.replica-bound` as `s3://<bucket>/reef.db endpoint=<endpoint>`.
+A DB becomes bound when:
+
+- it was just restored from that replica (non-empty restore), or
+- the replica was just listed (`litestream ltx -json -level all`, exit 0,
+  output `[]`) and is empty: a fresh volume on a new bucket, or an existing
+  DB on first enable.
+
+On each boot:
+
+| State | Result |
+|---|---|
+| `replication-hold` marker present | Server runs, no replication (see below). |
+| DB present, bound to this exact replica | Replicates. No listing needed. |
+| DB present, unbound or bound to a different bucket/endpoint, replica empty | Binds, replicates. |
+| DB present, unbound or bound elsewhere, replica has data or listing fails | Held. |
+| No DB, restore writes a non-empty DB | Binds, replicates. |
+| No DB, restore writes nothing (or a zero-byte file), replica verified empty | Binds, replicates a new DB. |
+| No DB, restore fails, or listing fails or isn't empty | Held, new empty DB. |
+
+If the hold marker or the binding file can't be written, the container exits
+non-zero instead of running unprotected.
+
 ### Verifying replication
 
 ```sh
@@ -149,8 +192,10 @@ sqlite3 /tmp/reef-restore.db 'PRAGMA integrity_check; SELECT count(*) FROM polyp
 
 To swap it in: copy it to your machine (`fly ssh sftp get /tmp/reef-restore.db`),
 then stop the app, replace `/data/reef.db` (deleting `/data/reef.db-wal` and
-`/data/reef.db-shm`), and start it. An easier route for a full rollback: create
-a new empty volume, point the app at it, and let the automatic restore run.
+`/data/reef.db-shm`), and start it. The DB stays bound, so the swapped-in file
+becomes the latest backup, which is the point of a rollback. An easier route
+for a full rollback: create a new empty volume, point the app at it, and let
+the automatic restore run.
 
 **Off Fly** (any machine with `litestream` and the bucket keys):
 
@@ -162,19 +207,22 @@ litestream restore -o reef.db "s3://coralreefar-backups/reef.db?endpoint=fly.sto
 ### Replication held
 
 The entrypoint writes `/data/reef.db.replication-hold` (a UTC timestamp and
-the reason) whenever it can't prove replicating is safe:
+the reason) whenever it can't prove replicating is safe (the "Held" rows in
+the table above):
 
-- the boot-time restore failed, or
-- the restore found no backup, but `litestream ltx -json -level all` either
-  failed (auth, region, network; a listing error is never read as "empty") or
-  listed files.
+- the boot-time restore failed;
+- the restore found no backup, but the listing failed or listed files;
+- the local DB isn't bound to this replica and the replica already holds data,
+  or couldn't be listed. A listing error (auth, region, network, missing
+  bucket) is never read as "empty".
 
 While that file exists, **every** boot starts the server without Litestream
-and logs:
+and logs, for example:
 
 ```
-[entrypoint] replication HELD: 2026-10-29T16:37:43Z restore failed from s3://coralreefar-backups/reef.db; the server started on a new empty DB
+[entrypoint] replication HELD: 2026-10-29T16:37:43Z local DB not bound to this replica and s3://coralreefar-backups/reef.db already holds data; see docs/runbook.md "Replica binding"
 [entrypoint] the server runs WITHOUT backups until /data/reef.db.replication-hold is removed (see docs/runbook.md, "Replication held")
+[entrypoint] to make THIS local DB the latest backup instead (copy the replica first): echo 's3://coralreefar-backups/reef.db endpoint=https://fly.storage.tigris.dev' > /data/reef.db.replica-bound && rm /data/reef.db.replication-hold, then restart
 ```
 
 Check for it with
@@ -184,12 +232,15 @@ pick one:
 
 - **The backup is the truth** (usual case after a lost volume): fix the cause
   (secrets, bucket), then in `fly ssh console` run
-  `rm /data/reef.db /data/reef.db-wal /data/reef.db-shm /data/reef.db.replication-hold`
-  and `fly machine restart`. The boot restores from the bucket. Anything
-  written to the interim empty DB is lost.
+  `rm /data/reef.db /data/reef.db-wal /data/reef.db-shm /data/reef.db.replica-bound /data/reef.db.replication-hold`
+  and `fly machine restart`. The boot restores from the bucket and binds.
+  Anything written to the local DB since is lost.
 - **The local DB is the truth** (you've decided the bucket's contents don't
-  matter): `rm /data/reef.db.replication-hold` and `fly machine restart`.
-  Replication resumes and the local DB becomes the latest backup.
+  matter): run the `echo ... && rm ...` command from the third log line in
+  `fly ssh console` (it writes the binding and removes the marker), then
+  `fly machine restart`. Replication resumes and the local DB becomes the
+  latest backup. Removing only the marker isn't enough: an unbound DB over a
+  non-empty bucket is held again.
 
 ### Retention and lineage (read before any manual intervention)
 
@@ -229,11 +280,16 @@ repo, and its exact snapshot workflow hasn't been tested here.
 ### Tested
 
 `infra/docker-entrypoint.test.sh` covers the entrypoint's decisions with stubs:
-disabled, partial config, existing DB untouched, restore, verified-empty
-replica, non-empty or unlistable replica (held), restore failure (held), and a
-restart after a failure (still held until the marker is removed).
+disabled and partial config; first enable (existing DB, empty replica: binds
+and replicates, `[]` and `null` both read as empty); normal restart (bound:
+replicates without listing); foreign replica (unbound DB, non-empty replica:
+held); listing errors (held); bucket or endpoint changed (treated as unbound);
+restore, zero-byte restore, verified-empty and non-empty replica on an empty
+volume; restore failure and a restart after it (held until the marker is
+removed); and hold-marker or binding write failures (exit non-zero).
 `infra/litestream-smoke.sh` runs the real image against a local S3 server:
-replicate from an empty bucket, restore into a fresh volume, boot with an
-unreachable replica (held, marker written), restart that volume with the
-replica reachable (still held), and an existing DB with a dead replica
-(replicating, server up). CI runs both.
+first enable, restore into a fresh volume plus a normal restart, a foreign
+replica (held, and the bucket still restores the original data), a fresh
+volume on an empty bucket, an unreachable replica then a restart with it
+reachable (held both times), and a bound DB with the replica down (server up,
+replicating). CI runs both.
