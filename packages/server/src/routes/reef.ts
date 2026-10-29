@@ -11,6 +11,7 @@ import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
 import { perIpRateLimit, ttlCache } from '../security.js';
 import { counters } from '../metrics-registry.js';
 import { ownerHash } from '../ownerHash.js';
+import { stepEcosystem } from '../ecosystem.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
 
@@ -65,7 +66,11 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
       }
     }
     // serverTime is always fresh even when the scans are served from cache.
-    const state: ReefState = { ...readSnapshot(), serverTime: Date.now() };
+    const now = Date.now();
+    // Before the first sim tick there is no saved row; compute a starting
+    // state (healthy, see stepEcosystem) rather than omit the field.
+    const ecosystem = db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now));
+    const state: ReefState = { ...readSnapshot(), serverTime: now, ecosystem };
     return state;
   });
 

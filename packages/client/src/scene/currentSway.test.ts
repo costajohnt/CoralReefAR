@@ -105,3 +105,40 @@ describe('installSway', () => {
     expect(shader.vertexShader).not.toContain('reefSway');
   });
 });
+
+describe('installSway bleaching (#117)', () => {
+  function stubWithFragment() {
+    return {
+      vertexShader: '#include <common>\nvoid main() {\n  #include <begin_vertex>\n}',
+      fragmentShader: '#include <common>\nvoid main() {\n  vec4 diffuseColor = vec4(1.0);\n  #include <color_fragment>\n}',
+      uniforms: {} as Record<string, unknown>,
+    };
+  }
+
+  test('with a bleach uniform, the fragment pales colour after vertex colours apply', () => {
+    const mesh = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+    const bleach = { value: 0 };
+    installSway(mesh, { value: 0 }, bleach);
+    const shader = stubWithFragment();
+    (mesh.material as MeshStandardMaterial).onBeforeCompile(shader as never, undefined as never);
+    expect(shader.uniforms.uBleach).toBe(bleach); // shared object, so one write updates every polyp
+    expect(shader.fragmentShader).toContain('uniform float uBleach;');
+    const colorAt = shader.fragmentShader.indexOf('#include <color_fragment>');
+    const mixAt = shader.fragmentShader.indexOf('mix(diffuseColor.rgb');
+    expect(mixAt).toBeGreaterThan(colorAt);
+  });
+
+  test('without a bleach uniform the fragment shader is untouched', () => {
+    const mesh = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+    installSway(mesh, { value: 0 });
+    const shader = stubWithFragment();
+    const before = shader.fragmentShader;
+    (mesh.material as MeshStandardMaterial).onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toBe(before);
+  });
+
+  test("the anchor exists in three's real MeshStandard fragment shader", async () => {
+    const { ShaderLib } = await import('three');
+    expect(ShaderLib.physical.fragmentShader).toContain('#include <color_fragment>');
+  });
+});

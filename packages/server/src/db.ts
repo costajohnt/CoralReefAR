@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Polyp, PublicPolyp, SimDelta, SimKind, Species } from '@reef/shared';
+import type { EcosystemState, Polyp, PublicPolyp, SimDelta, SimKind, Species } from '@reef/shared';
+import type { EcosystemInputs } from './ecosystem.js';
 
 export interface ReefStats {
   total: number;
@@ -66,6 +67,9 @@ export class ReefDb {
     listSnapshots: Database.Statement;
     getSnapshot: Database.Statement;
     pruneSnapshots: Database.Statement;
+    ecoInputs: Database.Statement;
+    getEcosystem: Database.Statement;
+    saveEcosystem: Database.Statement;
   };
 
   constructor(path: string) {
@@ -146,6 +150,18 @@ export class ReefDb {
       ),
       // Keep the `?` most recent snapshots (by taken_at, id as tiebreak),
       // delete the rest.
+      // One aggregate pass over live polyps (deleted = 0 rows only).
+      ecoInputs: this.db.prepare(
+        `SELECT COUNT(*) AS polypCount,
+                MAX(created_at) AS lastPlantedAt,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS plantedLast7d
+         FROM polyps WHERE deleted = 0`,
+      ),
+      getEcosystem: this.db.prepare('SELECT state_json AS stateJson FROM ecosystem_state WHERE id = 1'),
+      saveEcosystem: this.db.prepare(
+        `INSERT INTO ecosystem_state (id, state_json, updated_at) VALUES (1, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+      ),
       pruneSnapshots: this.db.prepare(
         `DELETE FROM snapshots WHERE id NOT IN (
            SELECT id FROM snapshots ORDER BY taken_at DESC, id DESC LIMIT ?
@@ -371,6 +387,23 @@ export class ReefDb {
       last7d,
       bySpecies,
     };
+  }
+
+  /** Aggregate inputs for the ecosystem step (#117), over live polyps. */
+  ecosystemInputs(now: number): EcosystemInputs {
+    const r = this.stmt.ecoInputs.get(now - 7 * 86_400_000) as {
+      polypCount: number; lastPlantedAt: number | null; plantedLast7d: number | null;
+    };
+    return { now, polypCount: r.polypCount, lastPlantedAt: r.lastPlantedAt, plantedLast7d: r.plantedLast7d ?? 0 };
+  }
+
+  getEcosystem(): EcosystemState | null {
+    const row = this.stmt.getEcosystem.get() as { stateJson: string } | undefined;
+    return row ? (JSON.parse(row.stateJson) as EcosystemState) : null;
+  }
+
+  saveEcosystem(state: EcosystemState): void {
+    this.stmt.saveEcosystem.run(JSON.stringify(state), state.computedAt);
   }
 
   insertSnapshot(polypCount: number, stateJson: string): number {

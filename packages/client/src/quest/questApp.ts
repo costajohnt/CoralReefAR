@@ -14,6 +14,7 @@ import { polypMesh } from '../scene/meshAdapter.js';
 import { Reef } from '../scene/reef.js';
 import { disposeTree } from '../scene/dispose.js';
 import { installSway } from '../scene/currentSway.js';
+import { EcosystemView } from '../sim/ecosystemView.js';
 import { installPulse } from '../scene/pulse.js';
 import { fetchReef, submitPolyp, RateLimitError } from '../net/api.js';
 import { ReefSocket, defaultWsUrl } from '../net/ws.js';
@@ -99,6 +100,9 @@ export class QuestApp {
    * The effects read `clock.value` directly.
    */
   private readonly ambientClock = { value: 0 };
+  /** Reef-wide bleaching (#117), shared by every polyp's sway shader. */
+  private readonly bleach = { value: 0 };
+  private readonly eco = new EcosystemView({ bleach: this.bleach });
   /** Keys used to mark a mesh as already having an effect installed. */
   private static readonly SWAY_INSTALLED = Symbol.for('reef.quest.sway');
   private static readonly PULSE_INSTALLED = Symbol.for('reef.quest.pulse');
@@ -300,6 +304,7 @@ export class QuestApp {
       this.hotspots.addPolyp(polyp);
     }
     for (const delta of state.sim) this.reef.applySim(delta);
+    this.eco.apply(state.ecosystem, { immediate: true });
     this.installAmbientEffectsOnNewMeshes();
 
     const url = defaultWsUrl();
@@ -316,6 +321,8 @@ export class QuestApp {
       this.installAmbientEffectsOnNewMeshes();
     } else if (msg.type === 'polyp_removed') {
       this.hotspots.removePolyp(msg.id);
+    } else if (msg.type === 'sim_update') {
+      this.eco.apply(msg.ecosystem);
     }
   }
 
@@ -331,7 +338,7 @@ export class QuestApp {
       if (!m.isMesh) continue;
       const flags = m.userData as Record<symbol, unknown>;
       if (!flags[QuestApp.SWAY_INSTALLED]) {
-        installSway(m, this.ambientClock);
+        installSway(m, this.ambientClock, this.bleach);
         flags[QuestApp.SWAY_INSTALLED] = true;
       }
       if (!flags[QuestApp.PULSE_INSTALLED]) {
@@ -348,8 +355,10 @@ export class QuestApp {
     if (!this.renderer || !this.referenceSpace) return;
     // Drive the sway / pulse shaders. predictedDisplayTime is the WebXR
     // canonical wall-clock; fall back to performance.now() if absent.
+    const prevClock = this.ambientClock.value;
     this.ambientClock.value = ((frame as XRFrame & { predictedDisplayTime?: number })
       .predictedDisplayTime ?? performance.now()) / 1000;
+    this.eco.update(Math.min(0.1, Math.max(0, this.ambientClock.value - prevClock)));
 
     // Persistent-anchor restore path: this fires on the first XRFrame
     // after start() if persist=1 and a saved handle exists. Restoring is

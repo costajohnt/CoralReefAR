@@ -10,3 +10,4 @@ export * from './tree/types.js';
 export * from './tree/schema.js';
 export * from './tree/ws.js';
 export * from './owner.js';
+export * from './ecosystem.js';

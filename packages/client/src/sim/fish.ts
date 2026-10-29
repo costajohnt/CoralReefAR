@@ -1,6 +1,7 @@
 import {
   BufferAttribute, BufferGeometry, Color, Points, PointsMaterial,
 } from 'three';
+import { MAX_FISH } from '@reef/shared';
 
 /**
  * Tiny flocking school. Keeps all agents in a bounded sphere around the reef,
@@ -15,11 +16,15 @@ export class FishSchool {
   // school drifts as a group — without it each fish's motion looks
   // individually wiggly instead of in-an-ocean.
   private elapsed = 0;
+  // Buffers are sized for MAX_FISH up front; the ecosystem (#117) changes how
+  // many are drawn and simulated via the draw range, with no reallocation.
+  private active: number;
 
   constructor(count = 60, readonly radius = 0.6) {
-    this.positions = new Float32Array(count * 3);
-    this.velocities = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
+    this.positions = new Float32Array(MAX_FISH * 3);
+    this.velocities = new Float32Array(MAX_FISH * 3);
+    this.active = 0;
+    for (let i = 0; i < MAX_FISH; i++) {
       this.positions[i * 3] = (Math.random() - 0.5) * radius;
       this.positions[i * 3 + 1] = Math.random() * radius * 0.6 + 0.05;
       this.positions[i * 3 + 2] = (Math.random() - 0.5) * radius;
@@ -38,6 +43,14 @@ export class FishSchool {
       sizeAttenuation: true,
     });
     this.points = new Points(g, m);
+    this.setPopulation(count);
+  }
+
+  population(): number { return this.active; }
+
+  setPopulation(n: number): void {
+    this.active = Math.min(MAX_FISH, Math.max(0, Math.round(Number.isFinite(n) ? n : 0)));
+    this.points.geometry.setDrawRange(0, this.active);
   }
 
   update(dt: number): void {
@@ -49,7 +62,7 @@ export class FishSchool {
     const cz = Math.sin(currentAngle) * 0.04;
     const cy = Math.sin(this.elapsed * 0.3) * 0.01;
 
-    const count = this.positions.length / 3;
+    const count = this.active;
     for (let i = 0; i < count; i++) {
       const px = this.positions[i * 3]!;
       const py = this.positions[i * 3 + 1]!;

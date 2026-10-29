@@ -155,6 +155,8 @@ Vite serves additional entry points alongside the main AR app:
 - `GET  /admin` — admin shell (no auth on the page; API calls require a Bearer token)
 - `DELETE /api/admin/polyp/:id` — soft-delete (Bearer token required)
 - `WS   /ws` — `hello` / `polyp_added` / `polyp_removed` / `sim_update`
+  (every sim tick; carries the reef-wide `ecosystem` state, which
+  `GET /api/reef` also returns)
 
 All responses carry CSP + `X-Frame-Options: DENY` + other standard hardening headers.
 

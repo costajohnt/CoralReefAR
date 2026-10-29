@@ -83,3 +83,15 @@ test('dispatchTreeMessage: valid tree frame reaches handlers; garbage is rejecte
   assert.equal(calls[0]!.type, 'tree_reset');
   assert.equal(invalid.length, 1);
 });
+
+test('sim_update carrying an ecosystem state validates; without one it still validates', () => {
+  const eco = {
+    version: 1, computedAt: 1, polypCount: 3, plantedLast7d: 1, daysSinceLastPlant: 0,
+    bleaching: 0.2, fishCount: 20, phase: 'stressed',
+  };
+  const seen: unknown[] = [];
+  dispatchMessage(JSON.stringify({ type: 'sim_update', updates: [], ecosystem: eco }), [(m) => seen.push(m)]);
+  dispatchMessage(JSON.stringify({ type: 'sim_update', updates: [] }), [(m) => seen.push(m)]);
+  assert.deepEqual((seen[0] as { ecosystem: unknown }).ecosystem, eco);
+  assert.equal((seen[1] as { ecosystem?: unknown }).ecosystem, undefined);
+});

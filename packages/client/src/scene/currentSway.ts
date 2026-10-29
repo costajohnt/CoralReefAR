@@ -6,10 +6,32 @@ import type { Mesh, MeshStandardMaterial } from 'three';
  * shared uniform clock. The caller is responsible for ensuring this runs at
  * most once per material.
  */
-export function installSway(mesh: Mesh, clock: { value: number }): void {
+export function installSway(
+  mesh: Mesh,
+  clock: { value: number },
+  // Optional reef-wide bleaching (#117), 0..MAX_BLEACHING. Shared by every
+  // polyp, so one write per frame grades the whole reef; no per-mesh work.
+  bleach?: { value: number },
+): void {
   const mat = mesh.material as MeshStandardMaterial;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = clock;
+    if (bleach) {
+      shader.uniforms.uBleach = bleach;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+         uniform float uBleach;`,
+      );
+      // After vertex colours are applied: pale towards bone white, keeping a
+      // trace of luminance so shapes still read.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+         float bleachLum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.91, 0.86) * (0.75 + 0.25 * bleachLum), uBleach);`,
+      );
+    }
     shader.vertexShader = shader.vertexShader.replace(
       '#include <common>',
       `#include <common>

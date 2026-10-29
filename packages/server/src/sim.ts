@@ -1,4 +1,5 @@
 import type { SimDelta } from '@reef/shared';
+import { stepEcosystem } from './ecosystem.js';
 import type { ReefDb } from './db.js';
 import type { Hub } from './hub.js';
 
@@ -21,6 +22,8 @@ export class SimWorker {
     // Math.random in production; tests inject a deterministic stream so the
     // tick outcome is exact rather than "passes with very high probability".
     private readonly rng: () => number = Math.random,
+    // Injectable clock so ecosystem steps are exact in tests.
+    private readonly clock: () => number = Date.now,
   ) {}
 
   start(): void {
@@ -34,7 +37,7 @@ export class SimWorker {
   }
 
   tick(): SimDelta[] {
-    const now = Date.now();
+    const now = this.clock();
     const polyps = this.db.listPublicPolyps();
     const updates: SimDelta[] = [];
 
@@ -61,12 +64,17 @@ export class SimWorker {
       }
     }
 
-    if (updates.length > 0) {
-      this.db.transaction(() => {
-        for (const u of updates) this.db.insertSim(u);
-      });
-      this.hub.broadcast({ type: 'sim_update', updates });
-    }
+    // Ecosystem (#117): one indexed aggregate plus a single-row upsert, so it
+    // adds O(1) work on top of the per-polyp decoration pass above. Saved in
+    // the same transaction as the deltas.
+    const ecosystem = stepEcosystem(this.db.getEcosystem(), this.db.ecosystemInputs(now));
+    this.db.transaction(() => {
+      for (const u of updates) this.db.insertSim(u);
+      this.db.saveEcosystem(ecosystem);
+    });
+    // Broadcast every tick (not only when decorations grew) so clients pick
+    // up fish/bleaching changes. Older clients ignore the extra field.
+    this.hub.broadcast({ type: 'sim_update', updates, ecosystem });
 
     // Prune aged deltas every tick (even when nothing grew) so sim_state stays
     // bounded by the retention window rather than growing forever.
@@ -100,7 +108,8 @@ export class SnapshotWorker {
   take(): number {
     const polyps = this.db.listPublicPolyps();
     const sim = this.db.listSim();
-    const stateJson = JSON.stringify({ polyps, sim });
+    const ecosystem = this.db.getEcosystem();
+    const stateJson = JSON.stringify(ecosystem ? { polyps, sim, ecosystem } : { polyps, sim });
     const id = this.db.insertSnapshot(polyps.length, stateJson);
     if (this.retentionCount > 0) {
       this.db.pruneOldSnapshots(this.retentionCount);

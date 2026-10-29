@@ -222,3 +222,18 @@ test('web surface (or absent surface) uses the strict rateLimitMax bucket', asyn
     config.questRateLimitMax = savedQuestMax;
   }
 });
+
+test('GET /api/reef includes the ecosystem: persisted state, or a computed one before the first tick', async () => {
+  const { app, db } = buildApp();
+  await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+  const first = (await app.inject({ method: 'GET', url: '/api/reef' })).json() as { ecosystem: { polypCount: number; phase: string } };
+  assert.equal(first.ecosystem.polypCount, 1);
+  assert.equal(first.ecosystem.phase, 'thriving');
+  db.saveEcosystem({
+    version: 1, computedAt: 1, polypCount: 99, plantedLast7d: 0, daysSinceLastPlant: 20,
+    bleaching: 0.5, fishCount: 20, phase: 'bleaching',
+  });
+  const second = (await app.inject({ method: 'GET', url: '/api/reef' })).json() as { ecosystem: { polypCount: number } };
+  assert.equal(second.ecosystem.polypCount, 99);
+  await app.close();
+});

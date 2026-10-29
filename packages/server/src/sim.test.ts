@@ -181,3 +181,88 @@ test('snapshot: retentionCount=0 keeps every snapshot', () => {
   for (let i = 0; i < 4; i++) w.take();
   assert.equal(db.listSnapshots().length, 4);
 });
+
+// --- Ecosystem (#117) --------------------------------------------------------
+
+test('db: ecosystem state is absent until saved, then round-trips', () => {
+  const db = freshDb();
+  assert.equal(db.getEcosystem(), null);
+  const s = {
+    version: 1 as const, computedAt: 5, polypCount: 2, plantedLast7d: 1, daysSinceLastPlant: 0,
+    bleaching: 0.25, fishCount: 12, phase: 'stressed' as const,
+  };
+  db.saveEcosystem(s);
+  assert.deepEqual(db.getEcosystem(), s);
+  db.saveEcosystem({ ...s, bleaching: 0.1 });
+  assert.equal(db.getEcosystem()!.bleaching, 0.1);
+  assert.equal((db.db.prepare('SELECT COUNT(*) AS n FROM ecosystem_state').get() as { n: number }).n, 1);
+});
+
+test('db: ecosystemInputs counts live polyps only', () => {
+  const db = freshDb();
+  const now = Date.now();
+  db.insertPolyp(polypAgedDays(20));
+  const recent = db.insertPolyp(polypAgedDays(2));
+  const gone = db.insertPolyp(polypAgedDays(1));
+  db.softDeletePolyp(gone.id);
+  const i = db.ecosystemInputs(now);
+  assert.equal(i.polypCount, 2);
+  assert.equal(i.plantedLast7d, 1);
+  assert.equal(i.lastPlantedAt, recent.createdAt);
+  assert.equal(i.now, now);
+  assert.deepEqual(freshDb().ecosystemInputs(now), { now, polypCount: 0, lastPlantedAt: null, plantedLast7d: 0 });
+});
+
+test('sim: every tick persists the ecosystem and broadcasts it with sim_update, even with no deltas', () => {
+  const db = freshDb();
+  for (let i = 0; i < 5; i++) db.insertPolyp(polypAgedDays(1));
+  const hub = new Hub();
+  const sent: unknown[] = [];
+  hub.broadcast = (m) => { sent.push(m); };
+  let now = Date.now();
+  const sim = new SimWorker(db, hub, 3600_000, 0, () => 0.99, () => now);
+  assert.deepEqual(sim.tick(), []);
+  const eco = db.getEcosystem()!;
+  assert.equal(eco.polypCount, 5);
+  assert.equal(eco.computedAt, now);
+  assert.equal(eco.phase, 'thriving');
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0], { type: 'sim_update', updates: [], ecosystem: eco });
+  now += 3600_000;
+  sim.tick();
+  assert.equal(db.getEcosystem()!.computedAt, now);
+});
+
+test('sim: the ecosystem advances from the persisted state across restarts', () => {
+  const db = freshDb();
+  db.insertPolyp(polypAgedDays(30)); // long-stagnant reef
+  let now = Date.now();
+  const clock = () => now;
+  new SimWorker(db, new Hub(), 3600_000, 0, () => 0.99, clock).tick();
+  assert.equal(db.getEcosystem()!.bleaching, 0); // first state starts healthy
+  now += 3600_000;
+  // A new worker (process restart) continues from the saved row.
+  new SimWorker(db, new Hub(), 3600_000, 0, () => 0.99, clock).tick();
+  assert.ok(db.getEcosystem()!.bleaching > 0);
+});
+
+test('sim: the ecosystem never touches polyp rows', () => {
+  const db = freshDb();
+  for (let i = 0; i < 3; i++) db.insertPolyp(polypAgedDays(40));
+  const before = JSON.stringify(db.db.prepare('SELECT * FROM polyps ORDER BY id').all());
+  let now = Date.now();
+  const sim = new SimWorker(db, new Hub(), 3600_000, 0, () => 0.99, () => now);
+  for (let h = 0; h < 200; h++) { sim.tick(); now += 3600_000; }
+  assert.ok(db.getEcosystem()!.bleaching > 0);
+  assert.equal(JSON.stringify(db.db.prepare('SELECT * FROM polyps ORDER BY id').all()), before);
+});
+
+test('snapshot: take() records the ecosystem alongside polyps and sim', () => {
+  const db = freshDb();
+  db.insertPolyp(polypAgedDays(1));
+  new SimWorker(db, new Hub(), 3600_000, 0, () => 0.99).tick();
+  const id = new SnapshotWorker(db, 86_400_000).take();
+  const state = JSON.parse(db.getSnapshot(id)!.stateJson) as { polyps: unknown[]; ecosystem: { polypCount: number } };
+  assert.equal(state.polyps.length, 1);
+  assert.equal(state.ecosystem.polypCount, 1);
+});
