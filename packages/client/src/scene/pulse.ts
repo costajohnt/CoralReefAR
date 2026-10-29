@@ -24,6 +24,9 @@ export function pulseIntensity(clockSec: number, seed: number): number {
 export function installPulse(mesh: Mesh, clock: { value: number }, seed: number): void {
   const mat = mesh.material as MeshStandardMaterial;
   mesh.onBeforeRender = (): void => {
-    mat.emissiveIntensity = pulseIntensity(clock.value, seed);
+    // arrivalBoost: extra glow the gallery display adds to a just-planted
+    // polyp (playground/gallery.ts). Absent everywhere else.
+    const boost = (mesh.userData.arrivalBoost as number | undefined) ?? 0;
+    mat.emissiveIntensity = pulseIntensity(clock.value, seed) + boost;
   };
 }

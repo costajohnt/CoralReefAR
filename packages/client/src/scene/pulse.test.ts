@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { AMPLITUDE, BASELINE, PERIOD_SEC, pulseIntensity } from './pulse.js';
+import { BoxGeometry, Mesh, MeshStandardMaterial } from 'three';
+import { AMPLITUDE, BASELINE, PERIOD_SEC, installPulse, pulseIntensity } from './pulse.js';
 
 describe('pulseIntensity', () => {
   test('at t=0 with seed=0 the phase is 0 and intensity equals baseline', () => {
@@ -39,5 +40,23 @@ describe('pulseIntensity', () => {
     // sin(0 + π/2) = 1, so after a quarter period we should be at the peak.
     const peak = pulseIntensity(PERIOD_SEC / 4, 0);
     expect(peak).toBeCloseTo(BASELINE + AMPLITUDE, 6);
+  });
+});
+
+describe('installPulse arrival boost', () => {
+  test('adds userData.arrivalBoost on top of the breathing pulse', () => {
+    const mesh = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+    const clock = { value: 0 };
+    installPulse(mesh, clock, 0);
+    const render = () => (mesh.onBeforeRender as unknown as () => void)();
+    render();
+    const mat = mesh.material as MeshStandardMaterial;
+    expect(mat.emissiveIntensity).toBeCloseTo(BASELINE);
+    mesh.userData.arrivalBoost = 0.8;
+    render();
+    expect(mat.emissiveIntensity).toBeCloseTo(BASELINE + 0.8);
+    delete mesh.userData.arrivalBoost;
+    render();
+    expect(mat.emissiveIntensity).toBeCloseTo(BASELINE);
   });
 });

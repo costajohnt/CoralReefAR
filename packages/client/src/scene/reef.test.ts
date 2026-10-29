@@ -54,3 +54,14 @@ describe('Reef "mine" highlight', () => {
     expect(reef.mineCount()).toBe(0);
   });
 });
+
+describe('Reef.node', () => {
+  test('returns the scene node for a live polyp id, undefined otherwise', () => {
+    const reef = new Reef();
+    reef.addPolyp(polyp(7));
+    expect((reef.node(7)!.userData.polyp as PublicPolyp).id).toBe(7);
+    expect(reef.node(8)).toBeUndefined();
+    reef.removePolyp(7);
+    expect(reef.node(7)).toBeUndefined();
+  });
+});

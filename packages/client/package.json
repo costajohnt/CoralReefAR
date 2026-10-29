@@ -13,6 +13,7 @@
   "dependencies": {
     "@reef/generator": "workspace:*",
     "@reef/shared": "workspace:*",
+    "qrcode-generator": "^2.0.4",
     "three": "^0.186.1"
   },
   "devDependencies": {

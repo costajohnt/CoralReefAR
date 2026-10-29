@@ -44,8 +44,10 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     Renders the landscape reef.
   - **Playground** (`playground.html`) — AR-free orbit-camera view
     with click-to-place, for iterating without marker/phone. Renders
-    the landscape reef. `?mode=screen` variant for a fixed
-    museum-display.
+    the landscape reef. `?mode=screen` (alias `?mode=gallery`) turns it
+    into a wall display: drifting cinematic orbit, a glow on polyps as
+    they're planted, a live coral/visitor counter, and a QR code to the
+    planting app (`?plant=<path or same-origin url>` overrides the QR target).
   - **Tree** (`tree.html`) — a different reef. Fractal branching-coral
     web built by attaching small composable pieces to each other's
     tips. Avatar-bioluminescent styling (bloom post-processing, vivid
@@ -147,7 +149,8 @@ Vite serves additional entry points alongside the main AR app:
 - `GET  /api/reef/mine` — ids of the caller's live polyps (`X-Reef-Owner` required)
 - `POST /api/reef/polyp/:id/undo` — the owner undoes their most recent polyp
   within 60s of planting it (`X-Reef-Owner` required; repeat undo is a no-op)
-- `GET  /api/stats` — polyp count, unique devices, per-species, last 24h/7d
+- `GET  /api/stats` — polyp count, unique devices, contributors (distinct
+  owner tokens), per-species, last 24h/7d
 - `GET  /api/snapshots` / `GET /api/snapshots/:id` — timelapse data
 - `GET  /admin` — admin shell (no auth on the page; API calls require a Bearer token)
 - `DELETE /api/admin/polyp/:id` — soft-delete (Bearer token required)
