@@ -1,5 +1,6 @@
 import type { Object3D } from 'three';
 import { GLB_MIME, buildGlb, describeReef, type PolypExportDesc } from './glb.js';
+import { downloadBlob } from '../ui/download.js';
 
 /**
  * Largest reef we'll build on the main thread when the worker is missing or
@@ -19,11 +20,8 @@ export function workerTimeoutMs(polypCount: number): number {
   return WORKER_BASE_TIMEOUT_MS + polypCount * WORKER_PER_POLYP_MS;
 }
 
-/**
- * How long a download's object URL stays alive. iOS Safari can read the blob
- * well after the click returns, so revoking on the next tick can cancel it.
- */
-export const BLOB_URL_REVOKE_MS = 60_000;
+// Re-exported so existing imports keep working; the helper is shared.
+export { BLOB_URL_REVOKE_MS } from '../ui/download.js';
 
 /** The reef is too big to build inline and the worker path is unavailable. */
 export class ExportTooLargeError extends Error {
@@ -97,14 +95,5 @@ export function glbFilename(now = new Date()): string {
 
 /** Hand the GLB to the browser as a file download. */
 export function downloadGlb(glb: Blob, filename: string): void {
-  const url = URL.createObjectURL(glb);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_REVOKE_MS);
+  downloadBlob(glb, filename);
 }

@@ -16,6 +16,10 @@
     footer button { background: #1b3a54; color: #eef; border: 0; border-radius: 4px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
     footer input[type=range] { width: 100%; }
     footer .time { font-variant-numeric: tabular-nums; color: #9ab; font-size: 0.85rem; }
+    .video { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.85rem; color: #9ab; }
+    .video select { background: #0b2235; color: #eef; border: 1px solid #1b3a54; border-radius: 4px; padding: 0.25rem; }
+    .video button:disabled, .video select:disabled, footer button:disabled { opacity: 0.5; cursor: default; }
+    #videoStatus { margin: 0; flex: 1 1 12rem; }
   </style>
 </head>
 <body>
@@ -28,6 +32,21 @@
     <button id=playBtn>Play</button>
     <input id=scrub type=range min=0 max=0 value=0 step=1 />
     <span class="time" id=time>—</span>
+    <div class="video" role="group" aria-label="Video export">
+      <label for=videoDuration>Length</label>
+      <select id=videoDuration>
+        <option value="10">10 s</option>
+        <option value="20" selected>20 s</option>
+        <option value="30">30 s</option>
+      </select>
+      <label for=videoFps>Frame rate</label>
+      <select id=videoFps>
+        <option value="24">24 fps</option>
+        <option value="30" selected>30 fps</option>
+      </select>
+      <button id=recordBtn type=button>Record video</button>
+      <p id=videoStatus role=status aria-live=polite></p>
+    </div>
   </footer>
   <script type="module" src="/src/timelapse.ts"></script>
 </body>

@@ -206,3 +206,58 @@ describe('createTimelapsePlayer — playback', () => {
     expect(applySnapshot).not.toHaveBeenCalled();
   });
 });
+
+describe('createTimelapsePlayer — lock (video recording)', () => {
+  test('snapshots() exposes the loaded list', async () => {
+    const player = createTimelapsePlayer(dom(), {
+      loadList: async () => [meta(10), meta(20)],
+      loadSnapshot: async (id) => body(id),
+      applySnapshot: vi.fn(),
+    });
+    expect(player.snapshots()).toEqual([]);
+    await player.init();
+    expect(player.snapshots().map((s) => s.id)).toEqual([10, 20]);
+    player.dispose();
+  });
+
+  test('lock stops playback, disables the controls, and drops an in-flight scrub', async () => {
+    const loader = deferredLoader();
+    const applySnapshot = vi.fn();
+    const player = createTimelapsePlayer(dom(), {
+      loadList: async () => [meta(10), meta(20)],
+      loadSnapshot: loader.loadSnapshot,
+      applySnapshot,
+    });
+    await player.init(); // requests 20
+    const d = dom();
+    d.playBtn.click();
+    expect(d.playBtn.textContent).toBe('Pause');
+    player.setLocked(true);
+    expect(d.playBtn.textContent).toBe('Play');
+    expect(d.playBtn.disabled).toBe(true);
+    expect(d.scrubEl.disabled).toBe(true);
+    loader.resolve(20);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(applySnapshot).not.toHaveBeenCalled();
+    player.dispose();
+  });
+
+  test('unlock re-enables the controls and restores the selected snapshot', async () => {
+    const applySnapshot = vi.fn();
+    const player = createTimelapsePlayer(dom(), {
+      loadList: async () => [meta(10), meta(20)],
+      loadSnapshot: async (id) => body(id),
+      applySnapshot,
+    });
+    await player.init();
+    player.setLocked(true);
+    applySnapshot.mockClear();
+    player.setLocked(false);
+    const d = dom();
+    expect(d.playBtn.disabled).toBe(false);
+    expect(d.scrubEl.disabled).toBe(false);
+    await vi.waitFor(() => expect(applySnapshot).toHaveBeenCalledWith(body(20)));
+    player.dispose();
+  });
+});
