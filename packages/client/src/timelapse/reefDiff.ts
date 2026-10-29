@@ -38,6 +38,7 @@ export function createSnapshotScene(group: Group, deps: SnapshotSceneDeps): Snap
       }
       let added = 0;
       for (const p of body.polyps) {
+        // Relies on polyp rows being immutable (id → same species/seed/colour/pose).
         if (nodes.has(p.id)) continue;
         const node = deps.makeNode(p);
         group.add(node);

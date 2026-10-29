@@ -195,4 +195,37 @@ describe('recordTimelapse', () => {
     };
     await expect(recordTimelapse(d)).rejects.toThrow(/encoder died/);
   });
+
+  test('a recorder error mid-recording stops the frame loop immediately', async () => {
+    const { d, rec, frames } = deps({ durationS: 2, fps: 10 });
+    d.drawFrame = (i, _t, snap) => {
+      frames.push({ i, snapId: snap.id, state: rec.state });
+      if (i === 2) rec.onerror?.({ error: new Error('encoder died') });
+    };
+    await expect(recordTimelapse(d)).rejects.toThrow(/encoder died/);
+    expect(frames).toHaveLength(3);
+  });
+
+  test('after a stall the frame clock resets to now instead of bunching frames', async () => {
+    let clock = 0;
+    const waits: Array<{ deadline: number; at: number }> = [];
+    const { d } = deps({
+      snapshots: snaps(1),
+      durationS: 1,
+      fps: 10,
+      now: () => clock,
+      waitUntil: async (t) => {
+        waits.push({ deadline: t, at: clock });
+        // The 3rd frame's wait returns 500ms late (a stall); others land on time.
+        clock = waits.length === 3 ? t + 500 : Math.max(clock, t);
+      },
+    });
+    await recordTimelapse(d);
+    // Frame 4's deadline must be one frame after the late wake-up, not a past
+    // deadline that would make frames 4..8 fire back-to-back.
+    expect(waits[3]!.deadline).toBeCloseTo(waits[2]!.deadline + 500 + 100);
+    for (let k = 3; k < waits.length; k++) {
+      expect(waits[k]!.deadline).toBeGreaterThan(waits[k]!.at);
+    }
+  });
 });

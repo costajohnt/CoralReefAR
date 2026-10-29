@@ -117,15 +117,24 @@ export async function recordTimelapse(d: RecordDeps): Promise<Blob> {
   const { recorder, requestFrame } = d.createRecorder();
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  // Set once the recorder reports an error; checked every frame so the loop
+  // stops immediately instead of drawing frames nobody is encoding.
+  let failure: { error: unknown } | null = null;
   const finished = new Promise<void>((resolve, reject) => {
     recorder.onstop = () => resolve();
-    recorder.onerror = (e) => reject((e as { error?: unknown }).error ?? e);
+    recorder.onerror = (e) => {
+      failure = { error: (e as { error?: unknown }).error ?? e };
+      reject(failure.error);
+    };
   });
   // Keep the rejection observed even if we bail out before awaiting it.
   finished.catch(() => {});
 
   const stop = (): void => { if (recorder.state !== 'inactive') recorder.stop(); };
-  const checkAbort = (): void => { if (d.signal?.aborted) throw abortError(); };
+  const checkAbort = (): void => {
+    if (failure) throw failure.error;
+    if (d.signal?.aborted) throw abortError();
+  };
   const frameMs = 1000 / plan.fps;
 
   recorder.start(1000);
@@ -149,6 +158,11 @@ export async function recordTimelapse(d: RecordDeps): Promise<Blob> {
         done++;
         d.onProgress?.(done, plan.totalFrames);
         deadline += frameMs;
+        // After a stall (GC, slow frame, throttling) the next deadline is
+        // already in the past; re-anchor on now so the remaining frames keep
+        // their spacing instead of firing back-to-back to catch up.
+        const now = d.now();
+        if (deadline < now) deadline = now + frameMs;
         await d.waitUntil(deadline);
       }
       recorder.pause();
