@@ -1,9 +1,11 @@
 import type { Object3D } from 'three';
-import { downloadGlb, exportReefGlb, glbFilename } from '../export/exportReef.js';
+import {
+  ExportTooLargeError, downloadGlb, exportReefGlb, glbFilename,
+} from '../export/exportReef.js';
 
 export interface ExportButtonDeps {
-  exportReefGlb(reef: { all(): Iterable<Object3D> }): Promise<ArrayBuffer>;
-  downloadGlb(glb: ArrayBuffer, filename: string): void;
+  exportReefGlb(reef: { all(): Iterable<Object3D> }): Promise<Blob>;
+  downloadGlb(glb: Blob, filename: string): void;
   filename(): string;
 }
 
@@ -42,10 +44,12 @@ export function wireExportButton(
         const glb = await deps.exportReefGlb(reef);
         const name = deps.filename();
         deps.downloadGlb(glb, name);
-        setStatus(`Downloaded ${name} (${(glb.byteLength / (1024 * 1024)).toFixed(1)} MB).`);
+        setStatus(`Downloaded ${name} (${(glb.size / (1024 * 1024)).toFixed(1)} MB).`);
       } catch (e) {
         console.error(e);
-        setStatus('Couldn’t export the reef. Please try again.');
+        setStatus(e instanceof ExportTooLargeError
+          ? `This reef (${e.polypCount} corals) is too large to export in this browser.`
+          : 'Couldn’t export the reef. Please try again.');
       } finally {
         busy = false;
         btn.disabled = false;

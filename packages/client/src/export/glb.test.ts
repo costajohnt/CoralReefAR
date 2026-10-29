@@ -4,8 +4,11 @@ import type { Mesh, MeshStandardMaterial, Object3D } from 'three';
 import type { PublicPolyp, SimDelta } from '@reef/shared';
 import { generatePolyp } from '@reef/generator';
 import { Reef } from '../scene/reef.js';
-import { buildGlb, describeReef, parseGlbHeader, type PolypExportDesc } from './glb.js';
-import { exportReefGlb, downloadGlb, glbFilename } from './exportReef.js';
+import { buildExportScene, buildGlb, describeReef, parseGlbHeader, type PolypExportDesc } from './glb.js';
+import {
+  BLOB_URL_REVOKE_MS, ExportTooLargeError, INLINE_FALLBACK_MAX_POLYPS,
+  downloadGlb, exportReefGlb, glbFilename, workerTimeoutMs,
+} from './exportReef.js';
 
 function polyp(id: number, over: Partial<PublicPolyp> = {}): PublicPolyp {
   return {
@@ -131,16 +134,82 @@ describe('buildGlb', () => {
   });
 });
 
+async function blobHeader(b: Blob) {
+  return parseGlbHeader(await b.arrayBuffer());
+}
+
+function polypNodeCount(h: { json: { nodes: Array<{ name?: string }> } }): number {
+  return h.json.nodes.filter((n) => /^polyp-\d+$/.test(n.name ?? '')).length;
+}
+
 describe('exportReefGlb', () => {
-  afterEach(() => { vi.unstubAllGlobals(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
   test('falls back to the main thread when Worker is unavailable', async () => {
     vi.stubGlobal('Worker', undefined);
-    const buf = await exportReefGlb(reefOf([polyp(1), polyp(2)]));
-    expect(parseGlbHeader(buf).json.nodes.filter((n: { name?: string }) => n.name?.startsWith('polyp-'))).toHaveLength(2);
+    const blob = await exportReefGlb(reefOf([polyp(1), polyp(2)]));
+    expect(blob.type).toBe('model/gltf-binary');
+    expect(polypNodeCount(await blobHeader(blob))).toBe(2);
   });
 
-  test('falls back to the main thread when the worker errors', async () => {
+  test('falls back to the main thread when the worker errors, and terminates it', async () => {
+    const terminate = vi.fn();
+    class BrokenWorker {
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      onerror: ((e: ErrorEvent) => void) | null = null;
+      postMessage(): void { queueMicrotask(() => this.onerror?.(new ErrorEvent('error', { message: 'boom' }))); }
+      terminate = terminate;
+    }
+    vi.stubGlobal('Worker', BrokenWorker);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const blob = await exportReefGlb(reefOf([polyp(1)]));
+    expect((await blobHeader(blob)).magic).toBe('glTF');
+    expect(terminate).toHaveBeenCalled();
+  });
+
+  test('a worker that never answers times out, is terminated, and falls through', async () => {
+    const terminate = vi.fn();
+    class SilentWorker {
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      onerror: ((e: ErrorEvent) => void) | null = null;
+      postMessage(): void { /* OOM-killed: no message, no error */ }
+      terminate = terminate;
+    }
+    vi.stubGlobal('Worker', SilentWorker);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const blob = await exportReefGlb(reefOf([polyp(1)]), { timeoutMs: 20 });
+    expect((await blobHeader(blob)).magic).toBe('glTF');
+    expect(terminate).toHaveBeenCalledTimes(1);
+  });
+
+  test('a late worker reply after the timeout is ignored', async () => {
+    let w!: { onmessage: ((e: MessageEvent) => void) | null };
+    class LateWorker {
+      onmessage: ((e: MessageEvent) => void) | null = null;
+      onerror: ((e: ErrorEvent) => void) | null = null;
+      constructor() { w = this; }
+      postMessage(): void {}
+      terminate(): void {}
+    }
+    vi.stubGlobal('Worker', LateWorker);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const blob = await exportReefGlb(reefOf([polyp(1)]), { timeoutMs: 10 });
+    expect(() => w.onmessage?.(new MessageEvent('message', { data: { ok: true, glb: new Blob(['x']) } }))).not.toThrow();
+    expect((await blobHeader(blob)).magic).toBe('glTF');
+  });
+
+  test('the worker timeout scales with polyp count', () => {
+    expect(workerTimeoutMs(0)).toBeGreaterThanOrEqual(10_000);
+    expect(workerTimeoutMs(2000)).toBeGreaterThan(workerTimeoutMs(100));
+  });
+
+  test('above the inline threshold, no worker means a clear error instead of a freeze', async () => {
+    vi.stubGlobal('Worker', undefined);
+    await expect(exportReefGlb(reefOf([polyp(1), polyp(2)]), { inlineMaxPolyps: 1 }))
+      .rejects.toBeInstanceOf(ExportTooLargeError);
+  });
+
+  test('above the inline threshold, a failed worker also does not fall back inline', async () => {
     class BrokenWorker {
       onmessage: ((e: MessageEvent) => void) | null = null;
       onerror: ((e: ErrorEvent) => void) | null = null;
@@ -149,12 +218,16 @@ describe('exportReefGlb', () => {
     }
     vi.stubGlobal('Worker', BrokenWorker);
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const buf = await exportReefGlb(reefOf([polyp(1)]));
-    expect(parseGlbHeader(buf).magic).toBe('glTF');
+    await expect(exportReefGlb(reefOf([polyp(1), polyp(2)]), { inlineMaxPolyps: 1 }))
+      .rejects.toBeInstanceOf(ExportTooLargeError);
   });
 
-  test('uses the worker result when the worker succeeds', async () => {
-    const fake = await buildGlb([]);
+  test('INLINE_FALLBACK_MAX_POLYPS is a named, bounded threshold', () => {
+    expect(INLINE_FALLBACK_MAX_POLYPS).toBe(300);
+  });
+
+  test('returns the worker\'s Blob as-is (no main-thread copy)', async () => {
+    const fake = new Blob([await buildGlb([])], { type: 'model/gltf-binary' });
     let posted: unknown;
     class OkWorker {
       onmessage: ((e: MessageEvent) => void) | null = null;
@@ -166,28 +239,50 @@ describe('exportReefGlb', () => {
       terminate(): void {}
     }
     vi.stubGlobal('Worker', OkWorker);
-    const buf = await exportReefGlb(reefOf([polyp(1)]));
-    expect(buf).toBe(fake);
+    const blob = await exportReefGlb(reefOf([polyp(1)]));
+    expect(blob).toBe(fake);
     expect((posted as { polyps: PolypExportDesc[] }).polyps).toHaveLength(1);
   });
 });
 
+describe('buildExportScene', () => {
+  test('barnacles of the same radius share one geometry', () => {
+    const d: PolypExportDesc = {
+      id: 1, species: 'bulbous', seed: 1, colorKey: 'coral-pink',
+      position: [0, 0, 0], quaternion: [0, 0, 0, 1], scale: 1, tint: [1, 1, 1],
+      barnacles: [
+        { position: [0.01, 0, 0], radius: 0.004 },
+        { position: [0.02, 0, 0], radius: 0.004 },
+        { position: [0.03, 0, 0], radius: 0.003 },
+      ],
+    };
+    const scene = buildExportScene([d, { ...d, id: 2 }]);
+    const geoms = new Set<unknown>();
+    scene.traverse((o) => { if (o.name === 'barnacle') geoms.add((o as Mesh).geometry); });
+    expect(geoms.size).toBe(2);
+  });
+});
+
 describe('downloadGlb', () => {
-  test('clicks a temporary download link and revokes the object URL', () => {
-    const create = vi.fn(() => 'blob:fake');
-    const revoke = vi.fn();
-    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  test('clicks a temporary download link and revokes the URL only after a long delay', () => {
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
     const clicked: HTMLAnchorElement[] = [];
-    const spy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicked.push(this); });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { clicked.push(this); });
     vi.useFakeTimers();
-    downloadGlb(new ArrayBuffer(8), 'reef.glb');
+    const blob = new Blob(['x'], { type: 'model/gltf-binary' });
+    downloadGlb(blob, 'reef.glb');
+    expect(create).toHaveBeenCalledWith(blob);
     expect(clicked[0]!.download).toBe('reef.glb');
     expect(clicked[0]!.href).toBe('blob:fake');
     expect(clicked[0]!.isConnected).toBe(false);
-    vi.runAllTimers();
+    vi.advanceTimersByTime(29_999);
+    expect(revoke).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(BLOB_URL_REVOKE_MS);
     expect(revoke).toHaveBeenCalledWith('blob:fake');
-    vi.useRealTimers();
-    spy.mockRestore();
+    expect(BLOB_URL_REVOKE_MS).toBeGreaterThanOrEqual(30_000);
   });
 
   test('glbFilename is date-stamped', () => {

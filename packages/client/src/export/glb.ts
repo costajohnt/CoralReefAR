@@ -27,6 +27,8 @@ import type { PublicPolyp, Species } from '@reef/shared';
 
 type Vec3 = [number, number, number];
 
+export const GLB_MIME = 'model/gltf-binary';
+
 export interface PolypExportDesc {
   id: number;
   species: Species;
@@ -108,6 +110,14 @@ export function buildExportScene(polyps: readonly PolypExportDesc[]): Group {
     return m;
   };
   let barnacleMat: MeshStandardMaterial | null = null;
+  // Barnacle sizes come from a handful of sim rolls; share geometry per radius
+  // so the exporter writes each sphere's buffers once.
+  const barnacleGeoms = new Map<number, SphereGeometry>();
+  const barnacleGeom = (radius: number): SphereGeometry => {
+    let g = barnacleGeoms.get(radius);
+    if (!g) { g = new SphereGeometry(radius, 6, 4); barnacleGeoms.set(radius, g); }
+    return g;
+  };
 
   for (const d of polyps) {
     const { mesh } = generatePolyp({ species: d.species, seed: d.seed, colorKey: d.colorKey });
@@ -119,7 +129,7 @@ export function buildExportScene(polyps: readonly PolypExportDesc[]): Group {
     node.userData = { id: d.id, species: d.species, seed: d.seed, colorKey: d.colorKey };
     for (const b of d.barnacles) {
       barnacleMat ??= new MeshStandardMaterial({ name: 'barnacle', color: BARNACLE_COLOR, roughness: 0.9 });
-      const s = new Mesh(new SphereGeometry(b.radius, 6, 4), barnacleMat);
+      const s = new Mesh(barnacleGeom(b.radius), barnacleMat);
       s.name = 'barnacle';
       s.position.fromArray(b.position);
       node.add(s);

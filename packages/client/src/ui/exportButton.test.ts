@@ -1,8 +1,9 @@
 import { describe, test, expect, vi } from 'vitest';
 import type { Object3D } from 'three';
 import { wireExportButton } from './exportButton.js';
+import { ExportTooLargeError } from '../export/exportReef.js';
 
-function setup(opts: { polyps?: number; exportImpl?: () => Promise<ArrayBuffer> } = {}) {
+function setup(opts: { polyps?: number; exportImpl?: () => Promise<Blob> } = {}) {
   document.body.innerHTML = '';
   const btn = document.createElement('button');
   btn.textContent = 'Download 3D model';
@@ -11,7 +12,7 @@ function setup(opts: { polyps?: number; exportImpl?: () => Promise<ArrayBuffer> 
   const reef = { all: () => nodes };
   const status: string[] = [];
   const download = vi.fn();
-  const exportReefGlb = vi.fn(opts.exportImpl ?? (async () => new ArrayBuffer(3 * 1024 * 1024)));
+  const exportReefGlb = vi.fn(opts.exportImpl ?? (async () => new Blob([new Uint8Array(3 * 1024 * 1024)])));
   wireExportButton(btn, reef, (t) => status.push(t), {
     exportReefGlb, downloadGlb: download, filename: () => 'coral-reef-2026-10-29.glb',
   });
@@ -31,7 +32,7 @@ describe('wireExportButton', () => {
     expect(btn.getAttribute('aria-busy')).toBe('true');
     expect(status[0]).toMatch(/Preparing/);
     await vi.waitFor(() => expect(download).toHaveBeenCalled());
-    expect(download).toHaveBeenCalledWith(expect.any(ArrayBuffer), 'coral-reef-2026-10-29.glb');
+    expect(download).toHaveBeenCalledWith(expect.any(Blob), 'coral-reef-2026-10-29.glb');
     expect(status.at(-1)).toMatch(/coral-reef-2026-10-29\.glb \(3\.0 MB\)/);
     expect(btn.disabled).toBe(false);
     expect(btn.hasAttribute('aria-busy')).toBe(false);
@@ -39,12 +40,12 @@ describe('wireExportButton', () => {
   });
 
   test('ignores clicks while an export is in flight', async () => {
-    let release!: (b: ArrayBuffer) => void;
+    let release!: (b: Blob) => void;
     const { btn, exportReefGlb } = setup({ exportImpl: () => new Promise((r) => { release = r; }) });
     btn.click();
     btn.dispatchEvent(new MouseEvent('click'));
     expect(exportReefGlb).toHaveBeenCalledTimes(1);
-    release(new ArrayBuffer(1));
+    release(new Blob(['x']));
   });
 
   test('an empty reef says so instead of downloading an empty file', () => {
@@ -59,6 +60,14 @@ describe('wireExportButton', () => {
     const { btn, status, download } = setup({ exportImpl: async () => { throw new Error('boom'); } });
     btn.click();
     await vi.waitFor(() => expect(status.at(-1)).toMatch(/couldn.t export/i));
+    expect(download).not.toHaveBeenCalled();
+    expect(btn.disabled).toBe(false);
+  });
+
+  test('a reef too large to build without a worker gets a specific message', async () => {
+    const { btn, status, download } = setup({ exportImpl: async () => { throw new ExportTooLargeError(500, 300); } });
+    btn.click();
+    await vi.waitFor(() => expect(status.at(-1)).toMatch(/too large/i));
     expect(download).not.toHaveBeenCalled();
     expect(btn.disabled).toBe(false);
   });
