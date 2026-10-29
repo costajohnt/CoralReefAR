@@ -145,20 +145,60 @@ LISTED='grep -qx "litestream ltx -json -level all -config /etc/litestream.yml $W
   check "does not bind" '[ ! -e "$BIND" ]'
   no_replicate
 
-  fresh_db
-  echo "s3://old-bucket/reef.db endpoint=https://s3.example" >"$BIND"
-  boot "mismatched identity: bucket changed" STUB_LTX=data $FULL "$DB"
-  ok_exit
-  check "lists the new replica" "$LISTED"
-  check "holds" 'grep -q "not bound to this replica" "$HOLD"'
-  no_replicate
+  # A binding to a different replica is never switched automatically, even
+  # when the newly configured replica is empty.
+  for ltx in data empty fail; do
+    fresh_db
+    echo "s3://old-bucket/reef.db endpoint=https://s3.example" >"$BIND"
+    boot "bound elsewhere (bucket changed), new replica $ltx" STUB_LTX=$ltx $FULL "$DB"
+    ok_exit
+    check "does not list" '! grep -q "litestream ltx" "$CALLS"'
+    check "holds naming both replicas" 'grep -q "bound to s3://old-bucket/reef.db endpoint=https://s3.example, configured $IDENTITY; refusing to switch replicas automatically" "$HOLD"'
+    check "keeps the old binding" '[ "$(cat "$BIND")" = "s3://old-bucket/reef.db endpoint=https://s3.example" ]'
+    check "prints the override command" 'grep -qF "echo '"'"'$IDENTITY'"'"' > $BIND && rm $HOLD" "$WORK/out"'
+    no_replicate
+  done
 
   fresh_db
   echo "s3://reef/reef.db endpoint=https://other.example" >"$BIND"
-  boot "mismatched identity, new bucket empty" STUB_LTX=empty $FULL "$DB"
+  boot "bound elsewhere (endpoint changed), new replica empty" STUB_LTX=empty $FULL "$DB"
   ok_exit
-  check "rebinds to the new replica" '[ "$(cat "$BIND")" = "$IDENTITY" ]'
-  replicates
+  check "holds" 'grep -q "refusing to switch replicas automatically" "$HOLD"'
+  no_replicate
+
+  # Endpoint spelling differences are the same replica: scheme and host case,
+  # trailing slashes, and a missing scheme (https).
+  for pair in \
+      "https://s3.example|HTTPS://S3.Example/" \
+      "https://s3.example|s3.example" \
+      "https://s3.example/|https://s3.example" \
+      "s3.example|https://S3.EXAMPLE//"; do
+    bound_ep="${pair%%|*}"; conf_ep="${pair#*|}"
+    fresh_db
+    echo "s3://reef/reef.db endpoint=$bound_ep" >"$BIND"
+    boot "bound '$bound_ep', configured '$conf_ep'" STUB_LTX=fail \
+      BUCKET_NAME=reef AWS_ENDPOINT_URL_S3="$conf_ep" AWS_ACCESS_KEY_ID=k AWS_SECRET_ACCESS_KEY=s "$DB"
+    ok_exit
+    check "treats it as the same replica" '[ ! -e "$HOLD" ]'
+    replicates
+  done
+
+  run "binding is written normalized" STUB_RESTORE=empty STUB_LTX=empty \
+    BUCKET_NAME=reef AWS_ENDPOINT_URL_S3="HTTPS://S3.Example/Some/Path/" AWS_ACCESS_KEY_ID=k AWS_SECRET_ACCESS_KEY=s "$DB"
+  ok_exit
+  check "lowercases scheme and host, keeps path case, strips trailing slash" \
+    '[ "$(cat "$BIND")" = "s3://reef/reef.db endpoint=https://s3.example/Some/Path" ]'
+
+  # A zero-byte DB is never replicated, bound or not.
+  for bound in yes no; do
+    rm -rf "$WORK/data"; mkdir -p "$WORK/data"; : >"$WORK/data/reef.db"
+    [ "$bound" = no ] || echo "$IDENTITY" >"$BIND"
+    boot "zero-byte DB present, bound=$bound" STUB_LTX=empty $FULL "$DB"
+    ok_exit
+    check "holds" 'grep -q "zero bytes" "$HOLD"'
+    check "does not restore over it" '! grep -q "litestream restore" "$CALLS"'
+    no_replicate
+  done
 
   # --- DB missing ---------------------------------------------------------
 
@@ -224,9 +264,8 @@ LISTED='grep -qx "litestream ltx -json -level all -config /etc/litestream.yml $W
   check "never runs the app" '! grep -q "^app" "$CALLS"'
   check "never replicates" '! grep -q "litestream replicate" "$CALLS"'
 
-  fresh_db
-  mkdir "$BIND"   # directory in the way of the binding file
-  boot "binding write fails" STUB_LTX=empty $FULL "$DB"
+  rm -rf "$WORK/data"; mkdir -p "$WORK/data" "$BIND"   # directory in the way of the binding file
+  boot "binding write fails after a restore" $FULL "$DB"
   check "exits non-zero" '[ "$status" != 0 ]'
   check "says why" 'grep -q "could not write" "$WORK/out"'
   check "never runs the app" '! grep -q "^app" "$CALLS"'

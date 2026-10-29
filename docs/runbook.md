@@ -126,27 +126,64 @@ history already in the bucket (see "Retention and lineage"), so replicating
 the wrong DB silently replaces the backup. The entrypoint therefore replicates
 a DB only once it's **bound** to the configured replica, recorded in
 `/data/reef.db.replica-bound` as `s3://<bucket>/reef.db endpoint=<endpoint>`.
-A DB becomes bound when:
+A DB becomes bound only when it has **no** binding yet and:
 
 - it was just restored from that replica (non-empty restore), or
 - the replica was just listed (`litestream ltx -json -level all`, exit 0,
   output `[]`) and is empty: a fresh volume on a new bucket, or an existing
   DB on first enable.
 
+A binding is never switched automatically. Endpoints are compared in a
+canonical form (scheme defaults to `https`, scheme and host lowercased,
+trailing slashes dropped), so `fly.storage.tigris.dev`,
+`https://fly.storage.tigris.dev` and `HTTPS://Fly.Storage.Tigris.dev/` are the
+same replica; a different bucket or host is not.
+
 On each boot:
 
 | State | Result |
 |---|---|
 | `replication-hold` marker present | Server runs, no replication (see below). |
-| DB present, bound to this exact replica | Replicates. No listing needed. |
-| DB present, unbound or bound to a different bucket/endpoint, replica empty | Binds, replicates. |
-| DB present, unbound or bound elsewhere, replica has data or listing fails | Held. |
+| DB present but zero bytes (bound or not) | Held. |
+| DB present, bound to this replica | Replicates. No listing needed. |
+| DB present, bound to a different bucket or endpoint | Held ("refusing to switch replicas automatically"). No listing. |
+| DB present, unbound, replica verified empty | Binds, replicates (first enable). |
+| DB present, unbound, replica has data or listing fails | Held. |
 | No DB, restore writes a non-empty DB | Binds, replicates. |
 | No DB, restore writes nothing (or a zero-byte file), replica verified empty | Binds, replicates a new DB. |
 | No DB, restore fails, or listing fails or isn't empty | Held, new empty DB. |
 
 If the hold marker or the binding file can't be written, the container exits
 non-zero instead of running unprotected.
+
+**Moving to a different bucket on purpose.** Take a copy of the old backup
+(see "Retention and lineage"), change the secrets, and boot: it's held with
+`bound to <old>, configured <new>`. Then run the override command from the
+held log (it writes the new binding and removes the marker) and restart.
+
+**Rule: after restoring a volume snapshot or copying the DB, delete the
+binding before it boots.** A copy of `/data` (a Fly volume snapshot restored
+with `fly volumes create --snapshot-id`, a forked machine, a second app given
+the same bucket secrets) carries `reef.db.replica-bound`, so it looks bound.
+If that copy is older than the bucket, replicating it rolls the backup back
+to the copy and the newer data ages out. Before its first boot with backup
+secrets:
+
+```sh
+rm /data/reef.db.replica-bound
+```
+
+That forces the listing path: the bucket isn't empty, so the boot is held and
+you choose explicitly (see "Replication held").
+
+Why this is a rule and not a check: Litestream 0.5.17 does expose both
+positions (local LTX files under `/data/.reef.db-litestream/ltx/`, and the
+bucket's via `litestream ltx`), but that local directory is undocumented
+internal state that a plain file copy doesn't carry, comparing them needs a
+bucket listing on every boot (so an outage at boot would either hold
+replication or skip the check), and it was not verified how local retention
+prunes those files. A check that's only sometimes right is worse than a clear
+rule.
 
 ### Verifying replication
 
@@ -212,9 +249,11 @@ the table above):
 
 - the boot-time restore failed;
 - the restore found no backup, but the listing failed or listed files;
-- the local DB isn't bound to this replica and the replica already holds data,
-  or couldn't be listed. A listing error (auth, region, network, missing
-  bucket) is never read as "empty".
+- the local DB isn't bound and the replica already holds data, or couldn't
+  be listed. A listing error (auth, region, network, missing bucket) is never
+  read as "empty";
+- the local DB is bound to a different replica than the one configured;
+- the local DB is zero bytes.
 
 While that file exists, **every** boot starts the server without Litestream
 and logs, for example:
@@ -283,7 +322,9 @@ repo, and its exact snapshot workflow hasn't been tested here.
 disabled and partial config; first enable (existing DB, empty replica: binds
 and replicates, `[]` and `null` both read as empty); normal restart (bound:
 replicates without listing); foreign replica (unbound DB, non-empty replica:
-held); listing errors (held); bucket or endpoint changed (treated as unbound);
+held); listing errors (held); bucket or endpoint changed (held, never
+rebound, whatever the new replica holds); endpoint spelling variants (same
+replica); zero-byte DB (held, bound or not);
 restore, zero-byte restore, verified-empty and non-empty replica on an empty
 volume; restore failure and a restart after it (held until the marker is
 removed); and hold-marker or binding write failures (exit non-zero).
@@ -291,5 +332,6 @@ removed); and hold-marker or binding write failures (exit non-zero).
 first enable, restore into a fresh volume plus a normal restart, a foreign
 replica (held, and the bucket still restores the original data), a fresh
 volume on an empty bucket, an unreachable replica then a restart with it
-reachable (held both times), and a bound DB with the replica down (server up,
-replicating). CI runs both.
+reachable (held both times), a bound DB pointed at another bucket (held)
+and at a respelled endpoint for the same bucket (replicating), and a bound DB
+with the replica down (server up, replicating). CI runs both.

@@ -11,7 +11,9 @@
 #   4. a fresh volume on an empty bucket verifies it's empty, then replicates;
 #   5. an unreachable replica never blocks startup, a failed restore leaves a
 #      sticky hold marker, and a restart stays held once the replica is back;
-#   6. a bound DB with a dead replica still starts, replicating.
+#   6. a bound DB is never switched to another bucket automatically, while a
+#      differently spelled endpoint for the same replica still replicates;
+#   7. a bound DB with a dead replica still starts, replicating.
 #
 # Usage: sh infra/litestream-smoke.sh [image]   (default: reef-server:ci)
 set -eu
@@ -150,7 +152,23 @@ logs_have e 'no database at' && fail "e: tried to restore over an existing DB"
 echo "ok  failed restore held, and the restart stayed held"
 docker rm -f "$P-e" >/dev/null
 
-echo "== 6. bound DB, replica down"
+echo "== 6. bound DB, replica switched or respelled"
+# B's DB is bound to bucket reef. Pointing it at bucket reef2 (which has data
+# from step 4, but would be held even if empty) must not switch replicas.
+start h vb reef2 "$GW"
+wait_healthy h
+logs_have h 'refusing to switch replicas automatically' || fail "h: switched replicas or wasn't held"
+replicating h && fail "h: litestream is running against a different replica"
+docker exec "$P-h" rm /data/reef.db.replication-hold
+docker rm -f "$P-h" >/dev/null
+# Same replica, endpoint spelled differently (scheme case, trailing slash).
+start i vb reef "$(echo "$GW" | sed 's#^http#HTTP#')/"
+wait_healthy i
+replicating i || fail "i: a respelled endpoint was not treated as the same replica"
+echo "ok  held on a bucket switch; same replica with a respelled endpoint replicates"
+docker rm -f "$P-i" >/dev/null
+
+echo "== 7. bound DB, replica down"
 docker stop "$P-gw" >/dev/null
 start d vb reef "$GW"
 wait_healthy d

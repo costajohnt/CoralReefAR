@@ -36,7 +36,24 @@ LITESTREAM_CONFIG="${LITESTREAM_CONFIG:-/etc/litestream.yml}"
 export DB_PATH="${DB_PATH:-/app/data/reef.db}"
 export AWS_REGION="${AWS_REGION:-auto}"
 replica="s3://$BUCKET_NAME/reef.db" # replica path is fixed in litestream.yml
-identity="$replica endpoint=$AWS_ENDPOINT_URL_S3"
+# Canonical endpoint for comparing bindings: scheme defaults to https, scheme
+# and host are lowercased, trailing slashes are dropped. Litestream itself still
+# gets AWS_ENDPOINT_URL_S3 exactly as set.
+normalize_endpoint() {
+  ep="$1"
+  case "$ep" in
+    *://*) scheme="${ep%%://*}"; rest="${ep#*://}" ;;
+    *) scheme=https; rest="$ep" ;;
+  esac
+  host="${rest%%/*}"
+  path="${rest#"$host"}"
+  while [ "${path%/}" != "$path" ]; do path="${path%/}"; done
+  printf '%s://%s%s\n' "$(echo "$scheme" | tr '[:upper:]' '[:lower:]')" \
+    "$(echo "$host" | tr '[:upper:]' '[:lower:]')" "$path"
+}
+# normalize_identity "<replica> endpoint=<endpoint>"
+normalize_identity() { echo "${1%% endpoint=*} endpoint=$(normalize_endpoint "${1#* endpoint=}")"; }
+identity="$(normalize_identity "$replica endpoint=$AWS_ENDPOINT_URL_S3")"
 restore_timeout="${LITESTREAM_RESTORE_TIMEOUT:-300}"
 
 # Litestream 0.5 treats whatever local DB it replicates as the next state of the
@@ -95,8 +112,17 @@ fi
 
 if [ -e "$DB_PATH" ]; then
   # Never overwrite an existing DB. Replicate it only if it's bound to this
-  # replica, or this replica is empty (first enable: bind it now).
-  if [ "$(cat "$BIND_FILE" 2>/dev/null || true)" != "$identity" ]; then
+  # replica; an unbound DB binds only to an empty replica (first enable). A
+  # binding to a different replica is never switched automatically.
+  if [ ! -s "$DB_PATH" ]; then
+    hold "local DB $DB_PATH is zero bytes (its data may be only in the WAL, or it is a bad copy); refusing to replicate it" "$@"
+  fi
+  if [ -e "$BIND_FILE" ]; then
+    bound="$(normalize_identity "$(cat "$BIND_FILE")")"
+    if [ "$bound" != "$identity" ]; then
+      hold "local DB is bound to $bound, configured $identity; refusing to switch replicas automatically; see docs/runbook.md \"Replica binding\"" "$@"
+    fi
+  else
     case "$(replica_state)" in
       empty)
         log "local DB not yet bound and $replica is empty; binding it (first enable)"
