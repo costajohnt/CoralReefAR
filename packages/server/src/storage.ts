@@ -20,18 +20,40 @@ export class Storage {
     this.db = new Database(path);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
-    this.migrate();
-    const orphans = this.orphanRoomRows();
-    if (Object.values(orphans).some((n) => n > 0)) {
-      console.error('[storage] rows reference a missing room; room_id integrity is app-level, investigate:', orphans);
+    // ponytail: the full-scan integrity check runs only on a boot that applied
+    // a migration, not every boot; call orphanRoomRows() by hand to audit.
+    if (this.migrate() > 0) {
+      const orphans = this.orphanRoomRows();
+      if (Object.values(orphans).some((n) => n > 0)) {
+        console.error('[storage] rows reference a missing room; room_id integrity is app-level, investigate:', orphans);
+      }
     }
+    this.adoptNewerLegacyEcosystem();
+  }
+
+  /**
+   * Roll-forward after a rollback: a pre-rooms server writes only the legacy
+   * ecosystem_state row, leaving room 1's v2 row stale. If the legacy row is
+   * newer, copy it over so the reef resumes where the rolled-back server left
+   * it instead of catching up (capped at 24 h) from the older state. Needs an
+   * existing v2 row, so a "reset to healthy" (row deleted) stays reset. One
+   * primary-key lookup per boot.
+   */
+  private adoptNewerLegacyEcosystem(): void {
+    this.db.prepare(
+      `INSERT INTO ecosystem_state_v2 (room_id, state_json, updated_at)
+         SELECT 1, state_json, updated_at FROM ecosystem_state
+         WHERE id = 1
+           AND updated_at > (SELECT updated_at FROM ecosystem_state_v2 WHERE room_id = 1)
+       ON CONFLICT(room_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+    ).run();
   }
 
   /**
    * Rows whose room_id has no rooms row, per table. room_id carries no
    * REFERENCES clause (SQLite refuses one on ADD COLUMN with a non-NULL
-   * default while foreign_keys is ON), so this startup check is the only
-   * integrity backstop. Expected to be all zeros.
+   * default while foreign_keys is ON), so this check (run after each boot that
+   * applies a migration) is the only integrity backstop. Expected all zeros.
    */
   orphanRoomRows(): Record<(typeof ROOM_TABLES)[number], number> {
     const out = {} as Record<(typeof ROOM_TABLES)[number], number>;
@@ -43,7 +65,8 @@ export class Storage {
     return out;
   }
 
-  private migrate(): void {
+  /** Applies pending migration files; returns how many it applied this boot. */
+  private migrate(): number {
     // Track which .sql files have run so each applies exactly once. Without
     // this, every file re-exec'd on every boot — fine only because they all use
     // CREATE ... IF NOT EXISTS. Any future migration that ALTERs or backfills
@@ -76,9 +99,11 @@ export class Storage {
     });
 
     const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+    let count = 0;
     for (const f of files) {
       if (applied.has(f)) continue;
       applyOne(f, readFileSync(join(migrationsDir, f), 'utf8'));
+      count++;
     }
 
     // attach_yaw was added imperatively before the tracking table existed, and
@@ -86,6 +111,7 @@ export class Storage {
     // add for DBs that predate it. New schema changes should be .sql migration
     // files now that they run exactly once.
     this.ensureColumn('tree_polyps', 'attach_yaw', 'REAL NOT NULL DEFAULT 0');
+    return count;
   }
 
   private ensureColumn(table: string, column: string, decl: string): void {
