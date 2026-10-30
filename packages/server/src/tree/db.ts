@@ -1,5 +1,5 @@
-import Database from 'better-sqlite3';
-import type { ReefDb } from '../db.js';
+import type Database from 'better-sqlite3';
+import type { Storage } from '../storage.js';
 import type { PublicTreePolyp, TreeVariant } from '@reef/shared';
 
 export interface InsertRootInput {
@@ -37,10 +37,10 @@ export class TreeDb {
     oldestByDevice: Database.Statement;
   };
 
-  // ReefDb owns the underlying sqlite handle. Share it so migrations run once
-  // and tree + landscape data live in the same file.
-  constructor(reef: ReefDb) {
-    this.db = reef.db;
+  // Storage owns the sqlite handle and migrations; tree and landscape data
+  // share the same file.
+  constructor(storage: Storage) {
+    this.db = storage.db;
 
     this.stmt = {
       insert: this.db.prepare(

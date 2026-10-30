@@ -9,7 +9,7 @@ import { registerTreeRoutes } from './routes.js';
 
 async function makeServer(): Promise<{ app: Awaited<ReturnType<typeof Fastify>>; close: () => Promise<void> }> {
   const reef = new ReefDb(':memory:');
-  const tree = new TreeDb(reef);
+  const tree = new TreeDb(reef.storage);
   const hub = new Hub();
   const app = Fastify({ logger: false });
   registerTreeRoutes(app, tree, hub);
@@ -122,7 +122,7 @@ describe('POST /api/tree/polyp', () => {
     const hub = new Hub();
     hub.add(fakeWs);
     const reef = new ReefDb(':memory:');
-    const tree = new TreeDb(reef);
+    const tree = new TreeDb(reef.storage);
     const app2 = Fastify({ logger: false });
     registerTreeRoutes(app2, tree, hub);
     await app2.ready();
@@ -195,7 +195,7 @@ describe('DELETE /api/tree/polyp/:id', () => {
     const hub = new Hub();
     hub.add(fakeWs);
     const reef = new ReefDb(':memory:');
-    const tree = new TreeDb(reef);
+    const tree = new TreeDb(reef.storage);
     const app2 = Fastify({ logger: false });
     registerTreeRoutes(app2, tree, hub);
     await app2.ready();

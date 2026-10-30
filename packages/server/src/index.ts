@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { ReefDb } from './db.js';
+import { Storage } from './storage.js';
 import { Hub } from './hub.js';
 import { registerReefRoutes } from './routes/reef.js';
 import { registerSnapshotRoutes } from './routes/snapshot.js';
@@ -53,9 +54,10 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const useLogger = opts.logger ?? true;
   const trustProxyHops = opts.trustProxyHops ?? config.trustProxyHops;
 
-  const db = new ReefDb(dbPath);
+  const storage = new Storage(dbPath);
+  const db = new ReefDb(storage);
   const hub = new Hub(config.wsMaxClients);
-  const treeDb = new TreeDb(db);
+  const treeDb = new TreeDb(storage);
   const treeHub = new Hub(config.wsMaxClients);
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
