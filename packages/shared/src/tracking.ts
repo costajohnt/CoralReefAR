@@ -40,7 +40,7 @@ export type AnchorLostHandler = (id: string) => void;
 export type FrameHandler = (cameraPose: Mat4Like, t: number) => void;
 
 export interface TrackingProvider {
-  readonly name: 'eightwall' | 'noop';
+  readonly name: 'eightwall' | 'noop' | 'webxr';
   init(opts: TrackingInitOptions): Promise<void>;
   onAnchorFound(cb: AnchorFoundHandler): void;
   onAnchorLost(cb: AnchorLostHandler): void;

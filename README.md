@@ -171,4 +171,6 @@ pnpm --filter @reef/server test      # DB, routes, rate limit, admin auth, sim
 
 Default is 8th Wall if `window.XR8` is present, otherwise noop (useful on desktop/dev — fixed anchor in front of the camera). Force a specific one with `?tracker=eightwall|noop`, or `?tracker=auto` to make the default feature-detection explicit (it's what you get with no param). An unknown value also falls back to `auto`.
 
+`?tracker=webxr` (experimental, off by default, #116) tries markerless placement on Android Chrome: a WebXR `immersive-ar` session with hit-test, where you point at the floor and tap to place the reef. A device without WebXR `immersive-ar` (iOS Safari, desktop) or one that refuses hit-test falls back to the marker path, as if the param were `auto`. The tree reef ignores it.
+
 The client loads the self-hosted `@8thwall/engine-binary` from jsDelivr — no account, no appKey, no phone-home, and the hosted `apps.8thwall.com` path is gone (retired Feb 28, 2026). See [`NEXT_STEPS.md`](./NEXT_STEPS.md) for the binary-EOL notes.

@@ -103,7 +103,9 @@ export class TreeApp {
   }
 
   async start(): Promise<void> {
-    const preferred = readTrackerFromUrl();
+    // The markerless WebXR path (#116) is phone-reef only; tree keeps the marker path.
+    const requested = readTrackerFromUrl();
+    const preferred = requested === 'webxr' ? 'auto' : requested;
     // Noop tracker renders into the canvas without a video feed; skipping
     // camera init makes desktop + headless testing viable without real
     // permissions or a real camera device.

@@ -17,7 +17,7 @@ vi.mock('./eightwall.js', () => ({
 }));
 
 import { EightWallProvider } from './eightwall.js';
-import { readTrackerFromUrl, selectProvider } from './index.js';
+import { readTrackerFromUrl, selectProvider, startWebXRIfRequested } from './index.js';
 
 describe('readTrackerFromUrl', () => {
   beforeEach(() => {
@@ -72,5 +72,30 @@ describe('selectProvider', () => {
     const p = selectProvider('auto');
     expect(p).not.toBeInstanceOf(EightWallProvider);
     expect(p.name).toBe('noop');
+  });
+});
+
+describe('WebXR hit-test flag (#116)', () => {
+  test('readTrackerFromUrl opts in only on an explicit ?tracker=webxr', () => {
+    vi.stubGlobal('location', { search: '?tracker=webxr' });
+    expect(readTrackerFromUrl()).toBe('webxr');
+    vi.stubGlobal('location', { search: '' });
+    expect(readTrackerFromUrl()).toBe('auto');
+    vi.unstubAllGlobals();
+  });
+
+  test('flag off never probes navigator.xr', async () => {
+    const xr = { isSessionSupported: vi.fn(), requestSession: vi.fn() };
+    for (const preferred of ['auto', 'eightwall', 'noop'] as const) {
+      expect(await startWebXRIfRequested(preferred, xr as unknown as XRSystem, null)).toBeNull();
+    }
+    expect(xr.isSessionSupported).not.toHaveBeenCalled();
+    expect(xr.requestSession).not.toHaveBeenCalled();
+  });
+
+  test('flag on but unsupported falls back to the marker path', async () => {
+    expect(await startWebXRIfRequested('webxr', undefined, null)).toBeNull();
+    (EightWallProvider.isAvailable as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    expect(selectProvider('webxr')).toBeInstanceOf(EightWallProvider);
   });
 });
