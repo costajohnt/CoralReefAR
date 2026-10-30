@@ -7,7 +7,7 @@ import { seedRootIfEmpty } from './seed.js';
 describe('seedRootIfEmpty', () => {
   test('inserts exactly one Starburst root when the tree is empty', () => {
     const reef = new ReefDb(':memory:');
-    const tree = new TreeDb(reef);
+    const tree = new TreeDb(reef.storage);
     const result = seedRootIfEmpty(tree);
     assert.equal(result.seeded, true);
     const all = tree.listLive();
@@ -18,7 +18,7 @@ describe('seedRootIfEmpty', () => {
 
   test('is a no-op when the tree already has pieces', () => {
     const reef = new ReefDb(':memory:');
-    const tree = new TreeDb(reef);
+    const tree = new TreeDb(reef.storage);
     tree.insertRoot({ variant: 'forked', seed: 1, colorKey: 'x' });
     const result = seedRootIfEmpty(tree);
     assert.equal(result.seeded, false);
@@ -31,7 +31,7 @@ describe('seedRootIfEmpty', () => {
     const results = new Set<number>();
     for (let i = 0; i < 5; i++) {
       const reef = new ReefDb(':memory:');
-      const tree = new TreeDb(reef);
+      const tree = new TreeDb(reef.storage);
       seedRootIfEmpty(tree);
       results.add(tree.listLive()[0]!.seed);
     }
@@ -41,7 +41,7 @@ describe('seedRootIfEmpty', () => {
 
   test('returns the chosen seed + colorKey so a random root is reproducible', () => {
     const reef = new ReefDb(':memory:');
-    const tree = new TreeDb(reef);
+    const tree = new TreeDb(reef.storage);
     const result = seedRootIfEmpty(tree);
     assert.equal(result.seeded, true);
     const root = tree.listLive()[0]!;
@@ -52,7 +52,7 @@ describe('seedRootIfEmpty', () => {
 
   test('a fixed seed + colorKey make the root deterministic across boots', () => {
     const seedOne = (): { seed: number; colorKey: string } => {
-      const tree = new TreeDb(new ReefDb(':memory:'));
+      const tree = new TreeDb(new ReefDb(':memory:').storage);
       seedRootIfEmpty(tree, { seed: 12345, colorKey: 'neon-cyan' });
       const root = tree.listLive()[0]!;
       return { seed: root.seed, colorKey: root.colorKey };

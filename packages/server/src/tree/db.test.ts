@@ -1,12 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
-import { ReefDb } from '../db.js';
+import { Storage } from '../storage.js';
 import { TreeDb } from './db.js';
 
 function makeDb(): { tree: TreeDb; close: () => void } {
-  const reef = new ReefDb(':memory:');
-  const tree = new TreeDb(reef);
-  return { tree, close: (): void => { /* ReefDb doesn't expose close, GC handles it */ } };
+  // TreeDb needs only Storage, not a ReefDb.
+  const tree = new TreeDb(new Storage(':memory:'));
+  return { tree, close: (): void => { /* GC closes the in-memory handle */ } };
 }
 
 describe('TreeDb.insertRoot', () => {
