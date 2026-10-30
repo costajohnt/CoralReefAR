@@ -12,7 +12,8 @@ import { MyPolyps } from './ui/mine.js';
 import { wireExportButton } from './ui/exportButton.js';
 import { fetchReef, submitPolyp, RateLimitError } from './net/api.js';
 import { ReefSocket, defaultWsUrl } from './net/ws.js';
-import { readTrackerFromUrl, selectProvider } from './tracking/index.js';
+import { readTrackerFromUrl, selectProvider, startWebXRIfRequested } from './tracking/index.js';
+import type { WebXRHitTestProvider } from './tracking/webxrHitTest.js';
 import { EightWallProvider } from './tracking/eightwall.js';
 import { applyAnchorPose } from './tracking/anchor.js';
 import type { TrackingProvider } from '@reef/shared';
@@ -50,6 +51,8 @@ export class App {
   private currentSeed = Math.floor(Math.random() * 0xffffffff);
   private placementLockedUntil = 0;
   private running = false;
+  // True on the WebXR path, where three's session loop drives loop().
+  private xrLoop = false;
   // Previous frame of a two-finger gesture, or null when we aren't tracking one.
   private gesturePrev: TouchPair | null = null;
 
@@ -102,18 +105,39 @@ export class App {
   }
 
   async start(): Promise<void> {
-    this.setStatus('Starting camera…');
-    await this.startCamera();
-    const preferred = readTrackerFromUrl();
-    if (preferred === 'auto' || preferred === 'eightwall') {
-      await EightWallProvider.waitUntilReady();
+    const requested = readTrackerFromUrl();
+    // Opt-in markerless path (#116). Requested first: requestSession needs the
+    // Start tap's transient activation. Null = flag off or unsupported.
+    let xrTracker = await startWebXRIfRequested(
+      requested,
+      (navigator as Navigator & { xr?: XRSystem }).xr,
+      document.body,
+    );
+    if (xrTracker) {
+      try {
+        await this.enterWebXR(xrTracker);
+        this.tracker = xrTracker;
+      } catch (e) {
+        console.warn('WebXR rendering setup failed; using the marker path', e);
+        await xrTracker.destroy();
+        this.renderer.xr.enabled = false;
+        xrTracker = null;
+      }
     }
-    this.tracker = selectProvider(preferred);
-    await this.tracker.init({
-      markerImage: '',
-      videoElement: this.opts.video,
-      canvasElement: this.opts.canvas,
-    });
+    if (!xrTracker) {
+      this.setStatus('Starting camera…');
+      await this.startCamera();
+      const preferred = requested === 'webxr' ? 'auto' : requested;
+      if (preferred === 'auto' || preferred === 'eightwall') {
+        await EightWallProvider.waitUntilReady();
+      }
+      this.tracker = selectProvider(preferred);
+      await this.tracker.init({
+        markerImage: '',
+        videoElement: this.opts.video,
+        canvasElement: this.opts.canvas,
+      });
+    }
     this.tracker.onAnchorFound(({ pose }) => {
       applyAnchorPose(this.reef.anchor, pose.elements);
       this.reef.anchor.visible = true;
@@ -139,7 +163,34 @@ export class App {
     void this.loadInitial();
     this.socket.connect();
     this.running = true;
-    requestAnimationFrame((t) => this.loop(t));
+    if (this.xrLoop) this.renderer.setAnimationLoop((t) => this.loop(t));
+    else requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /**
+   * Hand the WebXR session to three: it then renders through the session's
+   * camera passthrough and drives this.camera from the device pose, so the
+   * existing tap raycasts keep working. Both sides use the 'local' space, so
+   * the hit pose and the camera share an origin.
+   */
+  private async enterWebXR(tracker: WebXRHitTestProvider): Promise<void> {
+    const session = tracker.session;
+    if (!session) throw new Error('WebXR session missing');
+    this.renderer.xr.enabled = true;
+    this.renderer.xr.setReferenceSpaceType('local');
+    await this.renderer.xr.setSession(session);
+    // The page's black backgrounds would cover the camera passthrough once
+    // body becomes the DOM overlay.
+    this.opts.video.hidden = true;
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    this.xrLoop = true;
+    session.addEventListener('end', () => {
+      this.renderer.setAnimationLoop(null);
+      this.running = false;
+      this.setStatus('AR ended. Refresh to start again.');
+    });
+    this.setStatus('Point at the floor, then tap to place the reef.');
   }
 
   stop(): void {
@@ -360,6 +411,6 @@ export class App {
     this.eco.update(dt);
     this.reef.animateGrowth(t);
     this.renderer.render(this.scene, this.camera);
-    requestAnimationFrame((tt) => this.loop(tt));
+    if (!this.xrLoop) requestAnimationFrame((tt) => this.loop(tt));
   }
 }
