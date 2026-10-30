@@ -19,6 +19,8 @@ container environment for a self-hosted deploy):
 | `UNDO_RATE_LIMIT_PER_MIN` | `10` (default) | Per-IP token bucket on the owner undo route (`POST /api/reef/polyp/:id/undo`). `0` = off. |
 | `READ_CACHE_TTL_MS` | `1000` | Coalesce read scans within this window. `0` = off. |
 | `WS_MAX_CLIENTS` | `1000` (default) | Max concurrent WebSocket connections per hub (reef + tree counted separately). `0` = unlimited. |
+| `PRESENCE_ENABLED` | unset (off) | `1` turns on Quest co-presence (#114): headsets opened with `quest.html?presence=1` send their head pose over `/ws` (5 Hz, reef-local, anonymous per-connection id) and see each other as clownfish. Memory only, never written to SQLite. Off until validated on headsets. |
+| `PRESENCE_MAX_VISITORS` | `16` | Most other visitors one client is sent per presence frame (newest first). |
 | `SIM_RETENTION_MS` | `2592000000` (30d, default) | Prune sim decorations older than this. `0` = keep all. |
 | `SNAPSHOT_RETENTION_COUNT` | `90` (default) | Keep the N most recent daily snapshots. `0` = keep all. |
 | `ADMIN_TOKEN` | secret | Gates the reef admin routes and (when set) the destructive tree reset/delete. |

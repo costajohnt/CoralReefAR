@@ -23,5 +23,8 @@ export function applyServerMessage(reef: Reef, msg: ServerMessage): void {
       break;
     case 'hello':
       break;
+    case 'presence':
+      // Visitors are drawn by QuestApp's VisitorFish, not the reef.
+      break;
   }
 }

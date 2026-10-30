@@ -8,7 +8,7 @@ import {
   type Mesh,
   type Object3D,
 } from 'three';
-import type { ServerMessage, Species } from '@reef/shared';
+import { PRESENCE_INTERVAL_MS, type ServerMessage, type Species } from '@reef/shared';
 import { generatePolyp } from '@reef/generator';
 import { polypMesh } from '../scene/meshAdapter.js';
 import { Reef } from '../scene/reef.js';
@@ -33,6 +33,8 @@ import { InstructionOverlay } from './ui/instructionOverlay.js';
 import { isPinching, pickPokedButton, pickHotspot } from './hand/handInteraction.js';
 import { applyServerMessage } from './serverMessageHandler.js';
 import { HotspotLayer } from './hotspotLayer.js';
+import { presenceFlagEnabled } from './presence/presenceBuffer.js';
+import { VisitorFish } from './presence/visitorFish.js';
 
 interface ComposeContext {
   species: Species;
@@ -110,6 +112,14 @@ export class QuestApp {
   private lastHeadPosition: Vector3 | null = null;
   /** Last known viewer forward vector. Used to billboard the overlay. */
   private lastHeadForward: Vector3 | null = null;
+  private readonly lastHeadQuaternion = new Quaternion();
+  // Co-presence (#114), only with ?presence=1: others drawn as fish, our head
+  // pose sent (reef-local) at most every PRESENCE_INTERVAL_MS.
+  private readonly presence: boolean = presenceFlagEnabled();
+  private visitors: VisitorFish | null = null;
+  private lastPresenceSentAt = -Infinity;
+  private readonly _scratchPresenceP = new Vector3();
+  private readonly _scratchPresenceQ = new Quaternion();
   // Per-frame scratch reused by the 90 Hz pose updaters so captureHeadPose /
   // updatePalettePose / handleRightHandInteraction / yawFromXrQuaternion don't
   // allocate a fresh Vector3/Quaternion/Euler every frame (#97). Their
@@ -274,6 +284,7 @@ export class QuestApp {
     this.socket?.close();
     this.socket = null;
     this.hotspots.clear();
+    this.tearDownVisitors();
     if (this.reefAnchor) {
       this.scene.remove(this.reefAnchor.object3d);
       this.reefAnchor.delete();
@@ -295,6 +306,10 @@ export class QuestApp {
     this.reef = new Reef();
     this.reefAnchor.object3d.add(this.reef.anchor);
     this.reefAnchor.object3d.add(this.hotspots.object3d);
+    if (this.presence) {
+      this.visitors = new VisitorFish();
+      this.reefAnchor.object3d.add(this.visitors.object3d);
+    }
     // fetchReef rejects on network / CORS / non-2xx; let it propagate so
     // the caller transitions the state machine to 'error' and shows the
     // user something instead of leaving them on a permanent "Loading…".
@@ -315,6 +330,10 @@ export class QuestApp {
 
   private handleServerMessage(msg: ServerMessage): void {
     if (!this.reef) return;
+    if (msg.type === 'presence') {
+      this.visitors?.ingest(msg.visitors, performance.now());
+      return;
+    }
     applyServerMessage(this.reef, msg);
     if (msg.type === 'polyp_added') {
       this.hotspots.addPolyp(msg.polyp);
@@ -454,6 +473,7 @@ export class QuestApp {
     }
 
     this.captureHeadPose(frame);
+    this.updatePresence();
     this.updatePalettePose(frame);
     this.updateOverlayPose();
     this.handleRightHandInteraction(frame);
@@ -471,10 +491,38 @@ export class QuestApp {
     // orientation to get the world-space gaze direction. Written in place
     // (lastHeadForward + scratch quat) to avoid per-frame allocation.
     const q = t.orientation;
+    this.lastHeadQuaternion.set(q.x, q.y, q.z, q.w);
     if (!this.lastHeadForward) this.lastHeadForward = new Vector3();
     this.lastHeadForward
       .set(0, 0, -1)
       .applyQuaternion(this._scratchQuat.set(q.x, q.y, q.z, q.w));
+  }
+
+  /**
+   * Co-presence: advance the other visitors' fish every frame, and send our
+   * head pose in reef-local coordinates (so every headset can place it against
+   * its own anchor) at most every PRESENCE_INTERVAL_MS while interactive.
+   */
+  private updatePresence(): void {
+    if (!this.visitors) return;
+    const now = performance.now();
+    this.visitors.update(now);
+    if (this._state !== 'interactive' || !this.reefAnchor || !this.lastHeadPosition || !this.socket) return;
+    if (now - this.lastPresenceSentAt < PRESENCE_INTERVAL_MS) return;
+    const anchor = this.reefAnchor.object3d;
+    anchor.updateMatrixWorld();
+    const p = anchor.worldToLocal(this._scratchPresenceP.copy(this.lastHeadPosition));
+    const q = anchor.getWorldQuaternion(this._scratchPresenceQ).invert().multiply(this.lastHeadQuaternion);
+    this.lastPresenceSentAt = now;
+    this.socket.send(JSON.stringify({ type: 'presence', p: [p.x, p.y, p.z], q: [q.x, q.y, q.z, q.w] }));
+  }
+
+  private tearDownVisitors(): void {
+    if (!this.visitors) return;
+    this.visitors.clear();
+    this.visitors.object3d.removeFromParent();
+    this.visitors = null;
+    this.lastPresenceSentAt = -Infinity;
   }
 
   private updateOverlayPose(): void {
@@ -816,6 +864,7 @@ export class QuestApp {
       }
       this.reefAnchor.object3d.remove(this.hotspots.object3d);
       this.hotspots.clear();
+      this.tearDownVisitors();
       this.scene.remove(this.reefAnchor.object3d);
       this.reefAnchor.delete();
       this.reefAnchor = null;
@@ -854,6 +903,7 @@ export class QuestApp {
     this.socket?.close();
     this.socket = null;
     this.hotspots.clear();
+    this.tearDownVisitors();
     // Detach the reef anchor's Object3D from the scene graph before
     // releasing the XRAnchor — otherwise the empty Object3D lingers in
     // this.scene as an invisible (but real) child, and across multiple

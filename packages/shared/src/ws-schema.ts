@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PRESENCE_MAX_COORD } from './ws.js';
 
 // Runtime validation for inbound WebSocket frames. Deliberately structural and
 // version-skew tolerant: species / variant / colorKey are validated as strings
@@ -53,7 +54,21 @@ export const ServerMessageSchema = z.discriminatedUnion('type', [
     updates: z.array(simDelta),
     ecosystem: EcosystemStateSchema.optional(),
   }),
+  z.object({
+    type: z.literal('presence'),
+    visitors: z.array(z.object({ id: z.string(), p: vec3, q: quat })),
+  }),
 ]);
+
+// Inbound presence frame (client to server, #114). Strict: finite numbers,
+// bounded coordinates, a unit-ish quaternion, nothing else.
+const coord = z.number().finite().min(-PRESENCE_MAX_COORD).max(PRESENCE_MAX_COORD);
+const unit = z.number().finite().min(-1).max(1);
+export const PresenceClientMessageSchema = z.strictObject({
+  type: z.literal('presence'),
+  p: z.tuple([coord, coord, coord]),
+  q: z.tuple([unit, unit, unit, unit]),
+});
 
 // The tree polyp shape as it crosses the wire — embedded in `tree_polyp_added`
 // frames and returned verbatim by GET /api/tree and POST /api/tree/polyp.

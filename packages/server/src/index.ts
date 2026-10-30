@@ -21,6 +21,7 @@ import { makeTrustProxy } from './proxyTrust.js';
 import { TreeDb } from './tree/db.js';
 import { registerTreeRoutes } from './tree/routes.js';
 import { seedRootIfEmpty } from './tree/seed.js';
+import { Presence } from './presence.js';
 
 export interface MakeServerOptions {
   dbPath?: string;
@@ -29,6 +30,8 @@ export interface MakeServerOptions {
   clientDistDir?: string | undefined;
   logger?: boolean;
   trustProxyHops?: number;
+  /** Quest co-presence (#114). Defaults to PRESENCE_ENABLED. */
+  presence?: boolean;
 }
 
 export interface MakeServerResult {
@@ -37,6 +40,8 @@ export interface MakeServerResult {
   hub: Hub;
   treeDb: TreeDb;
   treeHub: Hub;
+  /** null when presence is disabled. */
+  presence: Presence | null;
 }
 
 /**
@@ -59,6 +64,9 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   const hub = new Hub(config.wsMaxClients);
   const treeDb = new TreeDb(storage);
   const treeHub = new Hub(config.wsMaxClients);
+  const presence = (opts.presence ?? config.presenceEnabled)
+    ? new Presence({ maxVisitors: config.presenceMaxVisitors })
+    : null;
 
   // 8 KB fits the largest valid polyp (schema-bounded). Fastify's 1 MB
   // default lets unauthenticated callers make Zod walk a megabyte before
@@ -124,9 +132,15 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
       on: (event: 'close' | 'pong', cb: () => void) => void;
       ping?(): void;
       terminate?(): void;
+      close?(code?: number, reason?: string): void;
     };
     // add() closes the socket and returns false when the hub is at capacity.
     if (!hub.add(ws)) return;
+    // Inbound frames are ignored entirely unless presence is on.
+    if (presence) {
+      sock.on('message', (data: Buffer) => presence.handleFrame(ws, data));
+      ws.on('close', () => presence.remove(ws));
+    }
     ws.send(JSON.stringify({
       type: 'hello',
       polypCount: db.listPublicPolyps().length,
@@ -150,11 +164,11 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
     }));
   });
 
-  return { app, db, hub, treeDb, treeHub };
+  return { app, db, hub, treeDb, treeHub, presence };
 }
 
 async function main(): Promise<void> {
-  const { app, db, hub, treeHub } = await makeServer();
+  const { app, db, hub, treeHub, presence } = await makeServer();
 
   const sim = new SimWorker(db, hub, config.simIntervalMs, config.simRetentionMs);
   sim.start();
@@ -162,12 +176,14 @@ async function main(): Promise<void> {
   snapshots.start();
   hub.startHeartbeat();
   treeHub.startHeartbeat();
+  presence?.start();
 
   const shutdown = async (): Promise<void> => {
     sim.stop();
     snapshots.stop();
     hub.stopHeartbeat();
     treeHub.stopHeartbeat();
+    presence?.stop();
     await app.close();
     process.exit(0);
   };
