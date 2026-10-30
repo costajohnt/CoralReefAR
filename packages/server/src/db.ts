@@ -151,10 +151,11 @@ export class ReefDb {
                 SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS plantedLast7d
          FROM polyps WHERE deleted = 0`,
       ),
-      getEcosystem: this.db.prepare('SELECT state_json AS stateJson FROM ecosystem_state WHERE id = 1'),
+      // Room 1 ('main') until rooms are routed (#113 phase 3).
+      getEcosystem: this.db.prepare('SELECT state_json AS stateJson FROM ecosystem_state_v2 WHERE room_id = 1'),
       saveEcosystem: this.db.prepare(
-        `INSERT INTO ecosystem_state (id, state_json, updated_at) VALUES (1, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+        `INSERT INTO ecosystem_state_v2 (room_id, state_json, updated_at) VALUES (1, ?, ?)
+         ON CONFLICT(room_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
       ),
       pruneSnapshots: this.db.prepare(
         `DELETE FROM snapshots WHERE id NOT IN (

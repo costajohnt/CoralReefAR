@@ -40,6 +40,17 @@ test('migrations: re-opening the same db file does not re-run or duplicate', () 
   assert.equal(db2.listPublicPolyps().length, 1);
 });
 
+/** Undo 006_rooms on a migrated file, so it looks like a pre-rooms one. */
+function stripRooms(db: ReefDb): void {
+  db.db.exec(`
+    DROP INDEX idx_polyps_room_live; DROP INDEX idx_polyps_room_device; DROP INDEX idx_polyps_room_owner;
+    DROP INDEX idx_sim_room_created; DROP INDEX idx_snapshots_room; DROP INDEX idx_tree_room_live;
+    ALTER TABLE polyps DROP COLUMN room_id; ALTER TABLE tree_polyps DROP COLUMN room_id;
+    ALTER TABLE snapshots DROP COLUMN room_id; ALTER TABLE sim_state DROP COLUMN room_id;
+    DROP TABLE rooms; DROP TABLE ecosystem_state_v2;
+  `);
+}
+
 test('migrations: back-fills an existing db that has tables but no tracking row', () => {
   const dir = mkdtempSync(join(tmpdir(), 'reef-backfill-'));
   const path = join(dir, 'reef.db');
@@ -50,8 +61,9 @@ test('migrations: back-fills an existing db that has tables but no tracking row'
   const expected = appliedMigrations(db1);
   db1.db.exec('DROP TABLE schema_migrations');
   // Pre-tracking DBs also predate 004's owner_hash column (004 is a bare
-  // ALTER, which only works because it runs exactly once). Strip it so this
-  // simulates a genuinely old file rather than a current one.
+  // ALTER, which only works because it runs exactly once) and 006's rooms.
+  // Strip both so this simulates a genuinely old file rather than a current one.
+  stripRooms(db1);
   db1.db.exec('DROP INDEX idx_polyps_owner');
   db1.db.exec('ALTER TABLE polyps DROP COLUMN owner_hash');
   db1.db.close();
@@ -69,6 +81,7 @@ test('migrations: 004 adds a nullable owner_hash to a db that already has polyps
   const path = join(dir, 'reef.db');
   const db1 = new ReefDb(path);
   db1.insertPolyp(basePolyp());
+  db1.db.exec('DROP INDEX idx_polyps_room_owner'); // 006's index over owner_hash
   db1.db.exec('DROP INDEX idx_polyps_owner');
   db1.db.exec('ALTER TABLE polyps DROP COLUMN owner_hash');
   db1.db.prepare("DELETE FROM schema_migrations WHERE filename = '004_polyp_owner.sql'").run();
