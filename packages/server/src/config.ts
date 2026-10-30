@@ -49,6 +49,12 @@ export const config = {
   // separately). 0 = unlimited. Bounds a connection flood from exhausting
   // memory / file descriptors before the heartbeat reaps idle sockets.
   wsMaxClients: Number(process.env.WS_MAX_CLIENTS ?? 1000),
+  // Quest co-presence (#114): relay anonymous head poses between headsets over
+  // /ws. Off unless PRESENCE_ENABLED=1 (awaiting headset validation). Memory
+  // only; never touches the DB.
+  presenceEnabled: process.env.PRESENCE_ENABLED === '1',
+  // Most other visitors any one client is sent per presence frame.
+  presenceMaxVisitors: Number(process.env.PRESENCE_MAX_VISITORS ?? 16),
   // Fixed seed for the first-boot Starburst root. Unset (or blank) = random per
   // fresh volume (the chosen seed is logged, so the root is reproducible after
   // the fact). Set an integer in [0, 2^32) to make the root identical across

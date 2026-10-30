@@ -346,3 +346,90 @@ describe('QuestApp.onXRFrame orchestration', () => {
     expect(app.state).toBe('interactive');
   });
 });
+
+describe('QuestApp co-presence (#114)', () => {
+  // Recording WebSocket: open, captures sends, lets the test push server frames.
+  const sent: string[] = [];
+  let deliver: (data: string) => void = () => {};
+
+  beforeEach(() => {
+    sent.length = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ polyps: [], sim: [], serverTime: Date.now() }),
+    })));
+    vi.stubGlobal('WebSocket', class {
+      static OPEN = 1;
+      readyState = 1;
+      addEventListener(type: string, cb: (ev: { data: string }) => void): void {
+        if (type === 'message') deliver = (data) => cb({ data });
+      }
+      send(data: string): void { sent.push(data); }
+      close(): void {}
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    window.history.replaceState({}, '', '/');
+  });
+
+  const visitorFrame = JSON.stringify({
+    type: 'presence', visitors: [{ id: 'v1', p: [0.5, 1.2, 0.5], q: [0, 0, 0, 1] }],
+  });
+
+  it('flag off (default): sends nothing and draws nothing, even when presence frames arrive', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const hand = makeRightHand();
+    hand.setGap(0.1);
+    const { internal } = await bootToInteractive(hand);
+    const anchorChildren = internal.reefAnchor!.object3d.children.length;
+    deliver(visitorFrame);
+    for (let i = 0; i < 5; i++) {
+      clock.mockReturnValue(1000 + i * 500);
+      internal.onXRFrame(makeFrame({ hand }));
+    }
+    expect(sent).toEqual([]);
+    expect((internal as unknown as { visitors: unknown }).visitors).toBeNull();
+    expect(internal.reefAnchor!.object3d.children).toHaveLength(anchorChildren);
+  });
+
+  it('flag on: sends the reef-local head pose at most every 200 ms and draws visitors under the anchor', async () => {
+    window.history.replaceState({}, '', '/quest.html?presence=1');
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const hand = makeRightHand();
+    hand.setGap(0.1);
+    const { internal, session } = await bootToInteractive(hand);
+    sent.length = 0;
+
+    clock.mockReturnValue(2000);
+    internal.onXRFrame(makeFrame({ hand }));
+    clock.mockReturnValue(2100); // inside the interval: no second send
+    internal.onXRFrame(makeFrame({ hand }));
+    expect(sent).toHaveLength(1);
+    // Head at world (0, 1.6, 0), anchor at (1, 0, -1): reef-local (-1, 1.6, 1).
+    expect(JSON.parse(sent[0]!)).toEqual({ type: 'presence', p: [-1, 1.6, 1], q: [0, 0, 0, 1] });
+    clock.mockReturnValue(2250);
+    internal.onXRFrame(makeFrame({ hand }));
+    expect(sent).toHaveLength(2);
+
+    const visitors = (internal as unknown as { visitors: { count(): number; object3d: Object3D } }).visitors;
+    deliver(visitorFrame);
+    internal.onXRFrame(makeFrame({ hand }));
+    expect(visitors.count()).toBe(1);
+    expect(visitors.object3d.parent).toBe(internal.reefAnchor!.object3d);
+    expect(visitors.object3d.children[0]!.position.toArray()).toEqual([0.5, 1.2, 0.5]);
+
+    // Stale after 2 s without frames: culled.
+    clock.mockReturnValue(5000);
+    internal.onXRFrame(makeFrame({ hand }));
+    expect(visitors.count()).toBe(0);
+
+    // Session end tears presence down with the reef.
+    Object.assign(internal.renderer!, { dispose: vi.fn(), domElement: document.createElement('canvas') });
+    const end = session.addEventListener.mock.calls.find(([name]) => name === 'end')?.[1] as (() => void) | undefined;
+    expect(end).toBeDefined();
+    end!();
+    expect((internal as unknown as { visitors: unknown }).visitors).toBeNull();
+  });
+});

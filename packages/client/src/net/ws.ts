@@ -34,6 +34,13 @@ export class ReefSocket {
     this.ws.addEventListener('error', () => this.ws?.close());
   }
 
+  /** Send a frame if the socket is open; returns false (dropped) otherwise. */
+  send(data: string): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(data);
+    return true;
+  }
+
   private scheduleReconnect(): void {
     if (this.closed) return;
     const delay = Math.min(30_000, 1000 * Math.pow(1.8, this.retries++));
