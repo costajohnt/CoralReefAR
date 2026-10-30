@@ -195,7 +195,7 @@ test('db: ecosystem state is absent until saved, then round-trips', () => {
   assert.deepEqual(db.getEcosystem(), s);
   db.saveEcosystem({ ...s, bleaching: 0.1 });
   assert.equal(db.getEcosystem()!.bleaching, 0.1);
-  assert.equal((db.db.prepare('SELECT COUNT(*) AS n FROM ecosystem_state').get() as { n: number }).n, 1);
+  assert.equal((db.db.prepare('SELECT COUNT(*) AS n FROM ecosystem_state_v2').get() as { n: number }).n, 1);
 });
 
 test('db: ecosystemInputs counts live polyps only', () => {

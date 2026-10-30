@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(here, '..', 'migrations');
+const ROOM_TABLES = ['polyps', 'tree_polyps', 'snapshots', 'sim_state', 'ecosystem_state_v2'] as const;
 
 /**
  * Owns the better-sqlite3 handle, its pragmas and the migration runner.
@@ -20,6 +21,26 @@ export class Storage {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.migrate();
+    const orphans = this.orphanRoomRows();
+    if (Object.values(orphans).some((n) => n > 0)) {
+      console.error('[storage] rows reference a missing room; room_id integrity is app-level, investigate:', orphans);
+    }
+  }
+
+  /**
+   * Rows whose room_id has no rooms row, per table. room_id carries no
+   * REFERENCES clause (SQLite refuses one on ADD COLUMN with a non-NULL
+   * default while foreign_keys is ON), so this startup check is the only
+   * integrity backstop. Expected to be all zeros.
+   */
+  orphanRoomRows(): Record<(typeof ROOM_TABLES)[number], number> {
+    const out = {} as Record<(typeof ROOM_TABLES)[number], number>;
+    for (const t of ROOM_TABLES) {
+      out[t] = (this.db
+        .prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE room_id NOT IN (SELECT id FROM rooms)`)
+        .get() as { n: number }).n;
+    }
+    return out;
   }
 
   private migrate(): void {

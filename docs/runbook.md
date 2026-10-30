@@ -62,8 +62,11 @@ point, not a measured one.
 ## Reef ecosystem (sim tick)
 
 Each sim tick (`SIM_INTERVAL_MS`, hourly by default) steps the reef-wide
-ecosystem state (fish count, bleaching, phase) and stores it in the single-row
-`ecosystem_state` table. Tunables are constants in
+ecosystem state (fish count, bleaching, phase) and stores it in
+`ecosystem_state_v2`, one row per room (only `room_id = 1`, the `main` room,
+until rooms are routed, #113). The older single-row `ecosystem_state` table is
+left in place, stale, so a server rolled back past `006_rooms.sql` still boots;
+a later migration drops it. Tunables are constants in
 `packages/server/src/ecosystem.ts`. Polyps are never modified by it.
 
 - **Downtime is capped at 24 hours of catch-up** (`MAX_CATCHUP_HOURS`). After
@@ -73,7 +76,7 @@ ecosystem state (fish count, bleaching, phase) and stores it in the single-row
   normally from there.
 - `computedAt` never moves backwards, so a host clock stepping back and then
   forward doesn't add time twice.
-- **Reset to healthy:** `DELETE FROM ecosystem_state;`. The next tick starts
+- **Reset to healthy:** `DELETE FROM ecosystem_state_v2 WHERE room_id = 1;`. The next tick starts
   from an unbleached state (it doesn't jump to the current stagnation level),
   and `GET /api/reef` serves a computed healthy state until then.
 
