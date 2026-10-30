@@ -65,8 +65,11 @@ Each sim tick (`SIM_INTERVAL_MS`, hourly by default) steps the reef-wide
 ecosystem state (fish count, bleaching, phase) and stores it in
 `ecosystem_state_v2`, one row per room (only `room_id = 1`, the `main` room,
 until rooms are routed, #113). The older single-row `ecosystem_state` table is
-left in place, stale, so a server rolled back past `006_rooms.sql` still boots;
-a later migration drops it. Tunables are constants in
+left in place so a server rolled back past `006_rooms.sql` still boots; a
+later migration drops it. A rolled-back server ticks into that old table only,
+so on roll-forward the boot copies it into room 1's v2 row when it's newer,
+and the reef resumes where the rolled-back server left it rather than
+catching up from the pre-rollback state. Tunables are constants in
 `packages/server/src/ecosystem.ts`. Polyps are never modified by it.
 
 - **Downtime is capped at 24 hours of catch-up** (`MAX_CATCHUP_HOURS`). After
@@ -79,6 +82,26 @@ a later migration drops it. Tunables are constants in
 - **Reset to healthy:** `DELETE FROM ecosystem_state_v2 WHERE room_id = 1;`. The next tick starts
   from an unbleached state (it doesn't jump to the current stagnation level),
   and `GET /api/reef` serves a computed healthy state until then.
+
+## Migration 006 (rooms) first boot
+
+The first boot of a build that includes `006_rooms.sql` (#113) applies it
+once, inside one transaction, before the server listens:
+
+- The `ADD COLUMN room_id` statements only change table metadata; no rows are
+  copied.
+- The six new `room_id` indexes are built from scratch, which reads every row
+  of `polyps`, `sim_state`, `snapshots` and `tree_polyps`. On a synthetic
+  file-backed DB with 200,000 polyps and 200,000 sim rows the whole migration
+  took about 1.9 s on a MacBook Air. That's well inside the `/healthz` check's
+  10 s `grace_period` in `fly.toml`; a reef big enough to approach it would
+  need that grace period raised before deploying.
+- The index pages land in the WAL, so Litestream ships one burst roughly the
+  size of the new indexes right after boot. It's a one-off; replication lag
+  returns to about a second once it's uploaded.
+- That boot also runs the room integrity check and logs
+  `[storage] rows reference a missing room` if anything is off. It should
+  never fire. Later boots skip the check unless another migration applies.
 
 ## Backups (Litestream)
 

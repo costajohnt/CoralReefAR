@@ -137,3 +137,48 @@ test('006: orphanRoomRows reports rows pointing at a missing room', () => {
   assert.equal(storage.orphanRoomRows().tree_polyps, 1);
   assert.equal(storage.orphanRoomRows().polyps, 0);
 });
+
+test('006: roll-forward after a rollback adopts the newer legacy ecosystem row', () => {
+  const path = preRoomsFile();
+  const eco = (computedAt: number, bleaching: number) => ({
+    version: 1 as const, computedAt, polypCount: 1, plantedLast7d: 0, daysSinceLastPlant: 1,
+    bleaching, fishCount: 3, phase: 'thriving' as const,
+  });
+  const s1 = new Storage(path);
+  new ReefDb(s1).saveEcosystem(eco(9000, 0.1));
+  // The rolled-back (pre-rooms) server ticks into the legacy table only.
+  s1.db.prepare('UPDATE ecosystem_state SET state_json = ?, updated_at = ? WHERE id = 1')
+    .run(JSON.stringify(eco(20000, 0.3)), 20000);
+  s1.db.close();
+
+  const s2 = new Storage(path);
+  assert.equal(new ReefDb(s2).getEcosystem()!.computedAt, 20000);
+  // Once v2 is newer again, the stale legacy row never wins.
+  new ReefDb(s2).saveEcosystem(eco(30000, 0.2));
+  s2.db.close();
+  const s3 = new Storage(path);
+  assert.equal(new ReefDb(s3).getEcosystem()!.computedAt, 30000);
+  // Runbook "reset to healthy" deletes the v2 row; a restart must not revive the legacy one.
+  s3.db.prepare('DELETE FROM ecosystem_state_v2 WHERE room_id = 1').run();
+  s3.db.close();
+  assert.equal(new ReefDb(new Storage(path)).getEcosystem(), null);
+});
+
+test('storage: the orphan check runs only on a boot that applied a migration', (t) => {
+  const path = join(mkdtempSync(join(tmpdir(), 'reef-orphan-')), 'reef.db');
+  const s1 = new Storage(path);
+  s1.db.prepare(`INSERT INTO snapshots (taken_at, polyp_count, state_json, room_id) VALUES (1, 0, '{}', 42)`).run();
+  s1.db.close();
+  const errors = t.mock.method(console, 'error', () => {});
+
+  new Storage(path).db.close();
+  assert.equal(errors.mock.callCount(), 0, 'no migration applied, no scan');
+
+  // Un-record an idempotent (IF NOT EXISTS) file so the next boot applies one.
+  const raw = new Database(path);
+  raw.prepare("DELETE FROM schema_migrations WHERE filename = '005_ecosystem_state.sql'").run();
+  raw.close();
+  new Storage(path).db.close();
+  assert.equal(errors.mock.callCount(), 1);
+  assert.match(String(errors.mock.calls[0]!.arguments[0]), /missing room/);
+});
