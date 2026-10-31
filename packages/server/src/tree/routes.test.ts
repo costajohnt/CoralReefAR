@@ -150,7 +150,7 @@ describe('POST /api/tree/polyp', () => {
   });
 
   test('broadcasts tree_polyp_added via the hub on success', async () => {
-    const { app, close } = await makeServer();
+    const { close } = await makeServer();
     let received: unknown = null;
     const fakeWs = {
       readyState: 1,

@@ -39,7 +39,7 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
   `@fastify/websocket`. Zero external services.
 - **Client**: TypeScript · Vite · Three.js. Multiple surfaces share
   one backend:
-  - **AR** (`index.html`) — self-hosted 8th Wall engine binary, pedestal
+  - **AR** (`index.html`) — 8th Wall engine from jsDelivr (version + SRI pinned), pedestal
     marker tracking, two-finger pinch + twist placement on phone.
     Renders the landscape reef.
   - **Playground** (`playground.html`) — AR-free orbit-camera view
@@ -63,7 +63,7 @@ box behind Cloudflare Tunnel, or a $5/mo Fly.io VM, or anything in between.
     vice versa. Implemented per
     [`docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md`](docs/superpowers/specs/2026-05-25-quest3-mr-surface-design.md)
     and [`docs/superpowers/plans/2026-05-25-quest3-mr-surface.md`](docs/superpowers/plans/2026-05-25-quest3-mr-surface.md).
-- **CI**: lint (Oxlint) · typecheck · build · 600+ tests across four
+- **CI**: lint (Oxlint) · typecheck · build · 900+ tests across four
   packages · multi-arch Docker image on tag · Pages deploy on push.
 
 ## Layout

@@ -16,22 +16,6 @@ function makeRoot(id = 1): PublicTreePolyp {
   };
 }
 
-function makeChild(
-  id: number,
-  parentId: number,
-  attachIndex = 0,
-  variant: PublicTreePolyp['variant'] = 'forked',
-): PublicTreePolyp {
-  return {
-    id,
-    variant,
-    seed: id * 7,
-    colorKey: 'neon-magenta',
-    parentId,
-    attachIndex,
-    createdAt: Date.now() + id, attachYaw: 0,
-  };
-}
 
 describe('TreePlacement', () => {
   let reef: TreeReef;
