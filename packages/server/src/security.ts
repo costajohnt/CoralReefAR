@@ -3,26 +3,27 @@ import { config } from './config.js';
 import { counters } from './metrics-registry.js';
 
 // The 8th Wall engine (packages/client/index.html, treeAr.html) is loaded
-// from this CDN origin with an SRI hash; the engine then fetches its SLAM
-// chunks, wasm and tflite models from the same origin (connect-src), runs them
-// from blob: workers (worker-src) and compiles wasm ('wasm-unsafe-eval').
-// Without these the browser blocks xr.js wherever the server hosts the client
-// bundle (CLIENT_DIST_DIR) and AR silently falls back to the Noop provider.
-export const ENGINE_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
+// from this exact package path on the CDN with an SRI hash. The path is part
+// of the source expression on purpose: a bare origin would make every npm
+// package on the CDN a script gadget. The engine then fetches its SLAM chunks,
+// wasm and tflite models from the same path (connect-src), runs them from
+// blob: workers (worker-src) and compiles wasm ('wasm-unsafe-eval'). Without
+// these the browser blocks xr.js wherever the server hosts the client bundle
+// (CLIENT_DIST_DIR) and AR silently falls back to the Noop provider. Bump the
+// version here and in both HTML entry pages together; the boot smoke test
+// checks they agree.
+export const ENGINE_CDN_PATH = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/';
 
 // script-src has NO 'unsafe-inline' — inline scripts are blocked globally.
-// The only server-rendered page with an inline script (the admin panel) sets
-// its own per-response CSP with a nonce. style-src keeps 'unsafe-inline' for
-// now (runtime-set styles); tightening it is a follow-up.
-function buildCsp(scriptNonce?: string): string {
-  const nonce = scriptNonce ? ` 'nonce-${scriptNonce}'` : '';
-  const scriptSrc = `script-src 'self'${nonce} ${ENGINE_CDN_ORIGIN} 'wasm-unsafe-eval'`;
+// style-src keeps 'unsafe-inline' for now (runtime-set styles); tightening
+// it is a follow-up.
+function buildCsp(scriptSrc: string, connectSrc: string, workerSrc: string): string {
   return [
     "default-src 'self'",
     "img-src 'self' blob: data:",
-    `connect-src 'self' ws: wss: ${ENGINE_CDN_ORIGIN}`,
+    connectSrc,
     "media-src 'self' blob:",
-    "worker-src 'self' blob:",
+    workerSrc,
     "style-src 'self' 'unsafe-inline'",
     scriptSrc,
     "frame-ancestors 'none'",
@@ -30,9 +31,20 @@ function buildCsp(scriptNonce?: string): string {
   ].join('; ');
 }
 
-/** CSP that allows one inline script tagged with `nonce`. Used by /admin. */
+/** Policy for the client bundle and API responses: engine CDN path allowed. */
+const PAGE_CSP = buildCsp(
+  `script-src 'self' ${ENGINE_CDN_PATH} 'wasm-unsafe-eval'`,
+  `connect-src 'self' ws: wss: ${ENGINE_CDN_PATH}`,
+  "worker-src 'self' blob:",
+);
+
+/**
+ * Strict CSP for the server-rendered admin panel: one inline script tagged
+ * with `nonce`, no CDN, no wasm, no blob workers. The admin page never loads
+ * the AR engine, so it gets none of the engine allowances.
+ */
 export function cspWithScriptNonce(nonce: string): string {
-  return buildCsp(nonce);
+  return buildCsp(`script-src 'self' 'nonce-${nonce}'`, "connect-src 'self' ws: wss:", "worker-src 'self'");
 }
 
 const HEADERS = {
@@ -40,7 +52,7 @@ const HEADERS = {
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
   'Cross-Origin-Opener-Policy': 'same-origin',
-  'Content-Security-Policy': buildCsp(),
+  'Content-Security-Policy': PAGE_CSP,
 };
 
 export function installSecurityHeaders(app: FastifyInstance): void {
@@ -106,7 +118,12 @@ export function installReadRateLimit(app: FastifyInstance): void {
   if (config.readRateLimitPerMin <= 0) return;
   const limit = perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 });
   app.addHook('onRequest', async (req, reply) => {
-    if (req.method !== 'GET' || !req.url.startsWith('/api/')) return;
+    // Decide on the matched route pattern, not the raw URL: the router
+    // normalises and decodes before matching, so a raw-prefix check can be
+    // sidestepped (/%61pi/, //api/). HEAD is auto-exposed for every GET and
+    // shares its budget.
+    const route = req.routeOptions.url;
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !route?.startsWith('/api/')) return;
     const check = limit(req.ip || 'unknown');
     if (check.ok) return;
     counters.inc('rate_limited');

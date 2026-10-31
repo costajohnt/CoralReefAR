@@ -106,13 +106,20 @@ test('smoke: CSP on a served client bundle allows every external script origin',
 
   const res = await app.inject({ method: 'GET', url: '/' });
   assert.equal(res.statusCode, 200);
-  const origins = [...readFileSync(indexHtml, 'utf8').matchAll(/<script[^>]*\ssrc="(https?:\/\/[^/"]+)/g)]
+  const srcs = [...readFileSync(indexHtml, 'utf8').matchAll(/<script[^>]*\ssrc="(https?:\/\/[^"]+)"/g)]
     .map((m) => m[1]!);
-  assert.ok(origins.length > 0, 'index.html should load the AR engine from a CDN');
+  assert.ok(srcs.length > 0, 'index.html should load the AR engine from a CDN');
   const csp = res.headers['content-security-policy'] as string;
-  for (const origin of origins) {
-    assert.ok(new RegExp(`script-src[^;]* ${origin}(\\s|;|$)`).test(csp), `script-src must allow ${origin}: ${csp}`);
-    assert.ok(new RegExp(`connect-src[^;]* ${origin}(\\s|;|$)`).test(csp), `connect-src must allow ${origin}: ${csp}`);
+  const sources = (directive: string): string[] =>
+    (new RegExp(`${directive} ([^;]*)`).exec(csp)?.[1] ?? '').split(' ');
+  for (const src of srcs) {
+    for (const directive of ['script-src', 'connect-src']) {
+      const match = sources(directive).find((t) => t.startsWith('https://') && src.startsWith(t));
+      assert.ok(match, `${directive} must allow ${src}: ${csp}`);
+      // Pinned to a package path, never the whole CDN (any npm package would
+      // become a script gadget).
+      assert.ok(new URL(match!).pathname.length > 1, `${directive} must pin a path, got ${match}`);
+    }
   }
   // The engine compiles wasm and runs its SLAM chunks in blob: workers.
   assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
@@ -134,6 +141,14 @@ test('smoke: READ_RATE_LIMIT_PER_MIN covers snapshots and tree reads too (audit 
     assert.deepEqual(codes, [200, 200, 404, 429]);
     // Writes and non-API reads are not on this bucket.
     assert.equal((await app.inject({ method: 'GET', url: '/healthz' })).statusCode, 200);
+    // HEAD is auto-exposed for every GET and must draw from the same bucket.
+    assert.equal((await app.inject({ method: 'HEAD', url: '/api/tree' })).statusCode, 429);
+    // Raw-URL variants the router may normalise must never yield a fresh 200
+    // once the budget is spent (decision is on the matched route, not req.url).
+    for (const url of ['/%61pi/tree', '//api/tree', '/api//tree', '/API/tree']) {
+      const code = (await app.inject({ method: 'GET', url })).statusCode;
+      assert.notEqual(code, 200, `${url} bypassed the read limiter`);
+    }
   } finally {
     config.readRateLimitPerMin = saved;
   }
