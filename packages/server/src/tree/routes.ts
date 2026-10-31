@@ -4,16 +4,23 @@ import type { Hub } from '../hub.js';
 import type { TreeDb } from './db.js';
 import { seedRootIfEmpty } from './seed.js';
 import { enforceAdminIfConfigured } from '../auth.js';
-import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
+import { deviceHash } from '../deviceHash.js';
+import { writeIpBackstop } from '../security.js';
 import { config } from '../config.js';
 import { counters } from '../metrics-registry.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
 
 export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub): void {
+  const ipBackstop = writeIpBackstop();
+
+  // adminGated tells the client whether reset/delete need the admin token
+  // (every production config sets one), so it can hide Clear and Undo
+  // instead of showing buttons that always 401.
   app.get('/api/tree', async () => ({
     polyps: tree.listLive(),
     serverTime: Date.now(),
+    adminGated: config.adminToken !== '',
   }));
 
   // Reset: soft-delete every live polyp, then seed a fresh Starburst root so
@@ -24,7 +31,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
   app.post('/api/tree/reset', async (req, reply) => {
     if (!enforceAdminIfConfigured(req, reply)) return reply;
     tree.deleteAll();
-    seedRootIfEmpty(tree);
+    seedRootIfEmpty(tree, { seed: config.treeRootSeed });
     const polyps = tree.listLive();
     hub.broadcast({ type: 'tree_reset' });
     if (polyps[0]) {
@@ -40,25 +47,17 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       return { error: 'invalid payload', issues: parsed.error.issues };
     }
 
-    // Per-device write limit, mirroring the reef route. Off by default
-    // (RATE_LIMIT_MAX=0); counts this device's live tree pieces in the window.
+    // Tree plants carry no owner token, so a per-visitor limit would collide
+    // for visitors sharing venue wifi and a phone model (audit H3). The only
+    // write limit here is the per-IP backstop (RATE_LIMIT_IP_MAX); the UA|IP
+    // device hash is still stored for stats.
     const ua = req.headers['user-agent'] ?? 'unknown';
     const ip = req.ip || 'unknown';
     const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
-    const windowStart = Date.now() - config.rateLimitWindowMs;
-    // Count under the current AND previous window's hash so crossing a window
-    // boundary can't reset the count (see deviceHashesForCounting).
-    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
-    const already = countHashes.reduce((n, h) => n + tree.countByDeviceSince(h, windowStart), 0);
-    if (config.rateLimitMax > 0 && already >= config.rateLimitMax) {
+    const backstop = ipBackstop?.(ip);
+    if (backstop && !backstop.ok) {
       counters.inc('rate_limited');
-      const oldests = countHashes
-        .map((h) => tree.oldestByDeviceSince(h, windowStart))
-        .filter((t): t is number => t !== null);
-      const oldest = oldests.length ? Math.min(...oldests) : null;
-      const retryAfterMs = oldest !== null
-        ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
-        : config.rateLimitWindowMs;
+      const retryAfterMs = Math.ceil(backstop.retryAfterMs);
       reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
       reply.code(429);
       return { error: 'rate_limited', retryAfterMs };

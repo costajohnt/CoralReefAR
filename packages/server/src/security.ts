@@ -1,16 +1,29 @@
 import type { FastifyInstance } from 'fastify';
+import { config } from './config.js';
+import { counters } from './metrics-registry.js';
 
-// script-src is 'self' with NO 'unsafe-inline' — inline scripts are blocked
-// globally. The only server-rendered page with an inline script (the admin
-// panel) sets its own per-response CSP with a nonce. style-src keeps
-// 'unsafe-inline' for now (runtime-set styles); tightening it is a follow-up.
-function buildCsp(scriptNonce?: string): string {
-  const scriptSrc = scriptNonce ? `script-src 'self' 'nonce-${scriptNonce}'` : "script-src 'self'";
+// The 8th Wall engine (packages/client/index.html, treeAr.html) is loaded
+// from this exact package path on the CDN with an SRI hash. The path is part
+// of the source expression on purpose: a bare origin would make every npm
+// package on the CDN a script gadget. The engine then fetches its SLAM chunks,
+// wasm and tflite models from the same path (connect-src), runs them from
+// blob: workers (worker-src) and compiles wasm ('wasm-unsafe-eval'). Without
+// these the browser blocks xr.js wherever the server hosts the client bundle
+// (CLIENT_DIST_DIR) and AR silently falls back to the Noop provider. Bump the
+// version here and in both HTML entry pages together; the boot smoke test
+// checks they agree.
+export const ENGINE_CDN_PATH = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/';
+
+// script-src has NO 'unsafe-inline' — inline scripts are blocked globally.
+// style-src keeps 'unsafe-inline' for now (runtime-set styles); tightening
+// it is a follow-up.
+function buildCsp(scriptSrc: string, connectSrc: string, workerSrc: string, imgSrc: string): string {
   return [
     "default-src 'self'",
-    "img-src 'self' blob: data:",
-    "connect-src 'self' ws: wss:",
+    imgSrc,
+    connectSrc,
     "media-src 'self' blob:",
+    workerSrc,
     "style-src 'self' 'unsafe-inline'",
     scriptSrc,
     "frame-ancestors 'none'",
@@ -18,9 +31,27 @@ function buildCsp(scriptNonce?: string): string {
   ].join('; ');
 }
 
-/** CSP that allows one inline script tagged with `nonce`. Used by /admin. */
+/** Policy for the client bundle and API responses: engine CDN path allowed. */
+const PAGE_CSP = buildCsp(
+  `script-src 'self' ${ENGINE_CDN_PATH} 'wasm-unsafe-eval'`,
+  `connect-src 'self' ws: wss: ${ENGINE_CDN_PATH}`,
+  "worker-src 'self' blob:",
+  // xr.js injects its powered-by badge as <img> from the same path.
+  `img-src 'self' blob: data: ${ENGINE_CDN_PATH}`,
+);
+
+/**
+ * Strict CSP for the server-rendered admin panel: one inline script tagged
+ * with `nonce`, no CDN, no wasm, no blob workers. The admin page never loads
+ * the AR engine, so it gets none of the engine allowances.
+ */
 export function cspWithScriptNonce(nonce: string): string {
-  return buildCsp(nonce);
+  return buildCsp(
+    `script-src 'self' 'nonce-${nonce}'`,
+    "connect-src 'self' ws: wss:",
+    "worker-src 'self'",
+    "img-src 'self' blob: data:",
+  );
 }
 
 const HEADERS = {
@@ -28,7 +59,7 @@ const HEADERS = {
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer',
   'Cross-Origin-Opener-Policy': 'same-origin',
-  'Content-Security-Policy': buildCsp(),
+  'Content-Security-Policy': PAGE_CSP,
 };
 
 export function installSecurityHeaders(app: FastifyInstance): void {
@@ -83,6 +114,46 @@ export function perIpRateLimit(opts: { tokensPerInterval: number; intervalMs: nu
     const retryAfterMs = (needed / tokensPerInterval) * intervalMs;
     return { ok: false, retryAfterMs };
   };
+}
+
+/**
+ * One per-IP read limiter for every GET under /api/ (reef, mine, stats,
+ * snapshots, tree), so no read path sits outside it. Off when
+ * READ_RATE_LIMIT_PER_MIN is 0. Write and undo paths keep their own buckets.
+ */
+export function installReadRateLimit(app: FastifyInstance): void {
+  if (config.readRateLimitPerMin <= 0) return;
+  const limit = perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 });
+  app.addHook('onRequest', async (req, reply) => {
+    // Decide on the matched route pattern, not the raw URL: the router
+    // normalises and decodes before matching, so a raw-prefix check can be
+    // sidestepped (/%61pi/, //api/). HEAD is auto-exposed for every GET and
+    // shares its budget.
+    // Unmatched URLs have no route pattern; fall back to the raw URL so 404
+    // probing under /api/ still draws from the bucket.
+    const route = req.routeOptions.url ?? req.url;
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !route.startsWith('/api/')) return;
+    const check = limit(req.ip || 'unknown');
+    if (check.ok) return;
+    counters.inc('rate_limited');
+    reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
+    return reply.status(429).send({ error: 'rate_limited' });
+  });
+}
+
+/**
+ * Coarse per-IP backstop for write routes: RATE_LIMIT_IP_MAX successful plants
+ * per IP per RATE_LIMIT_WINDOW_MS, whatever UA or owner token they carry, so
+ * one address cannot dodge the per-visitor limit by minting tokens or rotating
+ * its UA. In-memory token bucket (restarts reset it; a venue behind one NAT
+ * shares it, so keep the value well above RATE_LIMIT_MAX). null when off.
+ * Call it only for a plant that passed the per-visitor check, since checking
+ * consumes a token.
+ */
+export function writeIpBackstop(): ((ip: string) => { ok: boolean; retryAfterMs: number }) | null {
+  return config.rateLimitIpMax > 0
+    ? perIpRateLimit({ tokensPerInterval: config.rateLimitIpMax, intervalMs: config.rateLimitWindowMs })
+    : null;
 }
 
 /**

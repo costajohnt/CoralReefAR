@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { perIpRateLimit, ttlCache, cspWithScriptNonce } from './security.js';
+import { ENGINE_CDN_PATH, perIpRateLimit, ttlCache, cspWithScriptNonce } from './security.js';
 
 test('cspWithScriptNonce: script-src allows the nonce, not unsafe-inline', () => {
   const csp = cspWithScriptNonce('abc123');
@@ -43,4 +43,15 @@ test('perIpRateLimit isolates IPs', () => {
   assert.equal(limit('b').ok, true);
   assert.equal(limit('a').ok, false);
   assert.equal(limit('b').ok, false);
+});
+
+test('cspWithScriptNonce: admin policy has no CDN, wasm or blob-worker allowances', () => {
+  const csp = cspWithScriptNonce('abc123');
+  assert.ok(!csp.includes('cdn.jsdelivr.net'), csp);
+  assert.ok(!csp.includes('wasm-unsafe-eval'), csp);
+  assert.ok(!/worker-src[^;]*blob:/.test(csp), csp);
+});
+
+test('ENGINE_CDN_PATH is a versioned package path, not a bare CDN origin', () => {
+  assert.match(ENGINE_CDN_PATH, /^https:\/\/[^/]+\/npm\/@8thwall\/engine-binary@\d+\.\d+\.\d+\/$/);
 });

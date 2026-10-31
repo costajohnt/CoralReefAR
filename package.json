@@ -20,5 +20,12 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri@3": "^3.1.9",
+      "fast-uri@4": "^4.2.3",
+      "glob@13": "^14.0.2"
+    }
   }
 }

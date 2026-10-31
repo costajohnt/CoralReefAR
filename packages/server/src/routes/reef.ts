@@ -8,12 +8,18 @@ import type { ReefDb } from '../db.js';
 import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
 import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
-import { perIpRateLimit, ttlCache } from '../security.js';
+import { perIpRateLimit, ttlCache, writeIpBackstop } from '../security.js';
 import { counters } from '../metrics-registry.js';
 import { ownerHash } from '../ownerHash.js';
 import { stepEcosystem } from '../ecosystem.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
+// Quest Browser identifies itself in the UA as "OculusBrowser/<version>". The
+// `surface` body field is client-supplied, so the looser Quest bucket is only
+// granted when the UA agrees. A UA is spoofable too, which is why the bucket
+// is opt-in (QUEST_RATE_LIMIT_MAX defaults to 0); this check is defense in
+// depth, not proof.
+const QUEST_UA_RE = /\bOculusBrowser\/\d/;
 
 // Owner token from the request header: absent → null, malformed → 'invalid'.
 // The value is a credential for undo, so it is never logged or echoed back.
@@ -31,60 +37,42 @@ const UNDO_STATUS: Record<string, { code: number; error: string }> = {
 };
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
-  // Rate limits are opt-in. Default off while the project is in testing;
-  // set READ_RATE_LIMIT_PER_MIN / RATE_LIMIT_MAX env vars to re-enable.
-  const readLimit = config.readRateLimitPerMin > 0
-    ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
-    : null;
-
-  // Separate bucket from reads so undo traffic can't starve GET /api/reef
-  // (or vice versa).
+  // Reads are limited by the shared GET /api/* hook (installReadRateLimit).
+  // Undo gets its own bucket so undo traffic can't starve reads (or vice versa).
   const undoLimit = config.undoRateLimitPerMin > 0
     ? perIpRateLimit({ tokensPerInterval: config.undoRateLimitPerMin, intervalMs: 60_000 })
     : null;
 
-  // The polyps + sim scans are the expensive part of GET /api/reef. Cache them
-  // for READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
+  // The polyps + sim scans (and the ecosystem aggregate before the first sim
+  // tick) are the expensive part of GET /api/reef. Cache them for
+  // READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
   // payload is bounded to the retention window (0 = retention disabled → all).
-  const buildSnapshot = (): Pick<ReefState, 'polyps' | 'sim'> => ({
-    polyps: db.listPublicPolyps(),
-    sim: config.simRetentionMs > 0
-      ? db.listSimSince(Date.now() - config.simRetentionMs)
-      : db.listSim(),
-  });
+  const buildSnapshot = (): Omit<ReefState, 'serverTime'> => {
+    const now = Date.now();
+    return {
+      polyps: db.listPublicPolyps(),
+      sim: config.simRetentionMs > 0 ? db.listSimSince(now - config.simRetentionMs) : db.listSim(),
+      // Before the first sim tick there is no saved row; compute a starting
+      // state (healthy, see stepEcosystem) rather than omit the field.
+      ecosystem: db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now)),
+    };
+  };
+  // Per-IP backstop behind the per-visitor write limit (see writeIpBackstop).
+  const ipBackstop = writeIpBackstop();
+
   const readSnapshot = config.readCacheTtlMs > 0
     ? ttlCache(buildSnapshot, config.readCacheTtlMs)
     : buildSnapshot;
 
-  app.get('/api/reef', async (req, reply) => {
-    if (readLimit) {
-      const check = readLimit(req.ip || 'unknown');
-      if (!check.ok) {
-        counters.inc('rate_limited');
-        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
-        return reply.status(429).send({ error: 'rate_limited' });
-      }
-    }
+  app.get('/api/reef', async () => {
     // serverTime is always fresh even when the scans are served from cache.
-    const now = Date.now();
-    // Before the first sim tick there is no saved row; compute a starting
-    // state (healthy, see stepEcosystem) rather than omit the field.
-    const ecosystem = db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now));
-    const state: ReefState = { ...readSnapshot(), serverTime: now, ecosystem };
+    const state: ReefState = { ...readSnapshot(), serverTime: Date.now() };
     return state;
   });
 
   // "My polyps": ids of the caller's live polyps, so the client can highlight
   // them. Uncached (per-owner) but a single indexed lookup.
   app.get('/api/reef/mine', async (req, reply) => {
-    if (readLimit) {
-      const check = readLimit(req.ip || 'unknown');
-      if (!check.ok) {
-        counters.inc('rate_limited');
-        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
-        return reply.status(429).send({ error: 'rate_limited' });
-      }
-    }
     const token = readOwnerToken(req);
     if (token === null || token === 'invalid') {
       return reply.status(400).send({ error: 'invalid_owner' });
@@ -132,40 +120,63 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_input', issues: parsed.error.issues });
     }
-    // Optional: clients that predate #112 send no owner header and get an
-    // unowned polyp (no highlight, no undo).
+    // Clients that predate #112 send no owner header and get an unowned polyp
+    // (no highlight, no undo); only allowed while the write limit is off.
     const token = readOwnerToken(req);
     if (token === 'invalid') return reply.status(400).send({ error: 'invalid_owner' });
+    // The write limit is keyed on the owner token, so a tokenless plant could
+    // only be limited by the shared UA|IP hash, which is the venue collision
+    // the token exists to avoid. With the limit on, require the token (every
+    // shipped client sends one; see net/api.ts ownerHeaders).
+    if (token === null && config.rateLimitMax > 0) {
+      return reply.status(400).send({
+        error: 'owner_required',
+        message: `${OWNER_HEADER} header is required to plant while RATE_LIMIT_MAX is set`,
+      });
+    }
 
-    const ua = req.headers['user-agent'] ?? 'unknown';
+    const ua = String(req.headers['user-agent'] ?? 'unknown');
     const ip = req.ip || 'unknown';
-    const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
+    const dh = deviceHash(ua, ip, config.rateLimitWindowMs);
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
-    // Count under the current AND previous window's hash so crossing a window
-    // boundary can't reset the count (see deviceHashesForCounting).
-    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
-    const already = countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0);
-    // The `surface` tag is client-supplied — there's no cryptographic
-    // proof that a request really came from a Quest session. With the
-    // current defaults (rateLimitMax=0, questRateLimitMax=20) the gap
-    // is benign because the web bucket is unrestricted; but if a
-    // production config tightens rateLimitMax, this becomes a bypass
-    // vector. When productionalizing the write-side limit, either
-    // verify surface against a UA/header pattern, drop the looser
-    // bucket entirely, or accept the risk explicitly.
-    const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
+    // The write limit is keyed on the owner token (random per browser, sent
+    // on every plant) so visitors sharing venue wifi and a phone model are
+    // limited independently. Only tokenless clients (limit off) are keyed on
+    // the UA|IP device hash, and nothing is ever charged across the two keys:
+    // a tokenless plant must not drain the budget of every same-UA visitor
+    // behind the venue NAT. Device counts cover the current AND previous
+    // window's hash so crossing a window boundary can't reset them (see
+    // deviceHashesForCounting).
+    const ownerKey = token ? ownerHash(token) : null;
+    const countHashes = deviceHashesForCounting(ua, ip, config.rateLimitWindowMs);
+    const visitor = ownerKey
+      ? {
+        count: db.countByOwnerSince(ownerKey, windowStart),
+        oldest: () => [db.oldestOwnedSince(ownerKey, windowStart)],
+      }
+      : {
+        count: countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0),
+        oldest: () => countHashes.map((h) => db.oldestPolypSince(h, windowStart)),
+      };
+    const limitMax = parsed.data.surface === 'quest' && QUEST_UA_RE.test(ua) && config.questRateLimitMax > 0
       ? config.questRateLimitMax
       : config.rateLimitMax;
-    if (limitMax > 0 && already >= limitMax) {
+    if (limitMax > 0 && visitor.count >= limitMax) {
       counters.inc('rate_limited');
-      const oldests = countHashes
-        .map((h) => db.oldestPolypSince(h, windowStart))
-        .filter((t): t is number => t !== null);
+      const oldests = visitor.oldest().filter((t): t is number => t !== null);
       const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
         : config.rateLimitWindowMs;
+      reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
+      return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
+    }
+    // Per-IP backstop, checked last because a check consumes a token.
+    const backstop = ipBackstop?.(ip);
+    if (backstop && !backstop.ok) {
+      counters.inc('rate_limited');
+      const retryAfterMs = Math.ceil(backstop.retryAfterMs);
       reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
       return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
     }

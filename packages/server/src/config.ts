@@ -17,9 +17,18 @@ export const config = {
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
   // tracked in the repo issue list.
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 0),
+  // Coarse backstop behind the owner-token write limit: successful plants per
+  // IP per window, across all owner tokens and UAs (reef and tree each keep
+  // their own bucket). Stops one address from dodging RATE_LIMIT_MAX by
+  // minting fresh owner tokens, while staying wide enough that a venue full
+  // of phones behind one NAT is not throttled as a single visitor. It is the
+  // only write limit on tree plants, which carry no owner token. 0 = off.
+  rateLimitIpMax: Number(process.env.RATE_LIMIT_IP_MAX ?? 0),
   // Looser bucket for Quest sessions where users plant many polyps quickly.
-  // 0 = falls through to rateLimitMax.
-  questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 20),
+  // Opt-in: the `surface: "quest"` tag and the Quest Browser UA it is gated on
+  // are both client-supplied, so this stays 0 (same as rateLimitMax) until a
+  // deploy explicitly wants it.
+  questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 0),
   // 0 = disabled. Default off; set READ_RATE_LIMIT_PER_MIN=60 (or similar)
   // to re-enable the per-IP read-side token bucket on /api/reef and /api/stats.
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),
@@ -83,6 +92,28 @@ if (!Number.isFinite(config.simRetentionMs) || config.simRetentionMs < 0) {
     `SIM_RETENTION_MS must be a non-negative number of milliseconds (0 disables pruning), ` +
       `got ${JSON.stringify(process.env.SIM_RETENTION_MS)}`,
   );
+}
+
+// Rate-limit knobs: a typo like RATE_LIMIT_MAX=1x used to coerce to NaN, which
+// fails every `> 0` check and silently turns the limit off.
+if (!Number.isInteger(config.rateLimitWindowMs) || config.rateLimitWindowMs <= 0) {
+  throw new Error(
+    `RATE_LIMIT_WINDOW_MS must be a positive integer number of milliseconds, ` +
+      `got ${JSON.stringify(process.env.RATE_LIMIT_WINDOW_MS)}`,
+  );
+}
+
+for (const [name, value] of [
+  ['RATE_LIMIT_MAX', config.rateLimitMax],
+  ['RATE_LIMIT_IP_MAX', config.rateLimitIpMax],
+  ['QUEST_RATE_LIMIT_MAX', config.questRateLimitMax],
+  ['READ_RATE_LIMIT_PER_MIN', config.readRateLimitPerMin],
+] as const) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${name} must be a non-negative integer (0 = off), got ${JSON.stringify(process.env[name])}`,
+    );
+  }
 }
 
 if (!Number.isInteger(config.snapshotRetentionCount) || config.snapshotRetentionCount < 0) {

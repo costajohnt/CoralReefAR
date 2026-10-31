@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { fetchTree, submitTreePolyp, TreeSocket, defaultTreeWsUrl } from './api.js';
+import { fetchTree, hideAdminOnlyControls, submitTreePolyp, TreeSocket, defaultTreeWsUrl } from './api.js';
 
 // ---------------------------------------------------------------------------
 // Fetch helpers
@@ -256,5 +256,18 @@ describe('defaultTreeWsUrl', () => {
 
     vi.stubGlobal('location', { protocol: 'http:', host: 'localhost:5173' });
     expect(defaultTreeWsUrl()).toBe('ws://localhost:5173/ws/tree');
+  });
+});
+
+describe('hideAdminOnlyControls (audit M5)', () => {
+  test('hides Clear and Undo only when the server reports admin gating', () => {
+    document.body.innerHTML = '<button id="clearBtn"></button><button id="undoBtn"></button>';
+    hideAdminOnlyControls(false);
+    expect(document.getElementById('clearBtn')!.hidden).toBe(false);
+    hideAdminOnlyControls(undefined);
+    expect(document.getElementById('undoBtn')!.hidden).toBe(false);
+    hideAdminOnlyControls(true);
+    expect(document.getElementById('clearBtn')!.hidden).toBe(true);
+    expect(document.getElementById('undoBtn')!.hidden).toBe(true);
   });
 });

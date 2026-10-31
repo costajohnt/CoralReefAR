@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 import { makeServer } from './index.js';
+import { config } from './config.js';
 
 // Boot smoke test: register every plugin + route against a real Fastify
 // instance, in the real load order, with an in-memory DB. Catches
@@ -79,4 +80,76 @@ test('smoke: /api/tree returns a seeded state (not empty) on fresh boot', async 
   const body = JSON.parse(res.body) as { polyps: unknown[] };
   // seedRootIfEmpty ran at boot — expect exactly one root.
   assert.equal(body.polyps.length, 1);
+});
+
+// Single-container deploys (fly.toml, docker-compose, the LXC image) serve the
+// built client through this server, so the global CSP applies to index.html.
+// The 8th Wall engine is a cross-origin <script>; if the CSP does not allow its
+// origin the browser drops it and AR silently falls back to the Noop provider.
+// Serve the real index.html from a CLIENT_DIST_DIR and check every external
+// script origin it references is permitted by script-src and connect-src.
+test('smoke: CSP on a served client bundle allows every external script origin', async () => {
+  const { mkdtempSync, copyFileSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, resolve } = await import('node:path');
+  const indexHtml = resolve(process.cwd(), '../client/index.html');
+  const dist = mkdtempSync(join(tmpdir(), 'reef-dist-'));
+  copyFileSync(indexHtml, join(dist, 'index.html'));
+  const { app } = await makeServer({
+    dbPath: ':memory:',
+    adminToken: '',
+    corsOrigins: ['*'],
+    clientDistDir: dist,
+    logger: false,
+  });
+  after(async () => { await app.close(); rmSync(dist, { recursive: true, force: true }); });
+
+  const res = await app.inject({ method: 'GET', url: '/' });
+  assert.equal(res.statusCode, 200);
+  const srcs = [...readFileSync(indexHtml, 'utf8').matchAll(/<script[^>]*\ssrc="(https?:\/\/[^"]+)"/g)]
+    .map((m) => m[1]!);
+  assert.ok(srcs.length > 0, 'index.html should load the AR engine from a CDN');
+  const csp = res.headers['content-security-policy'] as string;
+  const sources = (directive: string): string[] =>
+    (new RegExp(`${directive} ([^;]*)`).exec(csp)?.[1] ?? '').split(' ');
+  for (const src of srcs) {
+    for (const directive of ['script-src', 'connect-src']) {
+      const match = sources(directive).find((t) => t.startsWith('https://') && src.startsWith(t));
+      assert.ok(match, `${directive} must allow ${src}: ${csp}`);
+      // Pinned to a package path, never the whole CDN (any npm package would
+      // become a script gadget).
+      assert.ok(new URL(match!).pathname.length > 1, `${directive} must pin a path, got ${match}`);
+    }
+  }
+  // The engine compiles wasm and runs its SLAM chunks in blob: workers.
+  assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
+  assert.match(csp, /worker-src[^;]*blob:/);
+});
+
+// Snapshot and tree reads used to sit outside the per-route limiters; the
+// limiter is now one app-level hook on every GET under /api/.
+test('smoke: READ_RATE_LIMIT_PER_MIN covers snapshots and tree reads too (audit M3)', async () => {
+  const saved = config.readRateLimitPerMin;
+  config.readRateLimitPerMin = 3;
+  try {
+    const { app } = await makeServer({ dbPath: ':memory:', adminToken: '', corsOrigins: ['*'], clientDistDir: undefined, logger: false });
+    after(async () => { await app.close(); });
+    const codes: number[] = [];
+    for (const url of ['/api/snapshots', '/api/tree', '/api/snapshots/1', '/api/snapshots']) {
+      codes.push((await app.inject({ method: 'GET', url })).statusCode);
+    }
+    assert.deepEqual(codes, [200, 200, 404, 429]);
+    // Writes and non-API reads are not on this bucket.
+    assert.equal((await app.inject({ method: 'GET', url: '/healthz' })).statusCode, 200);
+    // HEAD is auto-exposed for every GET and must draw from the same bucket.
+    assert.equal((await app.inject({ method: 'HEAD', url: '/api/tree' })).statusCode, 429);
+    // Raw-URL variants the router may normalise must never yield a fresh 200
+    // once the budget is spent (decision is on the matched route, not req.url).
+    for (const url of ['/%61pi/tree', '//api/tree', '/api//tree', '/API/tree']) {
+      const code = (await app.inject({ method: 'GET', url })).statusCode;
+      assert.notEqual(code, 200, `${url} bypassed the read limiter`);
+    }
+  } finally {
+    config.readRateLimitPerMin = saved;
+  }
 });
