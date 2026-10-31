@@ -91,6 +91,28 @@ if (!Number.isFinite(config.simRetentionMs) || config.simRetentionMs < 0) {
   );
 }
 
+// Rate-limit knobs: a typo like RATE_LIMIT_MAX=1x used to coerce to NaN, which
+// fails every `> 0` check and silently turns the limit off.
+if (!Number.isInteger(config.rateLimitWindowMs) || config.rateLimitWindowMs <= 0) {
+  throw new Error(
+    `RATE_LIMIT_WINDOW_MS must be a positive integer number of milliseconds, ` +
+      `got ${JSON.stringify(process.env.RATE_LIMIT_WINDOW_MS)}`,
+  );
+}
+
+for (const [name, value] of [
+  ['RATE_LIMIT_MAX', config.rateLimitMax],
+  ['RATE_LIMIT_IP_MAX', config.rateLimitIpMax],
+  ['QUEST_RATE_LIMIT_MAX', config.questRateLimitMax],
+  ['READ_RATE_LIMIT_PER_MIN', config.readRateLimitPerMin],
+] as const) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `${name} must be a non-negative integer (0 = off), got ${JSON.stringify(process.env[name])}`,
+    );
+  }
+}
+
 if (!Number.isInteger(config.snapshotRetentionCount) || config.snapshotRetentionCount < 0) {
   throw new Error(
     `SNAPSHOT_RETENTION_COUNT must be a non-negative integer (0 keeps all), ` +
