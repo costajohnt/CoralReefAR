@@ -80,3 +80,40 @@ test('smoke: /api/tree returns a seeded state (not empty) on fresh boot', async 
   // seedRootIfEmpty ran at boot — expect exactly one root.
   assert.equal(body.polyps.length, 1);
 });
+
+// Single-container deploys (fly.toml, docker-compose, the LXC image) serve the
+// built client through this server, so the global CSP applies to index.html.
+// The 8th Wall engine is a cross-origin <script>; if the CSP does not allow its
+// origin the browser drops it and AR silently falls back to the Noop provider.
+// Serve the real index.html from a CLIENT_DIST_DIR and check every external
+// script origin it references is permitted by script-src and connect-src.
+test('smoke: CSP on a served client bundle allows every external script origin', async () => {
+  const { mkdtempSync, copyFileSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, resolve } = await import('node:path');
+  const indexHtml = resolve(process.cwd(), '../client/index.html');
+  const dist = mkdtempSync(join(tmpdir(), 'reef-dist-'));
+  copyFileSync(indexHtml, join(dist, 'index.html'));
+  const { app } = await makeServer({
+    dbPath: ':memory:',
+    adminToken: '',
+    corsOrigins: ['*'],
+    clientDistDir: dist,
+    logger: false,
+  });
+  after(async () => { await app.close(); rmSync(dist, { recursive: true, force: true }); });
+
+  const res = await app.inject({ method: 'GET', url: '/' });
+  assert.equal(res.statusCode, 200);
+  const origins = [...readFileSync(indexHtml, 'utf8').matchAll(/<script[^>]*\ssrc="(https?:\/\/[^/"]+)/g)]
+    .map((m) => m[1]!);
+  assert.ok(origins.length > 0, 'index.html should load the AR engine from a CDN');
+  const csp = res.headers['content-security-policy'] as string;
+  for (const origin of origins) {
+    assert.ok(new RegExp(`script-src[^;]* ${origin}(\\s|;|$)`).test(csp), `script-src must allow ${origin}: ${csp}`);
+    assert.ok(new RegExp(`connect-src[^;]* ${origin}(\\s|;|$)`).test(csp), `connect-src must allow ${origin}: ${csp}`);
+  }
+  // The engine compiles wasm and runs its SLAM chunks in blob: workers.
+  assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
+  assert.match(csp, /worker-src[^;]*blob:/);
+});

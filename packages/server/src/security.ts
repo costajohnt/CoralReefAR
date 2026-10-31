@@ -1,16 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 
-// script-src is 'self' with NO 'unsafe-inline' — inline scripts are blocked
-// globally. The only server-rendered page with an inline script (the admin
-// panel) sets its own per-response CSP with a nonce. style-src keeps
-// 'unsafe-inline' for now (runtime-set styles); tightening it is a follow-up.
+// The 8th Wall engine (packages/client/index.html, treeAr.html) is loaded
+// from this CDN origin with an SRI hash; the engine then fetches its SLAM
+// chunks, wasm and tflite models from the same origin (connect-src), runs them
+// from blob: workers (worker-src) and compiles wasm ('wasm-unsafe-eval').
+// Without these the browser blocks xr.js wherever the server hosts the client
+// bundle (CLIENT_DIST_DIR) and AR silently falls back to the Noop provider.
+export const ENGINE_CDN_ORIGIN = 'https://cdn.jsdelivr.net';
+
+// script-src has NO 'unsafe-inline' — inline scripts are blocked globally.
+// The only server-rendered page with an inline script (the admin panel) sets
+// its own per-response CSP with a nonce. style-src keeps 'unsafe-inline' for
+// now (runtime-set styles); tightening it is a follow-up.
 function buildCsp(scriptNonce?: string): string {
-  const scriptSrc = scriptNonce ? `script-src 'self' 'nonce-${scriptNonce}'` : "script-src 'self'";
+  const nonce = scriptNonce ? ` 'nonce-${scriptNonce}'` : '';
+  const scriptSrc = `script-src 'self'${nonce} ${ENGINE_CDN_ORIGIN} 'wasm-unsafe-eval'`;
   return [
     "default-src 'self'",
     "img-src 'self' blob: data:",
-    "connect-src 'self' ws: wss:",
+    `connect-src 'self' ws: wss: ${ENGINE_CDN_ORIGIN}`,
     "media-src 'self' blob:",
+    "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     scriptSrc,
     "frame-ancestors 'none'",
