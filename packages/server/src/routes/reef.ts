@@ -8,16 +8,18 @@ import type { ReefDb } from '../db.js';
 import { toPublicPolyp } from '../db.js';
 import type { Hub } from '../hub.js';
 import { deviceHash, deviceHashesForCounting } from '../deviceHash.js';
-import { perIpRateLimit, ttlCache } from '../security.js';
+import { perIpRateLimit, ttlCache, writeIpBackstop } from '../security.js';
 import { counters } from '../metrics-registry.js';
 import { ownerHash } from '../ownerHash.js';
 import { stepEcosystem } from '../ecosystem.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
-// Quest Browser identifies itself in the UA. The `surface` body field is
-// client-supplied, so the looser Quest bucket is only granted when the UA
-// agrees; anyone else gets the web bucket whatever they claim.
-const QUEST_UA_RE = /OculusBrowser/;
+// Quest Browser identifies itself in the UA as "OculusBrowser/<version>". The
+// `surface` body field is client-supplied, so the looser Quest bucket is only
+// granted when the UA agrees. A UA is spoofable too, which is why the bucket
+// is opt-in (QUEST_RATE_LIMIT_MAX defaults to 0); this check is defense in
+// depth, not proof.
+const QUEST_UA_RE = /\bOculusBrowser\/\d/;
 
 // Owner token from the request header: absent → null, malformed → 'invalid'.
 // The value is a credential for undo, so it is never logged or echoed back.
@@ -55,6 +57,9 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
       ecosystem: db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now)),
     };
   };
+  // Per-IP backstop behind the per-visitor write limit (see writeIpBackstop).
+  const ipBackstop = writeIpBackstop();
+
   const readSnapshot = config.readCacheTtlMs > 0
     ? ttlCache(buildSnapshot, config.readCacheTtlMs)
     : buildSnapshot;
@@ -127,38 +132,45 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     // The write limit is keyed on the owner token (random per browser, sent
     // on every plant) so visitors sharing venue wifi and a phone model are
-    // limited independently. The UA|IP device hash is the key only for
-    // tokenless clients, and otherwise a coarse backstop (RATE_LIMIT_IP_MAX)
-    // against minting fresh tokens. Device counts cover the current AND
-    // previous window's hash so crossing a window boundary can't reset them
-    // (see deviceHashesForCounting).
+    // limited independently. Polyps this device planted WITHOUT a token count
+    // toward the token's budget too, so going tokenless-then-token does not
+    // double it. Tokenless clients are keyed on the UA|IP device hash alone.
+    // Device counts cover the current AND previous window's hash so crossing
+    // a window boundary can't reset them (see deviceHashesForCounting).
     const countHashes = deviceHashesForCounting(ua, ip, config.rateLimitWindowMs);
-    const device = {
-      count: countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0),
-      oldest: () => countHashes.map((h) => db.oldestPolypSince(h, windowStart)),
-    };
+    const sum = (f: (h: string) => number): number => countHashes.reduce((n, h) => n + f(h), 0);
     const ownerKey = token ? ownerHash(token) : null;
     const visitor = ownerKey
       ? {
-        count: db.countByOwnerSince(ownerKey, windowStart),
-        oldest: () => [db.oldestOwnedSince(ownerKey, windowStart)],
+        count: db.countByOwnerSince(ownerKey, windowStart)
+          + sum((h) => db.countTokenlessByDeviceSince(h, windowStart)),
+        oldest: () => [
+          db.oldestOwnedSince(ownerKey, windowStart),
+          ...countHashes.map((h) => db.oldestTokenlessByDeviceSince(h, windowStart)),
+        ],
       }
-      : device;
+      : {
+        count: sum((h) => db.countByDeviceSince(h, windowStart)),
+        oldest: () => countHashes.map((h) => db.oldestPolypSince(h, windowStart)),
+      };
     const limitMax = parsed.data.surface === 'quest' && QUEST_UA_RE.test(ua) && config.questRateLimitMax > 0
       ? config.questRateLimitMax
       : config.rateLimitMax;
-    const blocked = limitMax > 0 && visitor.count >= limitMax
-      ? visitor
-      : ownerKey && config.rateLimitIpMax > 0 && device.count >= config.rateLimitIpMax
-        ? device
-        : null;
-    if (blocked) {
+    if (limitMax > 0 && visitor.count >= limitMax) {
       counters.inc('rate_limited');
-      const oldests = blocked.oldest().filter((t): t is number => t !== null);
+      const oldests = visitor.oldest().filter((t): t is number => t !== null);
       const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())
         : config.rateLimitWindowMs;
+      reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
+      return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
+    }
+    // Per-IP backstop, checked last because a check consumes a token.
+    const backstop = ipBackstop?.(ip);
+    if (backstop && !backstop.ok) {
+      counters.inc('rate_limited');
+      const retryAfterMs = Math.ceil(backstop.retryAfterMs);
       reply.header('Retry-After', Math.ceil(retryAfterMs / 1000));
       return reply.status(429).send({ error: 'rate_limited', retryAfterMs });
     }

@@ -251,9 +251,9 @@ describe('DELETE /api/tree/polyp/:id', () => {
 });
 
 describe('tree write rate limit', () => {
-  test('planting is unlimited when RATE_LIMIT_MAX is 0 (default)', async () => {
-    const prevMax = config.rateLimitMax;
-    config.rateLimitMax = 0;
+  test('planting is unlimited when RATE_LIMIT_IP_MAX is 0 (default)', async () => {
+    const prevMax = config.rateLimitIpMax;
+    config.rateLimitIpMax = 0;
     const { app, close } = await makeServer();
     try {
       const root = await app.inject({
@@ -271,13 +271,13 @@ describe('tree write rate limit', () => {
       }
     } finally {
       await close();
-      config.rateLimitMax = prevMax;
+      config.rateLimitIpMax = prevMax;
     }
   });
 
-  test('returns 429 with Retry-After once a device exceeds RATE_LIMIT_MAX', async () => {
-    const prevMax = config.rateLimitMax;
-    config.rateLimitMax = 2;
+  test('returns 429 with Retry-After once an IP exceeds RATE_LIMIT_IP_MAX', async () => {
+    const prevMax = config.rateLimitIpMax;
+    config.rateLimitIpMax = 2;
     const { app, close } = await makeServer();
     try {
       // Root counts as the device's first piece.
@@ -305,7 +305,7 @@ describe('tree write rate limit', () => {
       assert.ok(third.headers['retry-after'] !== undefined);
     } finally {
       await close();
-      config.rateLimitMax = prevMax;
+      config.rateLimitIpMax = prevMax;
     }
   });
 });

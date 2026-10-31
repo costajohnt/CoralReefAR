@@ -17,15 +17,18 @@ export const config = {
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
   // tracked in the repo issue list.
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 0),
-  // Coarse backstop behind the owner-token write limit: polyps per UA|IP
-  // device hash per window, across all owner tokens. Stops one device from
-  // dodging RATE_LIMIT_MAX by minting fresh owner tokens, while staying wide
-  // enough that a venue full of identical phones on one wifi is not throttled
-  // as a single visitor. 0 = off.
+  // Coarse backstop behind the owner-token write limit: successful plants per
+  // IP per window, across all owner tokens and UAs (reef and tree each keep
+  // their own bucket). Stops one address from dodging RATE_LIMIT_MAX by
+  // minting fresh owner tokens, while staying wide enough that a venue full
+  // of phones behind one NAT is not throttled as a single visitor. It is the
+  // only write limit on tree plants, which carry no owner token. 0 = off.
   rateLimitIpMax: Number(process.env.RATE_LIMIT_IP_MAX ?? 0),
   // Looser bucket for Quest sessions where users plant many polyps quickly.
-  // 0 = falls through to rateLimitMax.
-  questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 20),
+  // Opt-in: the `surface: "quest"` tag and the Quest Browser UA it is gated on
+  // are both client-supplied, so this stays 0 (same as rateLimitMax) until a
+  // deploy explicitly wants it.
+  questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 0),
   // 0 = disabled. Default off; set READ_RATE_LIMIT_PER_MIN=60 (or similar)
   // to re-enable the per-IP read-side token bucket on /api/reef and /api/stats.
   readRateLimitPerMin: Number(process.env.READ_RATE_LIMIT_PER_MIN ?? 0),

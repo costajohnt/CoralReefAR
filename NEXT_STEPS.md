@@ -18,8 +18,8 @@ Related docs:
 Snapshot as of 2026-10-10 (main at `aab759c`). The project is paused; no
 feature work is in flight.
 
-- **Main branch CI**: green. 1005 tests pass across 4 packages (shared 41
-  / generator 68 / server 226 / client 670), from `pnpm -r test`.
+- **Main branch CI**: green. 1011 tests pass across 4 packages (shared 41
+  / generator 68 / server 232 / client 670), from `pnpm -r test`.
 - **Stack**: TypeScript 7 · Vite 8 · Vitest 4 · three 0.185 ·
   better-sqlite3 12 · Fastify 5 + @fastify/cors 11 · node:22-alpine
   (server image) · happy-dom 20 · Oxlint 1.

@@ -17,10 +17,10 @@ export const ENGINE_CDN_PATH = 'https://cdn.jsdelivr.net/npm/@8thwall/engine-bin
 // script-src has NO 'unsafe-inline' — inline scripts are blocked globally.
 // style-src keeps 'unsafe-inline' for now (runtime-set styles); tightening
 // it is a follow-up.
-function buildCsp(scriptSrc: string, connectSrc: string, workerSrc: string): string {
+function buildCsp(scriptSrc: string, connectSrc: string, workerSrc: string, imgSrc: string): string {
   return [
     "default-src 'self'",
-    "img-src 'self' blob: data:",
+    imgSrc,
     connectSrc,
     "media-src 'self' blob:",
     workerSrc,
@@ -36,6 +36,8 @@ const PAGE_CSP = buildCsp(
   `script-src 'self' ${ENGINE_CDN_PATH} 'wasm-unsafe-eval'`,
   `connect-src 'self' ws: wss: ${ENGINE_CDN_PATH}`,
   "worker-src 'self' blob:",
+  // xr.js injects its powered-by badge as <img> from the same path.
+  `img-src 'self' blob: data: ${ENGINE_CDN_PATH}`,
 );
 
 /**
@@ -44,7 +46,12 @@ const PAGE_CSP = buildCsp(
  * the AR engine, so it gets none of the engine allowances.
  */
 export function cspWithScriptNonce(nonce: string): string {
-  return buildCsp(`script-src 'self' 'nonce-${nonce}'`, "connect-src 'self' ws: wss:", "worker-src 'self'");
+  return buildCsp(
+    `script-src 'self' 'nonce-${nonce}'`,
+    "connect-src 'self' ws: wss:",
+    "worker-src 'self'",
+    "img-src 'self' blob: data:",
+  );
 }
 
 const HEADERS = {
@@ -122,14 +129,31 @@ export function installReadRateLimit(app: FastifyInstance): void {
     // normalises and decodes before matching, so a raw-prefix check can be
     // sidestepped (/%61pi/, //api/). HEAD is auto-exposed for every GET and
     // shares its budget.
-    const route = req.routeOptions.url;
-    if ((req.method !== 'GET' && req.method !== 'HEAD') || !route?.startsWith('/api/')) return;
+    // Unmatched URLs have no route pattern; fall back to the raw URL so 404
+    // probing under /api/ still draws from the bucket.
+    const route = req.routeOptions.url ?? req.url;
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !route.startsWith('/api/')) return;
     const check = limit(req.ip || 'unknown');
     if (check.ok) return;
     counters.inc('rate_limited');
     reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
     return reply.status(429).send({ error: 'rate_limited' });
   });
+}
+
+/**
+ * Coarse per-IP backstop for write routes: RATE_LIMIT_IP_MAX successful plants
+ * per IP per RATE_LIMIT_WINDOW_MS, whatever UA or owner token they carry, so
+ * one address cannot dodge the per-visitor limit by minting tokens or rotating
+ * its UA. In-memory token bucket (restarts reset it; a venue behind one NAT
+ * shares it, so keep the value well above RATE_LIMIT_MAX). null when off.
+ * Call it only for a plant that passed the per-visitor check, since checking
+ * consumes a token.
+ */
+export function writeIpBackstop(): ((ip: string) => { ok: boolean; retryAfterMs: number }) | null {
+  return config.rateLimitIpMax > 0
+    ? perIpRateLimit({ tokensPerInterval: config.rateLimitIpMax, intervalMs: config.rateLimitWindowMs })
+    : null;
 }
 
 /**
