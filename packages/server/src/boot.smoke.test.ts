@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 import { makeServer } from './index.js';
+import { config } from './config.js';
 
 // Boot smoke test: register every plugin + route against a real Fastify
 // instance, in the real load order, with an in-memory DB. Catches
@@ -116,4 +117,24 @@ test('smoke: CSP on a served client bundle allows every external script origin',
   // The engine compiles wasm and runs its SLAM chunks in blob: workers.
   assert.match(csp, /script-src[^;]*'wasm-unsafe-eval'/);
   assert.match(csp, /worker-src[^;]*blob:/);
+});
+
+// Snapshot and tree reads used to sit outside the per-route limiters; the
+// limiter is now one app-level hook on every GET under /api/.
+test('smoke: READ_RATE_LIMIT_PER_MIN covers snapshots and tree reads too (audit M3)', async () => {
+  const saved = config.readRateLimitPerMin;
+  config.readRateLimitPerMin = 3;
+  try {
+    const { app } = await makeServer({ dbPath: ':memory:', adminToken: '', corsOrigins: ['*'], clientDistDir: undefined, logger: false });
+    after(async () => { await app.close(); });
+    const codes: number[] = [];
+    for (const url of ['/api/snapshots', '/api/tree', '/api/snapshots/1', '/api/snapshots']) {
+      codes.push((await app.inject({ method: 'GET', url })).statusCode);
+    }
+    assert.deepEqual(codes, [200, 200, 404, 429]);
+    // Writes and non-API reads are not on this bucket.
+    assert.equal((await app.inject({ method: 'GET', url: '/healthz' })).statusCode, 200);
+  } finally {
+    config.readRateLimitPerMin = saved;
+  }
 });

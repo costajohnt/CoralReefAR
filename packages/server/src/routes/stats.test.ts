@@ -6,12 +6,14 @@ import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ReefDb } from '../db.js';
 import { registerStatsRoutes } from './stats.js';
+import { installReadRateLimit } from '../security.js';
 import { config } from '../config.js';
 
 function buildApp(): { app: FastifyInstance; db: ReefDb } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-stats-'));
   const db = new ReefDb(join(dir, 'reef.db'));
   const app = Fastify({ logger: false });
+  installReadRateLimit(app);
   registerStatsRoutes(app, db);
   return { app, db };
 }
@@ -63,7 +65,7 @@ test('stats: counts unique devices and species breakdown', async () => {
 });
 
 test('stats: per-IP read rate limit returns 429 once exceeded', async () => {
-  // The limiter is created at route-registration time, so set config first.
+  // The limiter is created at install time, so set config first.
   const prev = config.readRateLimitPerMin;
   config.readRateLimitPerMin = 1;
   const { app } = buildApp();

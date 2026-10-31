@@ -15,7 +15,7 @@ import { registerAdminRoutes } from './routes/admin.js';
 import { registerStatsRoutes } from './routes/stats.js';
 import { registerMetricsRoutes } from './routes/metrics.js';
 import { SimWorker, SnapshotWorker } from './sim.js';
-import { installSecurityHeaders } from './security.js';
+import { installReadRateLimit, installSecurityHeaders } from './security.js';
 import { resolveCorsOrigin } from './cors.js';
 import { makeTrustProxy } from './proxyTrust.js';
 import { TreeDb } from './tree/db.js';
@@ -86,6 +86,7 @@ export async function makeServer(opts: MakeServerOptions = {}): Promise<MakeServ
   }
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
   installSecurityHeaders(app);
+  installReadRateLimit(app);
 
   if (!adminToken) {
     app.log.warn('ADMIN_TOKEN is not set — admin endpoints will reject all requests');

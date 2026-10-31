@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { config } from './config.js';
+import { counters } from './metrics-registry.js';
 
 // The 8th Wall engine (packages/client/index.html, treeAr.html) is loaded
 // from this CDN origin with an SRI hash; the engine then fetches its SLAM
@@ -93,6 +95,24 @@ export function perIpRateLimit(opts: { tokensPerInterval: number; intervalMs: nu
     const retryAfterMs = (needed / tokensPerInterval) * intervalMs;
     return { ok: false, retryAfterMs };
   };
+}
+
+/**
+ * One per-IP read limiter for every GET under /api/ (reef, mine, stats,
+ * snapshots, tree), so no read path sits outside it. Off when
+ * READ_RATE_LIMIT_PER_MIN is 0. Write and undo paths keep their own buckets.
+ */
+export function installReadRateLimit(app: FastifyInstance): void {
+  if (config.readRateLimitPerMin <= 0) return;
+  const limit = perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 });
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.method !== 'GET' || !req.url.startsWith('/api/')) return;
+    const check = limit(req.ip || 'unknown');
+    if (check.ok) return;
+    counters.inc('rate_limited');
+    reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
+    return reply.status(429).send({ error: 'rate_limited' });
+  });
 }
 
 /**

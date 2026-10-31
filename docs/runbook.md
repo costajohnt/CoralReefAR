@@ -16,7 +16,7 @@ container environment for a self-hosted deploy):
 | `RATE_LIMIT_MAX` | `1` | Polyps per visitor (owner token; UA|IP for tokenless clients) per window. Also bounds tree writes (UA|IP). `0` = off. |
 | `RATE_LIMIT_IP_MAX` | `50` | Backstop: polyps per UA|IP per window across all owner tokens, so one device cannot mint tokens to dodge `RATE_LIMIT_MAX`. `0` = off. |
 | `QUEST_RATE_LIMIT_MAX` | `0` | Looser bucket for `surface: "quest"` plants from a Quest Browser UA. `0` = same as `RATE_LIMIT_MAX`. |
-| `READ_RATE_LIMIT_PER_MIN` | `300` | Per-IP token bucket on `GET /api/reef` and `/api/stats`; a whole venue behind one NAT shares it. `0` = off. |
+| `READ_RATE_LIMIT_PER_MIN` | `300` | Per-IP token bucket on every `GET /api/*` (reef, stats, snapshots, tree); a whole venue behind one NAT shares it. `0` = off. |
 | `TRUST_PROXY_HOPS` | `1` | Reverse-proxy hops whose `X-Forwarded-For` entry sets `req.ip`, which every rate limit keys on. Only private/loopback peers are trusted. `0` (code default) = socket address, header ignored. After a deploy, confirm the logged `remoteAddress` is the visitor's IP, not Fly's proxy. |
 | `UNDO_RATE_LIMIT_PER_MIN` | `10` (default) | Per-IP token bucket on the owner undo route (`POST /api/reef/polyp/:id/undo`). `0` = off. |
 | `READ_CACHE_TTL_MS` | `1000` | Coalesce read scans within this window. `0` = off. |

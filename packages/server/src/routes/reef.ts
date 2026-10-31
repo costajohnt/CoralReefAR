@@ -35,60 +35,39 @@ const UNDO_STATUS: Record<string, { code: number; error: string }> = {
 };
 
 export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): void {
-  // Rate limits are opt-in. Default off while the project is in testing;
-  // set READ_RATE_LIMIT_PER_MIN / RATE_LIMIT_MAX env vars to re-enable.
-  const readLimit = config.readRateLimitPerMin > 0
-    ? perIpRateLimit({ tokensPerInterval: config.readRateLimitPerMin, intervalMs: 60_000 })
-    : null;
-
-  // Separate bucket from reads so undo traffic can't starve GET /api/reef
-  // (or vice versa).
+  // Reads are limited by the shared GET /api/* hook (installReadRateLimit).
+  // Undo gets its own bucket so undo traffic can't starve reads (or vice versa).
   const undoLimit = config.undoRateLimitPerMin > 0
     ? perIpRateLimit({ tokensPerInterval: config.undoRateLimitPerMin, intervalMs: 60_000 })
     : null;
 
-  // The polyps + sim scans are the expensive part of GET /api/reef. Cache them
-  // for READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
+  // The polyps + sim scans (and the ecosystem aggregate before the first sim
+  // tick) are the expensive part of GET /api/reef. Cache them for
+  // READ_CACHE_TTL_MS so a burst of reads coalesces into one scan. The sim
   // payload is bounded to the retention window (0 = retention disabled → all).
-  const buildSnapshot = (): Pick<ReefState, 'polyps' | 'sim'> => ({
-    polyps: db.listPublicPolyps(),
-    sim: config.simRetentionMs > 0
-      ? db.listSimSince(Date.now() - config.simRetentionMs)
-      : db.listSim(),
-  });
+  const buildSnapshot = (): Omit<ReefState, 'serverTime'> => {
+    const now = Date.now();
+    return {
+      polyps: db.listPublicPolyps(),
+      sim: config.simRetentionMs > 0 ? db.listSimSince(now - config.simRetentionMs) : db.listSim(),
+      // Before the first sim tick there is no saved row; compute a starting
+      // state (healthy, see stepEcosystem) rather than omit the field.
+      ecosystem: db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now)),
+    };
+  };
   const readSnapshot = config.readCacheTtlMs > 0
     ? ttlCache(buildSnapshot, config.readCacheTtlMs)
     : buildSnapshot;
 
-  app.get('/api/reef', async (req, reply) => {
-    if (readLimit) {
-      const check = readLimit(req.ip || 'unknown');
-      if (!check.ok) {
-        counters.inc('rate_limited');
-        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
-        return reply.status(429).send({ error: 'rate_limited' });
-      }
-    }
+  app.get('/api/reef', async () => {
     // serverTime is always fresh even when the scans are served from cache.
-    const now = Date.now();
-    // Before the first sim tick there is no saved row; compute a starting
-    // state (healthy, see stepEcosystem) rather than omit the field.
-    const ecosystem = db.getEcosystem() ?? stepEcosystem(null, db.ecosystemInputs(now));
-    const state: ReefState = { ...readSnapshot(), serverTime: now, ecosystem };
+    const state: ReefState = { ...readSnapshot(), serverTime: Date.now() };
     return state;
   });
 
   // "My polyps": ids of the caller's live polyps, so the client can highlight
   // them. Uncached (per-owner) but a single indexed lookup.
   app.get('/api/reef/mine', async (req, reply) => {
-    if (readLimit) {
-      const check = readLimit(req.ip || 'unknown');
-      if (!check.ok) {
-        counters.inc('rate_limited');
-        reply.header('Retry-After', Math.ceil(check.retryAfterMs / 1000));
-        return reply.status(429).send({ error: 'rate_limited' });
-      }
-    }
     const token = readOwnerToken(req);
     if (token === null || token === 'invalid') {
       return reply.status(400).send({ error: 'invalid_owner' });
