@@ -13,7 +13,7 @@ container environment for a self-hosted deploy):
 | Env var | Prod value | Effect |
 |---|---|---|
 | `RATE_LIMIT_WINDOW_MS` | `3600000` (1h) | Sliding window for the per-device write limit. |
-| `RATE_LIMIT_MAX` | `1` | Reef polyps per visitor (owner token; UA|IP for tokenless clients) per window. Tree plants have no owner token and use only the IP backstop. `0` = off. |
+| `RATE_LIMIT_MAX` | `1` | Reef polyps per visitor (owner token) per window. While set, plants without the owner header are rejected with `400 owner_required` (every shipped client sends one). Tree plants have no owner token and use only the IP backstop. `0` = off. |
 | `RATE_LIMIT_IP_MAX` | `50` | Backstop: successful plants per IP per window across all owner tokens and UAs (reef and tree buckets are separate), so one address cannot mint tokens to dodge `RATE_LIMIT_MAX`. `0` = off. |
 | `QUEST_RATE_LIMIT_MAX` | `0` | Opt-in looser bucket for `surface: "quest"` plants from a Quest Browser UA; both signals are client-supplied. `0` (code default) = same as `RATE_LIMIT_MAX`. |
 | `READ_RATE_LIMIT_PER_MIN` | `300` | Per-IP token bucket on every `GET /api/*` (reef, stats, snapshots, tree); a whole venue behind one NAT shares it. `0` = off. |

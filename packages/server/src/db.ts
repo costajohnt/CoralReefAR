@@ -56,8 +56,6 @@ export class ReefDb {
     undoDelete: Database.Statement;
     oldestByDevice: Database.Statement;
     countByOwner: Database.Statement;
-    countTokenlessByDevice: Database.Statement;
-    oldestTokenlessByDevice: Database.Statement;
     oldestByOwner: Database.Statement;
     listSim: Database.Statement;
     listSimSince: Database.Statement;
@@ -134,12 +132,6 @@ export class ReefDb {
       ),
       oldestByOwner: this.db.prepare(
         'SELECT MIN(created_at) as t FROM polyps WHERE owner_hash = ? AND created_at >= ? AND deleted = 0',
-      ),
-      countTokenlessByDevice: this.db.prepare(
-        'SELECT COUNT(*) as n FROM polyps WHERE device_hash = ? AND owner_hash IS NULL AND created_at >= ? AND deleted = 0',
-      ),
-      oldestTokenlessByDevice: this.db.prepare(
-        'SELECT MIN(created_at) as t FROM polyps WHERE device_hash = ? AND owner_hash IS NULL AND created_at >= ? AND deleted = 0',
       ),
       listSim: this.db.prepare('SELECT * FROM sim_state ORDER BY created_at ASC'),
       listSimSince: this.db.prepare(
@@ -288,15 +280,6 @@ export class ReefDb {
 
   oldestOwnedSince(ownerHash: string, sinceMs: number): number | null {
     return (this.stmt.oldestByOwner.get(ownerHash, sinceMs) as { t: number | null }).t;
-  }
-
-  /** Polyps planted without an owner token under `deviceHash`. */
-  countTokenlessByDeviceSince(deviceHash: string, sinceMs: number): number {
-    return (this.stmt.countTokenlessByDevice.get(deviceHash, sinceMs) as { n: number }).n;
-  }
-
-  oldestTokenlessByDeviceSince(deviceHash: string, sinceMs: number): number | null {
-    return (this.stmt.oldestTokenlessByDevice.get(deviceHash, sinceMs) as { t: number | null }).t;
   }
 
   private mapSimRows(

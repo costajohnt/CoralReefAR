@@ -37,9 +37,13 @@ test('hops=1 does not trust X-Forwarded-For from a public peer (direct client)',
   assert.equal(await ipFor(1, '198.51.100.7', '6.6.6.6'), '198.51.100.7');
 });
 
-test('spoofed X-Forwarded-For cannot dodge the per-device write limit behind the proxy', async () => {
+test('spoofed X-Forwarded-For cannot dodge the per-IP write backstop behind the proxy', async () => {
+  // The per-visitor limit is keyed on the owner token, so req.ip only feeds
+  // the per-IP backstop; that is what a spoofed first XFF entry must not move.
   const savedMax = config.rateLimitMax;
-  config.rateLimitMax = 1;
+  const savedIpMax = config.rateLimitIpMax;
+  config.rateLimitMax = 0;
+  config.rateLimitIpMax = 1;
   const { app } = await makeServer({
     dbPath: ':memory:',
     adminToken: '',
@@ -49,20 +53,25 @@ test('spoofed X-Forwarded-For cannot dodge the per-device write limit behind the
     trustProxyHops: 1,
   });
   try {
-    const post = (spoof: string) =>
+    const post = (spoof: string, owner: string) =>
       app.inject({
         method: 'POST',
         url: '/api/reef/polyp',
         payload: valid,
         remoteAddress: '172.16.0.2',
-        headers: { 'user-agent': 'test-ua', 'x-forwarded-for': `${spoof}, 203.0.113.9` },
+        headers: {
+          'user-agent': 'test-ua',
+          'x-forwarded-for': `${spoof}, 203.0.113.9`,
+          'x-reef-owner': owner.repeat(64),
+        },
       });
-    const first = await post('6.6.6.6');
+    const first = await post('6.6.6.6', 'a');
     assert.equal(first.statusCode, 201);
-    const second = await post('7.7.7.7');
+    const second = await post('7.7.7.7', 'b');
     assert.equal(second.statusCode, 429);
   } finally {
     config.rateLimitMax = savedMax;
+    config.rateLimitIpMax = savedIpMax;
     await app.close();
   }
 });

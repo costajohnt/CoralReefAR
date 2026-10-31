@@ -107,8 +107,8 @@ test('POST /api/reef/polyp returns 429 with retryAfterMs when RATE_LIMIT_MAX ena
   config.rateLimitMax = 1;
   try {
     const { app } = buildApp();
-    await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
-    const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: owner('a'), payload: valid });
+    const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: owner('a'), payload: valid });
     assert.equal(r.statusCode, 429);
     const body = r.json() as { error: string; retryAfterMs: number };
     assert.equal(body.error, 'rate_limited');
@@ -134,12 +134,12 @@ test('POST /api/reef/polyp: crossing a window boundary does not reset the count'
     const { app } = buildApp();
     // Plant in bucket 10000.
     Date.now = () => 10_000_400;
-    const first = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    const first = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: owner('a'), payload: valid });
     assert.equal(first.statusCode, 201);
     // One window later (bucket 10001): the salt rotated, but the device's prior
     // polyp is still within the sliding window and must still count → 429.
     Date.now = () => 10_001_400;
-    const second = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    const second = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: owner('a'), payload: valid });
     assert.equal(second.statusCode, 429);
     await app.close();
   } finally {
@@ -184,13 +184,13 @@ test('quest surface uses questRateLimitMax bucket, not rateLimitMax', async () =
     const { app } = buildApp();
     for (let i = 0; i < 3; i++) {
       const r = await app.inject({
-        method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA },
+        method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA, ...owner('e') },
         payload: { ...valid, seed: 200 + i, surface: 'quest' },
       });
       assert.equal(r.statusCode, 201, `quest #${i} should succeed: ${r.body}`);
     }
     const overflow = await app.inject({
-      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA },
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA, ...owner('e') },
       payload: { ...valid, seed: 299, surface: 'quest' },
     });
     assert.equal(overflow.statusCode, 429);
@@ -211,12 +211,12 @@ test('web surface (or absent surface) uses the strict rateLimitMax bucket', asyn
   try {
     const { app } = buildApp();
     const first = await app.inject({
-      method: 'POST', url: '/api/reef/polyp',
+      method: 'POST', url: '/api/reef/polyp', headers: owner('d'),
       payload: { ...valid, seed: 301, surface: 'web' },
     });
     assert.equal(first.statusCode, 201);
     const second = await app.inject({
-      method: 'POST', url: '/api/reef/polyp',
+      method: 'POST', url: '/api/reef/polyp', headers: owner('d'),
       payload: { ...valid, seed: 302, surface: 'web' },
     });
     assert.equal(second.statusCode, 429);
@@ -235,12 +235,12 @@ test('surface: "quest" without a Quest browser UA stays on the strict web bucket
   try {
     const { app } = buildApp();
     const first = await app.inject({
-      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0' },
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0', ...owner('c') },
       payload: { ...valid, seed: 401, surface: 'quest' },
     });
     assert.equal(first.statusCode, 201);
     const second = await app.inject({
-      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0' },
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0', ...owner('c') },
       payload: { ...valid, seed: 402, surface: 'quest' },
     });
     assert.equal(second.statusCode, 429, 'client-supplied surface must not raise the cap');
@@ -294,6 +294,43 @@ test('RATE_LIMIT_IP_MAX backstops owner-token rotation from one device (audit H3
   } finally {
     config.rateLimitMax = savedMax;
     config.rateLimitIpMax = savedIpMax;
+  }
+});
+
+test('tokenless plants are rejected while RATE_LIMIT_MAX is on, allowed while off', async () => {
+  const savedMax = config.rateLimitMax;
+  try {
+    const { app } = buildApp();
+    config.rateLimitMax = 1;
+    const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid });
+    assert.equal(r.statusCode, 400);
+    assert.equal((r.json() as { error: string }).error, 'owner_required');
+    config.rateLimitMax = 0;
+    assert.equal((await app.inject({ method: 'POST', url: '/api/reef/polyp', payload: valid })).statusCode, 201);
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+  }
+});
+
+test('a tokenless plant from UA|IP X never reduces a token holder\'s budget on the same UA|IP', async () => {
+  const savedMax = config.rateLimitMax;
+  try {
+    const { app } = buildApp();
+    const ua = { 'user-agent': 'venue-phone' };
+    // Tokenless row lands while the limit is off (legacy client / curl).
+    config.rateLimitMax = 0;
+    assert.equal((await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: ua, payload: valid })).statusCode, 201);
+    // Limit on: every token holder behind the same NAT with the same phone
+    // model still has a full budget.
+    config.rateLimitMax = 1;
+    for (const c of ['a', 'b']) {
+      const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner(c) }, payload: valid });
+      assert.equal(r.statusCode, 201, `token holder ${c} was charged for the tokenless plant: ${r.body}`);
+    }
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
   }
 });
 

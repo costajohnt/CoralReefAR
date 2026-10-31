@@ -120,10 +120,20 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     if (!parsed.success) {
       return reply.status(400).send({ error: 'invalid_input', issues: parsed.error.issues });
     }
-    // Optional: clients that predate #112 send no owner header and get an
-    // unowned polyp (no highlight, no undo).
+    // Clients that predate #112 send no owner header and get an unowned polyp
+    // (no highlight, no undo); only allowed while the write limit is off.
     const token = readOwnerToken(req);
     if (token === 'invalid') return reply.status(400).send({ error: 'invalid_owner' });
+    // The write limit is keyed on the owner token, so a tokenless plant could
+    // only be limited by the shared UA|IP hash, which is the venue collision
+    // the token exists to avoid. With the limit on, require the token (every
+    // shipped client sends one; see net/api.ts ownerHeaders).
+    if (token === null && config.rateLimitMax > 0) {
+      return reply.status(400).send({
+        error: 'owner_required',
+        message: `${OWNER_HEADER} header is required to plant while RATE_LIMIT_MAX is set`,
+      });
+    }
 
     const ua = String(req.headers['user-agent'] ?? 'unknown');
     const ip = req.ip || 'unknown';
@@ -132,25 +142,21 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const windowStart = Date.now() - config.rateLimitWindowMs;
     // The write limit is keyed on the owner token (random per browser, sent
     // on every plant) so visitors sharing venue wifi and a phone model are
-    // limited independently. Polyps this device planted WITHOUT a token count
-    // toward the token's budget too, so going tokenless-then-token does not
-    // double it. Tokenless clients are keyed on the UA|IP device hash alone.
-    // Device counts cover the current AND previous window's hash so crossing
-    // a window boundary can't reset them (see deviceHashesForCounting).
-    const countHashes = deviceHashesForCounting(ua, ip, config.rateLimitWindowMs);
-    const sum = (f: (h: string) => number): number => countHashes.reduce((n, h) => n + f(h), 0);
+    // limited independently. Only tokenless clients (limit off) are keyed on
+    // the UA|IP device hash, and nothing is ever charged across the two keys:
+    // a tokenless plant must not drain the budget of every same-UA visitor
+    // behind the venue NAT. Device counts cover the current AND previous
+    // window's hash so crossing a window boundary can't reset them (see
+    // deviceHashesForCounting).
     const ownerKey = token ? ownerHash(token) : null;
+    const countHashes = deviceHashesForCounting(ua, ip, config.rateLimitWindowMs);
     const visitor = ownerKey
       ? {
-        count: db.countByOwnerSince(ownerKey, windowStart)
-          + sum((h) => db.countTokenlessByDeviceSince(h, windowStart)),
-        oldest: () => [
-          db.oldestOwnedSince(ownerKey, windowStart),
-          ...countHashes.map((h) => db.oldestTokenlessByDeviceSince(h, windowStart)),
-        ],
+        count: db.countByOwnerSince(ownerKey, windowStart),
+        oldest: () => [db.oldestOwnedSince(ownerKey, windowStart)],
       }
       : {
-        count: sum((h) => db.countByDeviceSince(h, windowStart)),
+        count: countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0),
         oldest: () => countHashes.map((h) => db.oldestPolypSince(h, windowStart)),
       };
     const limitMax = parsed.data.surface === 'quest' && QUEST_UA_RE.test(ua) && config.questRateLimitMax > 0

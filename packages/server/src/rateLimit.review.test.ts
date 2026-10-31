@@ -78,15 +78,18 @@ test('review-3: tree writes are not keyed on UA|IP (venue collision, audit H3)',
     assert.equal(b.statusCode, 200, `second visitor on the same wifi/phone model was blocked: ${b.body}`);
   }));
 
-test('review-4: tokenless-then-token does not double RATE_LIMIT_MAX for one device', async () =>
+test('review-4: a device cannot take RATE_LIMIT_MAX tokenless and then again with a token', async () =>
   withConfig({ rateLimitMax: 1, rateLimitIpMax: 50 }, async () => {
     const app = reefApp();
     const ua = { 'user-agent': 'one-phone' };
     const first = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: ua, payload: valid });
     const second = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner('a') }, payload: { ...valid, seed: 2 } });
+    const third = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner('a') }, payload: { ...valid, seed: 3 } });
     await app.close();
-    assert.equal(first.statusCode, 201);
-    assert.equal(second.statusCode, 429, 'same UA|IP planted twice under RATE_LIMIT_MAX=1');
+    // Tokenless is refused while the limit is on, so it cannot be a free first plant.
+    assert.equal(first.statusCode, 400);
+    assert.equal(second.statusCode, 201);
+    assert.equal(third.statusCode, 429);
   }));
 
 test('review-5: page CSP img-src allows the engine CDN path (powered-by.svg)', async () => {
