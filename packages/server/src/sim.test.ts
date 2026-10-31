@@ -266,3 +266,31 @@ test('snapshot: take() records the ecosystem alongside polyps and sim', () => {
   assert.equal(state.polyps.length, 1);
   assert.equal(state.ecosystem.polypCount, 1);
 });
+
+test('sim/snapshot: a throwing tick is reported, not thrown (audit M1)', () => {
+  const broken = new Proxy({} as ReefDb, { get: () => () => { throw new Error('SQLITE_FULL'); } });
+  const errors: unknown[] = [];
+  const sim = new SimWorker(broken, new Hub(), 3600_000);
+  sim.onError = (err) => errors.push(err);
+  assert.doesNotThrow(() => sim.safeTick());
+  const snap = new SnapshotWorker(broken, 3600_000);
+  snap.onError = (err) => errors.push(err);
+  assert.doesNotThrow(() => snap.safeTake());
+  assert.equal(errors.length, 2);
+});
+
+test('sim/snapshot: start() is idempotent (audit L2)', () => {
+  const db = freshDb();
+  const sim = new SimWorker(db, new Hub(), 3600_000);
+  sim.start();
+  const first = (sim as unknown as { timer: unknown }).timer;
+  sim.start();
+  assert.equal((sim as unknown as { timer: unknown }).timer, first);
+  sim.stop();
+  const snap = new SnapshotWorker(db, 3600_000);
+  snap.start();
+  const t = (snap as unknown as { timer: unknown }).timer;
+  snap.start();
+  assert.equal((snap as unknown as { timer: unknown }).timer, t);
+  snap.stop();
+});

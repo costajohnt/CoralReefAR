@@ -2,6 +2,7 @@ import type { SimDelta } from '@reef/shared';
 import { stepEcosystem } from './ecosystem.js';
 import type { ReefDb } from './db.js';
 import type { Hub } from './hub.js';
+import { counters } from './metrics-registry.js';
 
 /**
  * Hourly background growth tick. Applies probabilistic rules to aged polyps:
@@ -9,8 +10,22 @@ import type { Hub } from './hub.js';
  * - Polyps older than 60 days have a smaller chance of gaining algae
  * Broadcasts sim updates to connected clients.
  */
+// better-sqlite3 throws synchronously on SQLITE_FULL / BUSY / IOERR. Inside a
+// timer callback that is an uncaughtException and the process dies, so both
+// workers run their body through this boundary and report instead of crash.
+function guarded(name: string, body: () => void, onError: (err: unknown) => void): void {
+  try {
+    body();
+  } catch (err) {
+    counters.inc(`${name}_errors`);
+    onError(err);
+  }
+}
+
 export class SimWorker {
   private timer: NodeJS.Timeout | undefined;
+  /** Called when a scheduled tick throws. Default logs; index.ts wires app.log. */
+  onError: (err: unknown) => void = (err) => console.error('sim tick failed', err);
 
   constructor(
     private readonly db: ReefDb,
@@ -27,13 +42,19 @@ export class SimWorker {
   ) {}
 
   start(): void {
-    this.timer = setInterval(() => this.tick(), this.intervalMs);
+    if (this.timer) return;
+    this.timer = setInterval(() => this.safeTick(), this.intervalMs);
     this.timer.unref?.();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  /** tick() behind the error boundary; what the timer runs. */
+  safeTick(): void {
+    guarded('sim_tick', () => { this.tick(); }, this.onError);
   }
 
   tick(): SimDelta[] {
@@ -87,6 +108,8 @@ export class SimWorker {
 
 export class SnapshotWorker {
   private timer: NodeJS.Timeout | undefined;
+  /** Called when a scheduled snapshot throws. Default logs; index.ts wires app.log. */
+  onError: (err: unknown) => void = (err) => console.error('snapshot failed', err);
 
   constructor(
     private readonly db: ReefDb,
@@ -97,12 +120,19 @@ export class SnapshotWorker {
   ) {}
 
   start(): void {
-    this.timer = setInterval(() => this.take(), this.intervalMs);
+    if (this.timer) return;
+    this.timer = setInterval(() => this.safeTake(), this.intervalMs);
     this.timer.unref?.();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+  }
+
+  /** take() behind the error boundary; what the timer runs. */
+  safeTake(): void {
+    guarded('snapshot', () => { this.take(); }, this.onError);
   }
 
   take(): number {

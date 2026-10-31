@@ -171,8 +171,10 @@ async function main(): Promise<void> {
   const { app, db, hub, treeHub, presence } = await makeServer();
 
   const sim = new SimWorker(db, hub, config.simIntervalMs, config.simRetentionMs);
+  sim.onError = (err) => app.log.error({ err }, 'sim tick failed');
   sim.start();
   const snapshots = new SnapshotWorker(db, config.snapshotIntervalMs, config.snapshotRetentionCount);
+  snapshots.onError = (err) => app.log.error({ err }, 'snapshot failed');
   snapshots.start();
   hub.startHeartbeat();
   treeHub.startHeartbeat();
