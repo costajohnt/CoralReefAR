@@ -14,6 +14,10 @@ import { ownerHash } from '../ownerHash.js';
 import { stepEcosystem } from '../ecosystem.js';
 
 const NUMERIC_ID_RE = /^\d+$/;
+// Quest Browser identifies itself in the UA. The `surface` body field is
+// client-supplied, so the looser Quest bucket is only granted when the UA
+// agrees; anyone else gets the web bucket whatever they claim.
+const QUEST_UA_RE = /OculusBrowser/;
 
 // Owner token from the request header: absent → null, malformed → 'invalid'.
 // The value is a credential for undo, so it is never logged or echoed back.
@@ -137,31 +141,41 @@ export function registerReefRoutes(app: FastifyInstance, db: ReefDb, hub: Hub): 
     const token = readOwnerToken(req);
     if (token === 'invalid') return reply.status(400).send({ error: 'invalid_owner' });
 
-    const ua = req.headers['user-agent'] ?? 'unknown';
+    const ua = String(req.headers['user-agent'] ?? 'unknown');
     const ip = req.ip || 'unknown';
-    const dh = deviceHash(String(ua), String(ip), config.rateLimitWindowMs);
+    const dh = deviceHash(ua, ip, config.rateLimitWindowMs);
 
     const windowStart = Date.now() - config.rateLimitWindowMs;
-    // Count under the current AND previous window's hash so crossing a window
-    // boundary can't reset the count (see deviceHashesForCounting).
-    const countHashes = deviceHashesForCounting(String(ua), String(ip), config.rateLimitWindowMs);
-    const already = countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0);
-    // The `surface` tag is client-supplied — there's no cryptographic
-    // proof that a request really came from a Quest session. With the
-    // current defaults (rateLimitMax=0, questRateLimitMax=20) the gap
-    // is benign because the web bucket is unrestricted; but if a
-    // production config tightens rateLimitMax, this becomes a bypass
-    // vector. When productionalizing the write-side limit, either
-    // verify surface against a UA/header pattern, drop the looser
-    // bucket entirely, or accept the risk explicitly.
-    const limitMax = parsed.data.surface === 'quest' && config.questRateLimitMax > 0
+    // The write limit is keyed on the owner token (random per browser, sent
+    // on every plant) so visitors sharing venue wifi and a phone model are
+    // limited independently. The UA|IP device hash is the key only for
+    // tokenless clients, and otherwise a coarse backstop (RATE_LIMIT_IP_MAX)
+    // against minting fresh tokens. Device counts cover the current AND
+    // previous window's hash so crossing a window boundary can't reset them
+    // (see deviceHashesForCounting).
+    const countHashes = deviceHashesForCounting(ua, ip, config.rateLimitWindowMs);
+    const device = {
+      count: countHashes.reduce((n, h) => n + db.countByDeviceSince(h, windowStart), 0),
+      oldest: () => countHashes.map((h) => db.oldestPolypSince(h, windowStart)),
+    };
+    const ownerKey = token ? ownerHash(token) : null;
+    const visitor = ownerKey
+      ? {
+        count: db.countByOwnerSince(ownerKey, windowStart),
+        oldest: () => [db.oldestOwnedSince(ownerKey, windowStart)],
+      }
+      : device;
+    const limitMax = parsed.data.surface === 'quest' && QUEST_UA_RE.test(ua) && config.questRateLimitMax > 0
       ? config.questRateLimitMax
       : config.rateLimitMax;
-    if (limitMax > 0 && already >= limitMax) {
+    const blocked = limitMax > 0 && visitor.count >= limitMax
+      ? visitor
+      : ownerKey && config.rateLimitIpMax > 0 && device.count >= config.rateLimitIpMax
+        ? device
+        : null;
+    if (blocked) {
       counters.inc('rate_limited');
-      const oldests = countHashes
-        .map((h) => db.oldestPolypSince(h, windowStart))
-        .filter((t): t is number => t !== null);
+      const oldests = blocked.oldest().filter((t): t is number => t !== null);
       const oldest = oldests.length ? Math.min(...oldests) : null;
       const retryAfterMs = oldest !== null
         ? Math.max(0, oldest + config.rateLimitWindowMs - Date.now())

@@ -30,8 +30,10 @@ primary_region = "iad"
   # Production protections — all default OFF in code so local/dev testing isn't
   # throttled; turned ON here for real-visitor traffic. See docs/runbook.md.
   RATE_LIMIT_WINDOW_MS = "3600000"   # 1 hour sliding window for the write limit
-  RATE_LIMIT_MAX = "1"               # polyps per device per window
-  READ_RATE_LIMIT_PER_MIN = "60"     # reads per IP per minute on /api/reef + /api/stats
+  RATE_LIMIT_MAX = "1"               # polyps per visitor (owner token) per window
+  RATE_LIMIT_IP_MAX = "50"           # backstop: polyps per UA|IP per window across all tokens
+  QUEST_RATE_LIMIT_MAX = "0"         # no looser Quest bucket until headset sessions are validated
+  READ_RATE_LIMIT_PER_MIN = "300"    # reads per IP per minute on GET /api/*; a whole venue shares one IP
   READ_CACHE_TTL_MS = "1000"         # coalesce read scans within 1s
   TRUST_PROXY_HOPS = "1"             # req.ip = the address Fly's proxy appended to X-Forwarded-For
   # WS_MAX_CLIENTS (default 1000/hub), SIM_RETENTION_MS (30d), and

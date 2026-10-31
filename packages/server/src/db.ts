@@ -55,6 +55,8 @@ export class ReefDb {
     latestOwnedId: Database.Statement;
     undoDelete: Database.Statement;
     oldestByDevice: Database.Statement;
+    countByOwner: Database.Statement;
+    oldestByOwner: Database.Statement;
     listSim: Database.Statement;
     listSimSince: Database.Statement;
     pruneSim: Database.Statement;
@@ -124,6 +126,12 @@ export class ReefDb {
       undoDelete: this.db.prepare('UPDATE polyps SET deleted = 1 WHERE id = ? AND deleted = 0'),
       oldestByDevice: this.db.prepare(
         'SELECT MIN(created_at) as t FROM polyps WHERE device_hash = ? AND created_at >= ? AND deleted = 0',
+      ),
+      countByOwner: this.db.prepare(
+        'SELECT COUNT(*) as n FROM polyps WHERE owner_hash = ? AND created_at >= ? AND deleted = 0',
+      ),
+      oldestByOwner: this.db.prepare(
+        'SELECT MIN(created_at) as t FROM polyps WHERE owner_hash = ? AND created_at >= ? AND deleted = 0',
       ),
       listSim: this.db.prepare('SELECT * FROM sim_state ORDER BY created_at ASC'),
       listSimSince: this.db.prepare(
@@ -264,6 +272,14 @@ export class ReefDb {
   oldestPolypSince(deviceHash: string, sinceMs: number): number | null {
     const row = this.stmt.oldestByDevice.get(deviceHash, sinceMs) as { t: number | null };
     return row.t;
+  }
+
+  countByOwnerSince(ownerHash: string, sinceMs: number): number {
+    return (this.stmt.countByOwner.get(ownerHash, sinceMs) as { n: number }).n;
+  }
+
+  oldestOwnedSince(ownerHash: string, sinceMs: number): number | null {
+    return (this.stmt.oldestByOwner.get(ownerHash, sinceMs) as { t: number | null }).t;
   }
 
   private mapSimRows(

@@ -17,6 +17,12 @@ export const config = {
   // productionalizing set RATE_LIMIT_MAX to something like 1. Follow-up
   // tracked in the repo issue list.
   rateLimitMax: Number(process.env.RATE_LIMIT_MAX ?? 0),
+  // Coarse backstop behind the owner-token write limit: polyps per UA|IP
+  // device hash per window, across all owner tokens. Stops one device from
+  // dodging RATE_LIMIT_MAX by minting fresh owner tokens, while staying wide
+  // enough that a venue full of identical phones on one wifi is not throttled
+  // as a single visitor. 0 = off.
+  rateLimitIpMax: Number(process.env.RATE_LIMIT_IP_MAX ?? 0),
   // Looser bucket for Quest sessions where users plant many polyps quickly.
   // 0 = falls through to rateLimitMax.
   questRateLimitMax: Number(process.env.QUEST_RATE_LIMIT_MAX ?? 20),

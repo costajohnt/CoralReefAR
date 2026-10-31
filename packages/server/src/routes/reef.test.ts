@@ -8,6 +8,10 @@ import { ReefDb } from '../db.js';
 import { Hub } from '../hub.js';
 import { registerReefRoutes } from './reef.js';
 import { config } from '../config.js';
+import { OWNER_HEADER } from '@reef/shared';
+
+const QUEST_UA = 'Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 VR OculusBrowser/35.0';
+const owner = (c: string) => ({ [OWNER_HEADER]: c.repeat(64) });
 
 function buildApp(): { app: FastifyInstance; db: ReefDb; hub: Hub } {
   const dir = mkdtempSync(join(tmpdir(), 'reef-rt-'));
@@ -180,13 +184,13 @@ test('quest surface uses questRateLimitMax bucket, not rateLimitMax', async () =
     const { app } = buildApp();
     for (let i = 0; i < 3; i++) {
       const r = await app.inject({
-        method: 'POST', url: '/api/reef/polyp',
+        method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA },
         payload: { ...valid, seed: 200 + i, surface: 'quest' },
       });
       assert.equal(r.statusCode, 201, `quest #${i} should succeed: ${r.body}`);
     }
     const overflow = await app.inject({
-      method: 'POST', url: '/api/reef/polyp',
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': QUEST_UA },
       payload: { ...valid, seed: 299, surface: 'quest' },
     });
     assert.equal(overflow.statusCode, 429);
@@ -220,6 +224,76 @@ test('web surface (or absent surface) uses the strict rateLimitMax bucket', asyn
   } finally {
     config.rateLimitMax = savedMax;
     config.questRateLimitMax = savedQuestMax;
+  }
+});
+
+test('surface: "quest" without a Quest browser UA stays on the strict web bucket (audit H2)', async () => {
+  const savedMax = config.rateLimitMax;
+  const savedQuestMax = config.questRateLimitMax;
+  config.rateLimitMax = 1;
+  config.questRateLimitMax = 20;
+  try {
+    const { app } = buildApp();
+    const first = await app.inject({
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0' },
+      payload: { ...valid, seed: 401, surface: 'quest' },
+    });
+    assert.equal(first.statusCode, 201);
+    const second = await app.inject({
+      method: 'POST', url: '/api/reef/polyp', headers: { 'user-agent': 'curl/8.0' },
+      payload: { ...valid, seed: 402, surface: 'quest' },
+    });
+    assert.equal(second.statusCode, 429, 'client-supplied surface must not raise the cap');
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+    config.questRateLimitMax = savedQuestMax;
+  }
+});
+
+test('write limit is keyed on the owner token, not UA|IP (audit H3)', async () => {
+  // Two visitors on venue wifi with the same phone model share UA and IP but
+  // have distinct owner tokens: each gets their own budget.
+  const savedMax = config.rateLimitMax;
+  config.rateLimitMax = 1;
+  try {
+    const { app } = buildApp();
+    const ua = { 'user-agent': 'same-iphone-same-wifi' };
+    const a = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner('a') }, payload: valid });
+    assert.equal(a.statusCode, 201);
+    const b = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner('b') }, payload: valid });
+    assert.equal(b.statusCode, 201, `second visitor must not inherit the first one's count: ${b.body}`);
+    // The same owner from a different UA/IP is still the same visitor.
+    const a2 = await app.inject({
+      method: 'POST', url: '/api/reef/polyp',
+      headers: { 'user-agent': 'other-browser', 'x-forwarded-for': '203.0.113.9', ...owner('a') }, payload: valid,
+    });
+    assert.equal(a2.statusCode, 429);
+    assert.ok((a2.json() as { retryAfterMs: number }).retryAfterMs > 0);
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+  }
+});
+
+test('RATE_LIMIT_IP_MAX backstops owner-token rotation from one device (audit H3)', async () => {
+  const savedMax = config.rateLimitMax;
+  const savedIpMax = config.rateLimitIpMax;
+  config.rateLimitMax = 1;
+  config.rateLimitIpMax = 2;
+  try {
+    const { app } = buildApp();
+    const ua = { 'user-agent': 'token-rotator' };
+    for (const c of ['c', 'd']) {
+      const r = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner(c) }, payload: valid });
+      assert.equal(r.statusCode, 201);
+    }
+    const third = await app.inject({ method: 'POST', url: '/api/reef/polyp', headers: { ...ua, ...owner('e') }, payload: valid });
+    assert.equal(third.statusCode, 429, 'third fresh token from the same UA|IP must hit the backstop');
+    await app.close();
+  } finally {
+    config.rateLimitMax = savedMax;
+    config.rateLimitIpMax = savedIpMax;
   }
 });
 
