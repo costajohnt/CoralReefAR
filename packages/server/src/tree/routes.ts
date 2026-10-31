@@ -11,9 +11,13 @@ import { counters } from '../metrics-registry.js';
 const NUMERIC_ID_RE = /^\d+$/;
 
 export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub): void {
+  // adminGated tells the client whether reset/delete need the admin token
+  // (every production config sets one), so it can hide Clear and Undo
+  // instead of showing buttons that always 401.
   app.get('/api/tree', async () => ({
     polyps: tree.listLive(),
     serverTime: Date.now(),
+    adminGated: config.adminToken !== '',
   }));
 
   // Reset: soft-delete every live polyp, then seed a fresh Starburst root so
@@ -24,7 +28,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
   app.post('/api/tree/reset', async (req, reply) => {
     if (!enforceAdminIfConfigured(req, reply)) return reply;
     tree.deleteAll();
-    seedRootIfEmpty(tree);
+    seedRootIfEmpty(tree, { seed: config.treeRootSeed });
     const polyps = tree.listLive();
     hub.broadcast({ type: 'tree_reset' });
     if (polyps[0]) {

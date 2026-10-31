@@ -5,10 +5,26 @@ import {
   type TreeServerMessage,
 } from '@reef/shared';
 
-export async function fetchTree(apiBase = ''): Promise<{ polyps: PublicTreePolyp[]; serverTime: number }> {
+export interface TreeFetchResult {
+  polyps: PublicTreePolyp[];
+  serverTime: number;
+  /** True when reset/delete need the admin token (older servers omit it). */
+  adminGated?: boolean;
+}
+
+export async function fetchTree(apiBase = ''): Promise<TreeFetchResult> {
   const r = await fetch(`${apiBase}/api/tree`);
   if (!r.ok) throw new Error(`fetchTree ${r.status}`);
-  return r.json() as Promise<{ polyps: PublicTreePolyp[]; serverTime: number }>;
+  return r.json() as Promise<TreeFetchResult>;
+}
+
+/** Hide the Clear/Undo buttons when the server would 401 them (ADMIN_TOKEN set). */
+export function hideAdminOnlyControls(adminGated: boolean | undefined): void {
+  if (!adminGated) return;
+  for (const id of ['clearBtn', 'undoBtn']) {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  }
 }
 
 export async function submitTreePolyp(input: TreePolypInput, apiBase = ''): Promise<PublicTreePolyp> {

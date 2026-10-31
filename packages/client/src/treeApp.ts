@@ -4,7 +4,7 @@ import { TreeReef } from './tree/reef.js';
 import { AttachIndicators } from './tree/indicators.js';
 import { TreePlacement } from './tree/placement.js';
 import { installUnderwaterLighting } from './tree/scene.js';
-import { fetchTree, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
+import { fetchTree, hideAdminOnlyControls, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
 import { TreePicker, TREE_VARIANTS } from './ui/treePicker.js';
 import { installSeaLife, type SeaLifeController } from './tree/seaLife.js';
 import { installSway } from './scene/currentSway.js';
@@ -283,7 +283,8 @@ export class TreeApp {
 
   private async loadInitial(): Promise<void> {
     try {
-      const { polyps } = await fetchTree(this.apiBase);
+      const { polyps, adminGated } = await fetchTree(this.apiBase);
+      hideAdminOnlyControls(adminGated);
       this.addPiecesAndRefresh(polyps);
     } catch (e) {
       console.error('[treeAr] Failed to load tree', e);

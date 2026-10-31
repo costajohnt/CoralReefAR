@@ -28,6 +28,44 @@ describe('GET /api/tree', () => {
   });
 });
 
+describe('GET /api/tree adminGated (audit M5)', () => {
+  test('reports whether reset/delete need the admin token', async () => {
+    const saved = config.adminToken;
+    try {
+      config.adminToken = '';
+      let { app, close } = await makeServer();
+      assert.equal((JSON.parse((await app.inject({ method: 'GET', url: '/api/tree' })).body) as { adminGated: boolean }).adminGated, false);
+      await close();
+      config.adminToken = 'secret';
+      ({ app, close } = await makeServer());
+      assert.equal((JSON.parse((await app.inject({ method: 'GET', url: '/api/tree' })).body) as { adminGated: boolean }).adminGated, true);
+      await close();
+    } finally {
+      config.adminToken = saved;
+    }
+  });
+});
+
+describe('POST /api/tree/reset honours TREE_ROOT_SEED (audit L1)', () => {
+  test('two resets with a fixed seed produce the same root', async () => {
+    const saved = config.treeRootSeed;
+    config.treeRootSeed = 1234;
+    try {
+      const { app, close } = await makeServer();
+      const root = async (): Promise<{ seed: number }> => {
+        const res = await app.inject({ method: 'POST', url: '/api/tree/reset' });
+        assert.equal(res.statusCode, 200);
+        return (JSON.parse(res.body) as { polyps: Array<{ seed: number }> }).polyps[0]!;
+      };
+      assert.equal((await root()).seed, 1234);
+      assert.equal((await root()).seed, 1234);
+      await close();
+    } finally {
+      config.treeRootSeed = saved;
+    }
+  });
+});
+
 describe('POST /api/tree/polyp', () => {
   test('inserts a root piece when parentId is null', async () => {
     const { app, close } = await makeServer();

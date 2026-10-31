@@ -21,7 +21,7 @@ import {
 import { TreeReef } from './tree/reef.js';
 import { AttachIndicators } from './tree/indicators.js';
 import { TreePlacement } from './tree/placement.js';
-import { fetchTree, TreeSocket, defaultTreeWsUrl } from './tree/api.js';
+import { fetchTree, TreeSocket, defaultTreeWsUrl, hideAdminOnlyControls } from './tree/api.js';
 import { TREE_VARIANTS, TreePicker } from './ui/treePicker.js';
 import { computeOrbitPose } from './playground/autoOrbit.js';
 import { installSeaLife } from './tree/seaLife.js';
@@ -260,7 +260,8 @@ resize();
 // ------------------------------------------------------------------
 (async () => {
   try {
-    const { polyps } = await fetchTree(config.apiBase);
+    const { polyps, adminGated } = await fetchTree(config.apiBase);
+    hideAdminOnlyControls(adminGated);
     addPiecesAndRefresh(polyps);
     if (config.mode === 'interactive') {
       hintEl.textContent = polyps.length
