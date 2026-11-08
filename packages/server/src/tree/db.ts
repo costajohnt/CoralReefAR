@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { Storage } from '../storage.js';
-import type { PublicTreePolyp, TreeVariant } from '@reef/shared';
+import { TREE_VARIANT_ATTACH_COUNTS, type PublicTreePolyp, type TreeVariant } from '@reef/shared';
 
 export interface InsertRootInput {
   variant: TreeVariant;
@@ -48,7 +48,7 @@ export class TreeDb {
          VALUES (@variant, @seed, @colorKey, @parentId, @attachIndex, @attachYaw, @createdAt, @deviceHash)`,
       ),
       findParent: this.db.prepare(
-        'SELECT id FROM tree_polyps WHERE id = ? AND deleted = 0',
+        'SELECT id, variant FROM tree_polyps WHERE id = ? AND deleted = 0',
       ),
       findAttachClaimed: this.db.prepare(
         'SELECT id FROM tree_polyps WHERE parent_id = ? AND attach_index = ? AND deleted = 0',
@@ -119,8 +119,14 @@ export class TreeDb {
   }
 
   insertChild(input: InsertChildInput): PublicTreePolyp {
-    const parent = this.stmt.findParent.get(input.parentId);
+    const parent = this.stmt.findParent.get(input.parentId) as { variant: TreeVariant } | undefined;
     if (!parent) throw new Error(`parent not found (id=${input.parentId})`);
+    // The schema bounds attachIndex by the largest variant only; a slot the
+    // parent's variant lacks would make every client's addPiece throw.
+    const slots = TREE_VARIANT_ATTACH_COUNTS[parent.variant] ?? 0;
+    if (input.attachIndex >= slots) {
+      throw new Error(`attach index ${input.attachIndex} out of range for ${parent.variant} parent ${input.parentId}`);
+    }
     const claimed = this.stmt.findAttachClaimed.get(input.parentId, input.attachIndex);
     if (claimed) {
       throw new Error(`attach index ${input.attachIndex} already claimed on parent ${input.parentId}`);

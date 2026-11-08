@@ -88,6 +88,21 @@ describe('TreeReef', () => {
     expect(() => reef.addPiece(child)).toThrow(/no attach index 99/i);
   });
 
+  test('addPieces skips a bad piece and its descendants but loads the rest (audit 2026-11-07 H1)', () => {
+    reef.addPieces([
+      makeRoot(1),
+      makeChild(2, 1, 0, 'forked'), // forked: 2 tips (0..1)
+      makeChild(3, 2, 2), // poison: forked has no attach index 2
+      makeChild(4, 3, 0), // descendant of the skipped piece
+      makeChild(5, 1, 1), // unrelated, created after the poison row
+    ]);
+    expect(reef.getPiece(1)).toBeDefined();
+    expect(reef.getPiece(2)).toBeDefined();
+    expect(reef.getPiece(3)).toBeUndefined();
+    expect(reef.getPiece(4)).toBeUndefined();
+    expect(reef.getPiece(5)).toBeDefined();
+  });
+
   // Test 5: removePiece
   test('removePiece removes mesh from anchor and clears registry', () => {
     const root = makeRoot(1);
