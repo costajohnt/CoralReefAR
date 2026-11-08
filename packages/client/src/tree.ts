@@ -108,7 +108,7 @@ function installEffectsOnNewPieces(): void {
 
 function addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
   const sorted = [...polyps].sort((a, b) => a.createdAt - b.createdAt);
-  for (const polyp of sorted) treeReef.addPiece(polyp);
+  treeReef.addPieces(sorted);
   installEffectsOnNewPieces();
   attachIndicators.refresh(treeReef.getAvailableAttachPoints());
   // A child loaded over HTTP (not just over WS) also invalidates our undo.

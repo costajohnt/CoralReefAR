@@ -81,6 +81,7 @@ export function registerTreeRoutes(app: FastifyInstance, tree: TreeDb, hub: Hub)
       const msg = e instanceof Error ? e.message : String(e);
       if (/parent not found/i.test(msg)) { reply.code(404); return { error: msg }; }
       if (/already claim/i.test(msg))    { reply.code(409); return { error: msg }; }
+      if (/out of range/i.test(msg))     { reply.code(400); return { error: msg }; }
       reply.code(500);
       return { error: msg };
     }

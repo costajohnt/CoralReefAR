@@ -26,6 +26,21 @@ export class TreeReef {
   /** Tracks which (parentId/attachIndex) slots have been claimed by a child piece. */
   private claimedSlots = new Set<string>();
 
+  /**
+   * Bulk load: add each piece, skipping (and logging) any that throw, so one
+   * bad row (e.g. an attach index the parent lacks) cannot abort the whole
+   * tree. Descendants of a skipped piece are skipped too (parent missing).
+   */
+  addPieces(polyps: PublicTreePolyp[]): void {
+    for (const polyp of polyps) {
+      try {
+        this.addPiece(polyp);
+      } catch (e) {
+        console.warn(`[treeReef] skipping polyp ${polyp.id}`, e);
+      }
+    }
+  }
+
   addPiece(polyp: PublicTreePolyp): void {
     if (this.byId.has(polyp.id)) return;
 

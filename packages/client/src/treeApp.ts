@@ -294,7 +294,7 @@ export class TreeApp {
 
   private addPiecesAndRefresh(polyps: PublicTreePolyp[]): void {
     const sorted = [...polyps].sort((a, b) => a.createdAt - b.createdAt);
-    for (const polyp of sorted) this.treeReef.addPiece(polyp);
+    this.treeReef.addPieces(sorted);
     this.installEffectsOnNewPieces();
     this.attachIndicators.refresh(this.treeReef.getAvailableAttachPoints());
     // A child loaded over HTTP (not just over WS) also invalidates our undo.

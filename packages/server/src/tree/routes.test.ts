@@ -119,6 +119,35 @@ describe('POST /api/tree/polyp', () => {
     await close();
   });
 
+  test('returns 400 when attachIndex exceeds the parent variant tip count (audit 2026-11-07 H1)', async () => {
+    const { app, close } = await makeServer();
+    const root = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'starburst', seed: 1, colorKey: 'neon-cyan', parentId: null, attachIndex: 0 },
+    });
+    const rootId = (JSON.parse(root.body) as { id: number }).id;
+    const forked = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'forked', seed: 2, colorKey: 'neon-cyan', parentId: rootId, attachIndex: 3 },
+    });
+    assert.equal(forked.statusCode, 200);
+    const forkedId = (JSON.parse(forked.body) as { id: number }).id;
+    // forked has 2 tips (0..1): index 2 passes the schema (max 3) but must be rejected.
+    const bad = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'claw', seed: 3, colorKey: 'neon-cyan', parentId: forkedId, attachIndex: 2 },
+    });
+    assert.equal(bad.statusCode, 400);
+    const ok = await app.inject({
+      method: 'POST', url: '/api/tree/polyp',
+      payload: { variant: 'claw', seed: 3, colorKey: 'neon-cyan', parentId: forkedId, attachIndex: 1 },
+    });
+    assert.equal(ok.statusCode, 200);
+    const listed = JSON.parse((await app.inject({ method: 'GET', url: '/api/tree' })).body) as { polyps: unknown[] };
+    assert.equal(listed.polyps.length, 3);
+    await close();
+  });
+
   test('returns 404 when parent does not exist', async () => {
     const { app, close } = await makeServer();
     const res = await app.inject({
